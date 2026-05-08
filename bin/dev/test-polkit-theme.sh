@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
 # Smoke-test the keystone hyprpolkitagent dialog against one or more
-# keystone themes. Validates that:
-#   1. write_polkit_theme() emits valid JSON for the theme
+# keystone themes. The whole point is to test the THEME FILES AND
+# write_polkit_theme() FROM THE CURRENT BRANCH'S WORKING TREE — not
+# whatever the activated keystone happens to ship — so a developer
+# can iterate on a theming change without `ks update --approve`.
+#
+# Validates that:
+#   1. write_polkit_theme() (this script's port) emits valid JSON
 #   2. hyprpolkitagent restarts cleanly (no QML parse errors,
 #      no QQuickStyle fallback chain, no XHR file-read denial)
 #   3. The dialog renders and pkexec round-trips a no-op activation
 #   4. (Interactive only) the user confirms the dialog looks right
 #
-# Run between major keystone updates that touch the polkit agent,
-# the polkit theme generator, or the active theme set.
+# Theme source resolution:
+#   - Custom themes (royal-green, etc.) — read from
+#     $REPO_ROOT/modules/desktop/home/theming/themes/<name>/.
+#   - Omarchy themes (tokyo-night, kanagawa, etc.) — read from the
+#     branch's flake-locked omarchy input, resolved via `nix eval`.
+#   - Override either with KEYSTONE_THEMES_DIRS or --themes-dir.
+#
+# Caveats:
+#   - The hyprpolkitagent restart uses the ACTIVATED agent (we can't
+#     swap the QML without a rebuild). This is fine for theme-only
+#     changes; for QML changes, `ks update --approve --keystone path:…`
+#     against the branch first, then run this.
 #
 # Usage:
 #   bin/dev/test-polkit-theme.sh                 # current theme, interactive
@@ -16,6 +31,7 @@
 #   bin/dev/test-polkit-theme.sh --all           # iterate every theme
 #   bin/dev/test-polkit-theme.sh --headless      # no visual confirmation
 #   bin/dev/test-polkit-theme.sh --reset         # restore live polkit.json
+#   bin/dev/test-polkit-theme.sh --repo PATH     # use a different keystone checkout
 #
 # Notes:
 #   - Edits ~/.config/keystone/current/polkit.json in place. The original
@@ -30,8 +46,6 @@ set -u
 set -o pipefail
 
 LIVE_THEME=${KEYSTONE_POLKIT_THEME:-$HOME/.config/keystone/current/polkit.json}
-THEMES_DIR=${KEYSTONE_THEMES_DIR:-$HOME/.config/keystone/themes}
-CURRENT_LINK=${KEYSTONE_CURRENT_LINK:-$HOME/.config/keystone/current/theme}
 SNAPSHOT="${LIVE_THEME}.test-snapshot"
 LOG_DIR=${KEYSTONE_POLKIT_TEST_LOG_DIR:-$HOME/.cache/keystone-polkit-tests}
 LOG_FILE="$LOG_DIR/log"
@@ -43,20 +57,26 @@ THEME_ARG=""
 RUN_ALL=0
 HEADLESS=0
 RESET=0
+REPO_ARG="${KEYSTONE_REPO:-}"
+THEMES_DIRS_OVERRIDE="${KEYSTONE_THEMES_DIRS:-}"
 
 usage() {
-  sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --theme)    THEME_ARG="${2:-}"; shift 2 ;;
-    --theme=*)  THEME_ARG="${1#--theme=}"; shift ;;
-    --all)      RUN_ALL=1; shift ;;
-    --headless) HEADLESS=1; shift ;;
-    --reset)    RESET=1; shift ;;
-    -h|--help)  usage 0 ;;
+    --theme)        THEME_ARG="${2:-}"; shift 2 ;;
+    --theme=*)      THEME_ARG="${1#--theme=}"; shift ;;
+    --all)          RUN_ALL=1; shift ;;
+    --headless)     HEADLESS=1; shift ;;
+    --reset)        RESET=1; shift ;;
+    --repo)         REPO_ARG="${2:-}"; shift 2 ;;
+    --repo=*)       REPO_ARG="${1#--repo=}"; shift ;;
+    --themes-dir)   THEMES_DIRS_OVERRIDE="${2:-}"; shift 2 ;;
+    --themes-dir=*) THEMES_DIRS_OVERRIDE="${1#--themes-dir=}"; shift ;;
+    -h|--help)      usage 0 ;;
     *)
       echo "error: unknown argument: $1" >&2
       usage 1
@@ -68,6 +88,50 @@ mkdir -p "$LOG_DIR"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" | tee -a "$LOG_FILE"
+}
+
+# Locate the keystone repo root. We need it for both the custom-theme
+# files and to nix-eval the branch's pinned omarchy input. The chain:
+#   --repo PATH  >  $KEYSTONE_REPO  >  git rev-parse from $PWD  >  fail.
+resolve_repo_root() {
+  local candidate="$REPO_ARG"
+  if [[ -z "$candidate" ]]; then
+    candidate=$(git -C "${PWD}" rev-parse --show-toplevel 2>/dev/null || true)
+  fi
+  if [[ -z "$candidate" ]]; then
+    echo "error: pass --repo PATH or run from inside the keystone repo" >&2
+    exit 2
+  fi
+  if [[ ! -f "$candidate/flake.nix" ]] \
+     || [[ ! -d "$candidate/modules/desktop/home/theming" ]]; then
+    echo "error: $candidate does not look like a keystone checkout" >&2
+    exit 2
+  fi
+  printf '%s\n' "$candidate"
+}
+
+REPO_ROOT=$(resolve_repo_root)
+CUSTOM_THEMES_DIR="$REPO_ROOT/modules/desktop/home/theming/themes"
+
+# Resolve the omarchy themes directory by nix-eval-ing the flake's
+# locked input. Cached for the duration of this run because the eval
+# is the slow part (~1-2 s on a warm store).
+OMARCHY_THEMES_DIR=""
+resolve_omarchy_themes_dir() {
+  if [[ -n "$OMARCHY_THEMES_DIR" ]]; then
+    printf '%s\n' "$OMARCHY_THEMES_DIR"
+    return 0
+  fi
+  local out
+  out=$(nix --extra-experimental-features 'nix-command flakes' \
+        eval --raw --impure \
+        --expr "(builtins.getFlake \"git+file://$REPO_ROOT\").inputs.omarchy.outPath" \
+        2>/dev/null) || return 1
+  if [[ -z "$out" || ! -d "$out/themes" ]]; then
+    return 1
+  fi
+  OMARCHY_THEMES_DIR="$out/themes"
+  printf '%s\n' "$OMARCHY_THEMES_DIR"
 }
 
 restore_snapshot() {
@@ -183,18 +247,41 @@ write_polkit_theme() {
     }' > "$output_path"
 }
 
-resolve_theme_dir() {
-  local name="$1"
-  if [[ -d "$THEMES_DIR/$name" ]]; then
-    printf '%s\n' "$THEMES_DIR/$name"
+# Theme directory search path, in priority order. Custom themes (the
+# branch's checked-in `royal-green` etc.) win over omarchy because if
+# both ever defined the same name, custom is the override.
+theme_search_dirs() {
+  if [[ -n "$THEMES_DIRS_OVERRIDE" ]]; then
+    printf '%s\n' "$THEMES_DIRS_OVERRIDE" | tr ':' '\n'
     return 0
   fi
+  printf '%s\n' "$CUSTOM_THEMES_DIR"
+  local omarchy
+  if omarchy=$(resolve_omarchy_themes_dir); then
+    printf '%s\n' "$omarchy"
+  fi
+}
+
+resolve_theme_dir() {
+  local name="$1"
+  local dir
+  while IFS= read -r dir; do
+    [[ -z "$dir" ]] && continue
+    if [[ -d "$dir/$name" ]]; then
+      printf '%s\n' "$dir/$name"
+      return 0
+    fi
+  done < <(theme_search_dirs)
   return 1
 }
 
+# Best-effort detection of the currently-active theme name from the
+# user's home-manager symlink. Used only as a default for "no args"
+# invocations; it doesn't constrain which themes can be tested.
 current_theme_name() {
-  if [[ -L "$CURRENT_LINK" ]]; then
-    basename "$(readlink -f "$CURRENT_LINK")"
+  local link="${KEYSTONE_CURRENT_LINK:-$HOME/.config/keystone/current/theme}"
+  if [[ -L "$link" ]]; then
+    basename "$(readlink -f "$link")"
   else
     echo ""
   fi
@@ -321,16 +408,25 @@ if [[ -f "$LIVE_THEME" && ! -f "$SNAPSHOT" ]]; then
   log "snapshot created at $SNAPSHOT"
 fi
 
-# Build the theme list.
+# Build the theme list. For --all, deduplicate names across the search
+# path so a custom-overridden theme is tested once (against its custom
+# definition).
 declare -a THEMES
 if [[ "$RUN_ALL" -eq 1 ]]; then
-  if [[ ! -d "$THEMES_DIR" ]]; then
-    echo "error: $THEMES_DIR not found — is keystone home-manager activated?" >&2
+  declare -A seen=()
+  while IFS= read -r dir; do
+    [[ -z "$dir" || ! -d "$dir" ]] && continue
+    while IFS= read -r name; do
+      if [[ -z "${seen[$name]:-}" ]]; then
+        THEMES+=("$name")
+        seen["$name"]=1
+      fi
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  done < <(theme_search_dirs)
+  if [[ "${#THEMES[@]}" -eq 0 ]]; then
+    echo "error: no themes found; check --repo and --themes-dir" >&2
     exit 2
   fi
-  while IFS= read -r line; do THEMES+=("$line"); done < <(
-    find "$THEMES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
-  )
 elif [[ -n "$THEME_ARG" ]]; then
   THEMES=("$THEME_ARG")
 else
@@ -342,7 +438,7 @@ else
   THEMES=("$current")
 fi
 
-log "==> run started (themes: ${THEMES[*]}, headless=$HEADLESS)"
+log "==> run started (repo=$REPO_ROOT, themes: ${THEMES[*]}, headless=$HEADLESS)"
 
 failures=0
 for theme in "${THEMES[@]}"; do

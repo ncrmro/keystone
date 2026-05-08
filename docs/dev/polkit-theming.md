@@ -2,13 +2,20 @@
 
 `bin/dev/test-polkit-theme.sh` exercises the end-to-end keystone polkit
 dialog: theme JSON generation, `hyprpolkitagent` startup, QML render,
-and `pkexec` round-trip. Run it after any change that touches:
+and `pkexec` round-trip. **It tests the theme files and
+`write_polkit_theme()` from the current branch's working tree**, not
+whatever the activated keystone happens to ship — so a developer can
+iterate on a theming change and re-run the test without
+`ks update --approve`.
+
+Run it after any change that touches:
 
 - `packages/hyprpolkitagent/` — the QML or its wrapper
 - `modules/desktop/home/theming/default.nix` — the `write_polkit_theme`
   generator or theme-file copy maps
 - `modules/os/privileged-approval.nix` — polkit policy / allowlist
-- `modules/desktop/home/themes/` — custom theme files (e.g. royal-green)
+- `modules/desktop/home/theming/themes/` — custom theme files
+  (royal-green, etc.)
 - `flake.lock` rev of upstream `omarchy` — colour values may shift
 
 ## Prerequisites
@@ -25,20 +32,42 @@ ls -l /run/current-system/sw/bin/keystone-approve-exec
 
 If either is missing, finish a `ks update --approve` first.
 
+## Theme source resolution
+
+The script resolves theme files from the **branch's working tree**, not
+the activated keystone. The search path, in order:
+
+1. `$REPO_ROOT/modules/desktop/home/theming/themes/<name>/` — custom
+   themes (royal-green, etc.) tracked in this repo.
+2. `<branch-pinned-omarchy>/themes/<name>/` — omarchy themes resolved
+   by `nix eval`-ing the branch's flake-locked `omarchy` input.
+
+`$REPO_ROOT` is detected via `git rev-parse` from `$PWD`, or pass
+`--repo PATH` (or `KEYSTONE_REPO=...`) to point at a different checkout.
+Override the search path entirely with `--themes-dir DIR[:DIR]`
+(or `KEYSTONE_THEMES_DIRS`).
+
+The hyprpolkitagent that gets restarted is still the activated one —
+QML changes need a real keystone build (e.g. `ks update --approve
+--keystone path:$REPO_ROOT`) to land. This script is theme-only.
+
 ## Running
 
 ```sh
-# Current theme, interactive (will pkexec → polkit dialog → password)
+# From inside the keystone checkout, current theme, interactive
 bin/dev/test-polkit-theme.sh
 
-# Specific theme (must exist under ~/.config/keystone/themes/)
+# Specific theme (resolved against the branch, not the activated keystone)
 bin/dev/test-polkit-theme.sh --theme royal-green
 
-# Cycle every installed theme — visually verify each
+# Cycle every theme the branch can produce — visually verify each
 bin/dev/test-polkit-theme.sh --all
 
 # CI-style: validate JSON + agent restart only, no dialog/password
 bin/dev/test-polkit-theme.sh --headless --all
+
+# Test a different keystone checkout without cd-ing into it
+bin/dev/test-polkit-theme.sh --repo ~/.worktrees/ncrmro/keystone/feat-foo --all
 
 # Recover after a killed run left the wrong polkit.json in place
 bin/dev/test-polkit-theme.sh --reset
@@ -114,7 +143,8 @@ doesn't use it. The script's grep ignores this string.
 
 ## Adding a new theme
 
-Theme directory layout (under `modules/desktop/home/themes/<name>/` or
+Theme directory layout (under
+`modules/desktop/home/theming/themes/<name>/` for custom themes, or
 omarchy's `themes/<name>/`):
 
 | File | Used for | Required for polkit? |
@@ -125,11 +155,11 @@ omarchy's `themes/<name>/`):
 
 After adding the theme:
 
-1. Run `home-manager switch` (or `ks update`) to materialise it under
-   `~/.config/keystone/themes/<name>/`.
-2. `bin/dev/test-polkit-theme.sh --theme <name>` and visually confirm.
-3. Add `<name>` to `--all` mental coverage by running
-   `bin/dev/test-polkit-theme.sh --all` once before merging.
+1. `bin/dev/test-polkit-theme.sh --theme <name>` from inside the branch
+   checkout — no `ks update` needed; the script reads the new theme
+   straight from the working tree.
+2. `bin/dev/test-polkit-theme.sh --all` once before merging to confirm
+   the addition didn't regress any sibling theme.
 
 ## Implementation note: duplicated bash
 
