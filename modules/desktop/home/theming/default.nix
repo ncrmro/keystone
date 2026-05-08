@@ -43,12 +43,16 @@ let
         is_light=true
       fi
 
-      background="$(read_hyprlock_color color)"
-      [[ -n "$background" ]] || background="$(read_waybar_color background)"
+      # Prefer waybar's @define-color background over hyprlock's $color.
+      # Hyprlock is tuned for a full-screen lock and is the darkest
+      # variant of a theme (royal-green hyprlock = rgb(0,18,12) ≈
+      # near-black; waybar = #001F14, visibly green). The polkit dialog
+      # is a panel-ish surface, so waybar's brightness is a closer fit.
+      background="$(read_waybar_color background)"
+      [[ -n "$background" ]] || background="$(read_hyprlock_color color)"
       [[ -n "$background" ]] || background="#111827"
 
-      surface="$(read_hyprlock_color inner_color)"
-      [[ -n "$surface" ]] || surface="$background"
+      surface="$background"
 
       border="$(read_hyprlock_color outer_color)"
       [[ -n "$border" ]] || border="$(read_waybar_color gold)"
