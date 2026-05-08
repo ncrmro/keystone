@@ -78,6 +78,14 @@ in
         "center on, match:class ^$, match:title ^(Authentication required)$"
         "size 486 246, match:class ^$, match:title ^(Authentication required)$"
         "pin on, match:class ^$, match:title ^(Authentication required)$"
+        # Translucency + blur make the polkit dialog read like the rest
+        # of the keystone surface (ghostty, walker) instead of an opaque
+        # Qt slab. Rounding matches the desktop. Active and inactive
+        # opacity differ by 0.07 to follow the global rule.
+        "opacity 0.97 0.9, match:class ^$, match:title ^(Authentication required)$"
+        "blur on, match:class ^$, match:title ^(Authentication required)$"
+        "rounding 12, match:class ^$, match:title ^(Authentication required)$"
+        "noborder on, match:class ^$, match:title ^(Authentication required)$"
       ];
 
       # layerrule disabled until Hyprland 0.52+ syntax is confirmed
