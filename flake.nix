@@ -407,6 +407,10 @@
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
           };
+          polkitKeystoneApproveCache = import ./tests/module/polkit-keystone-approve-cache.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
             inherit pkgs;
           };
@@ -546,6 +550,7 @@
           hyprland-config-smoke = hyprlandConfigSmoke;
           ks-approve = ksApprove;
           approve-exec-script = approveExecScript;
+          polkit-keystone-approve-cache = polkitKeystoneApproveCache;
           ks-doctor-report = ksDoctorReport;
           ks-rust-tests = ksRustTests;
           ks-rust-clippy = ksRustClippy;
@@ -581,6 +586,7 @@
             ln -s ${ksPhotos} "$out/photos"
             ln -s ${ksApprove} "$out/approve"
             ln -s ${approveExecScript} "$out/approve-exec-script"
+            ln -s ${polkitKeystoneApproveCache} "$out/polkit-keystone-approve-cache"
             ln -s ${ksDoctorReport} "$out/doctor-report"
             ln -s ${ksLockSync} "$out/lock-sync"
           '';

@@ -212,11 +212,22 @@ in
     # build time) is the only way to actually get `AUTH_ADMIN_KEEP`
     # applied. The XML policy stays in place for the description/message
     # strings the dialog shows.
+    #
+    # The rule mirrors the XML's stated `<defaults>` (allow_any=no,
+    # allow_inactive=no, allow_active=auth_admin_keep) by gating on
+    # `subject.active`: only an active local session caches; anything
+    # else is denied. Without this gate, an unattended SSH session
+    # could trigger keystone-approve-exec and the cached credential
+    # would survive — a wider blast radius than the XML policy
+    # advertised.
     security.polkit.extraConfig = ''
       polkit.addRule(function(action, subject) {
         if (action.id == "org.freedesktop.policykit.exec" &&
             action.lookup("program") == "${approvalHelper}/bin/keystone-approve-exec") {
-          return polkit.Result.AUTH_ADMIN_KEEP;
+          if (subject.active) {
+            return polkit.Result.AUTH_ADMIN_KEEP;
+          }
+          return polkit.Result.NO;
         }
       });
     '';
