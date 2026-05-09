@@ -647,6 +647,7 @@
             pz
             cfait
             zellij-tab-name
+            write-polkit-theme
             chrome-devtools-mcp
             grafana-mcp
             lfs-s3

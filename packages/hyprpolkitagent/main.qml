@@ -86,12 +86,14 @@ ApplicationWindow {
             hpa.setResult("auth:" + passwordField.text);
         }
 
+        // The Hyprland windowrule already paints an outer border (theme
+        // border colour via general.col.active_border). A second 1px
+        // border here read as a doubled frame inside the rounded corner
+        // — clean it up by leaving the surface fill only.
         Rectangle {
             anchors.fill: parent
             radius: 16
             color: theme.surface
-            border.width: 1
-            border.color: theme.border
         }
 
         ColumnLayout {

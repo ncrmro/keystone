@@ -33,6 +33,7 @@ let
   cfait-src = ../packages/cfait;
   zellij-tab-name-src = ../packages/zellij-tab-name;
   hyprpolkitagent-src = ../packages/hyprpolkitagent;
+  write-polkit-theme-src = ../packages/write-polkit-theme;
   agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
   ks-legacy-src = ../packages/ks-legacy;
@@ -114,6 +115,7 @@ in
     cfait = final.callPackage cfait-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };
     hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
+    write-polkit-theme = final.callPackage write-polkit-theme-src { };
     himalaya = himalaya-flake.packages.${system}.default;
     calendula = calendula-flake.packages.${system}.default;
     cardamum = cardamum-flake.packages.${system}.default;
