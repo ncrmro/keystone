@@ -25,14 +25,20 @@ writeShellApplication {
     read_hyprlock_color() {
       local name="$1"
       if [[ -f "$hyprlock_file" ]]; then
-        sed -n 's/^\$'"$name"' = \(rgb([^)]*)\).*/\1/p' "$hyprlock_file" | head -1
+        # Match rgb(...) or rgba(...) — keystone-internal themes
+        # (royal-green) use rgb; omarchy themes use rgba.
+        sed -n 's/^\$'"$name"' = \(rgba\{0,1\}([^)]*)\).*/\1/p' "$hyprlock_file" | head -1
       fi
     }
 
     read_waybar_color() {
       local name="$1"
       if [[ -f "$waybar_file" ]]; then
-        sed -n 's/^@define-color '"$name"' \([^;]*\);/\1/p' "$waybar_file" | head -1
+        # Stop at the first space OR `;` — catppuccin-latte writes
+        # `@define-color background #eff1f5 /* base */;` (comment
+        # before the semicolon), and naive `[^;]*` would capture the
+        # comment as part of the colour value, polluting polkit.json.
+        sed -n 's/^@define-color '"$name"' \([^ ;]*\).*/\1/p' "$waybar_file" | head -1
       fi
     }
 
