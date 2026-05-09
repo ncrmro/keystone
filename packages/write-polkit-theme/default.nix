@@ -42,6 +42,29 @@ writeShellApplication {
       fi
     }
 
+    # Normalise to #RRGGBB. The QML in packages/hyprpolkitagent/main.qml
+    # binds the values from polkit.json straight into Qt color properties
+    # (`color: theme.text`, etc.). Qt's QColor parser accepts `#RRGGBB`
+    # and named colours but does NOT accept CSS-style `rgb(r, g, b)` /
+    # `rgba(r, g, b, a)` strings — when parsing fails, the bound colour
+    # is invalid and Qt renders it as black. Hyprlock files use
+    # `rgb(...)` (royal-green) or `rgba(...)` (omarchy themes), so
+    # passing those through verbatim made every hyprlock-sourced colour
+    # paint as black: gold border invisible against dark green, gold
+    # text rendered black, etc. Convert to hex once on the way out.
+    to_hex() {
+      local val="$1"
+      [[ -z "$val" ]] && return 0
+      if [[ "$val" =~ ^rgba?\(([[:space:]]*[0-9]+)[[:space:]]*,([[:space:]]*[0-9]+)[[:space:]]*,([[:space:]]*[0-9]+)([[:space:]]*,.*)?\)$ ]]; then
+        printf '#%02X%02X%02X' \
+          "$(( BASH_REMATCH[1] ))" \
+          "$(( BASH_REMATCH[2] ))" \
+          "$(( BASH_REMATCH[3] ))"
+        return 0
+      fi
+      printf '%s' "$val"
+    }
+
     if [[ -f "$theme_path/light.mode" ]]; then
       is_light=true
     fi
@@ -82,6 +105,15 @@ writeShellApplication {
     else
       error="#fb7185"
     fi
+
+    background="$(to_hex "$background")"
+    surface="$(to_hex "$surface")"
+    border="$(to_hex "$border")"
+    accent="$(to_hex "$accent")"
+    text="$(to_hex "$text")"
+    placeholder="$(to_hex "$placeholder")"
+    muted_text="$(to_hex "$muted_text")"
+    error="$(to_hex "$error")"
 
     mkdir -p "$(dirname "$output_path")"
     jq -n \
