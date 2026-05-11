@@ -40,7 +40,9 @@ in
         helm-ls
         ruby-lsp
         solargraph
-        nodePackages.prettier
+        # `nodePackages` namespace was removed from nixpkgs unstable —
+        # prettier moved to a top-level attr.
+        prettier
         harper
         pandoc
         marksman
