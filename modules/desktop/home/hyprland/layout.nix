@@ -35,7 +35,7 @@ in
 
         # Volume and bluetooth panels are small fixed dialogs — floating
         # keeps them out of the tiling grid where they'd get awkwardly stretched.
-        "float on, match:class ^(org.pulseaudio.pavucontrol|blueberry.py)$"
+        "float on, match:class ^(org.pulseaudio.pavucontrol|.blueman-manager-wrapped|blueman-manager)$"
 
         # Subtle transparency gives depth cues between focused and background
         # windows. 0.97 focused / 0.9 unfocused is barely perceptible but

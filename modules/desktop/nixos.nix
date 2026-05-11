@@ -175,7 +175,9 @@ in
         # System utilities
         pavucontrol
         networkmanagerapplet
-        blueberry
+        # blueberry was removed from nixpkgs (unmaintained upstream);
+        # blueman is the supported replacement.
+        blueman
 
         # XDG portals and desktop integration
         xdg-utils
