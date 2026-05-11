@@ -28,6 +28,7 @@ pub mod tasks;
 pub mod update;
 pub mod update_approve;
 pub mod update_menu;
+pub mod update_progress;
 pub mod util;
 
 // Re-export template types and execution from their canonical location.

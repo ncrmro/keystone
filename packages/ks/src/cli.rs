@@ -142,6 +142,15 @@ pub enum Command {
         /// Only valid alongside `--approve`. Other update modes ignore it.
         #[arg(long = "keystone")]
         keystone_override: Option<String>,
+
+        /// Emit JSON-Lines progress events to stdout at every phase
+        /// boundary of the supervised update flow. Used by Walker (and
+        /// future consumers — TUI, CI scraper) to render real-time
+        /// status while the build runs silently. Only meaningful
+        /// alongside `--approve`; ignored otherwise. Schema: one event
+        /// per line — see cmd::update_progress for the type.
+        #[arg(long = "emit-progress")]
+        emit_progress: bool,
     },
 
     /// Activate a pre-built NixOS system closure (privileged).
