@@ -69,17 +69,15 @@ let
   fail = msg: throw "polkit-keystone-approve-cache: ${msg}\nrendered extraConfig:\n${rendered}";
 
   checks =
-    lib.optional (
-      !hasCanonicalKeystonePath
-    ) "rendered rule must reference /nix/store/<hash>-keystone-approve-exec/bin/keystone-approve-exec (the canonical path pkexec hands to polkit)"
-    ++ lib.optional hasSymlinkPath
-      "rendered rule must NOT reference /run/current-system/sw/bin/keystone-approve-exec — pkexec realpath()s the target so the symlink path never matches and the rule would silently regress to auth_admin (no _keep)"
-    ++ lib.optional (
-      !hasAuthAdminKeep
-    ) "rendered rule must return AUTH_ADMIN_KEEP — without it, single-prompt update flow regresses to a re-prompt on every pkexec call"
-    ++ lib.optional (
-      !hasSubjectActiveGate
-    ) "rendered rule must gate on subject.active — without it, inactive sessions can also cache, breaching the XML policy's allow_inactive=no semantic";
+    lib.optional (!hasCanonicalKeystonePath)
+      "rendered rule must reference /nix/store/<hash>-keystone-approve-exec/bin/keystone-approve-exec (the canonical path pkexec hands to polkit)"
+    ++ lib.optional hasSymlinkPath "rendered rule must NOT reference /run/current-system/sw/bin/keystone-approve-exec — pkexec realpath()s the target so the symlink path never matches and the rule would silently regress to auth_admin (no _keep)"
+    ++
+      lib.optional (!hasAuthAdminKeep)
+        "rendered rule must return AUTH_ADMIN_KEEP — without it, single-prompt update flow regresses to a re-prompt on every pkexec call"
+    ++
+      lib.optional (!hasSubjectActiveGate)
+        "rendered rule must gate on subject.active — without it, inactive sessions can also cache, breaching the XML policy's allow_inactive=no semantic";
 
 in
 if checks != [ ] then
