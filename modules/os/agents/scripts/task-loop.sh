@@ -407,6 +407,13 @@ count_invalid_pending_tasks() {
   yq '.tasks | map(select(.status == "pending" and ((.name // "") == ""))) | length' TASKS.yaml 2>/dev/null || printf '0\n'
 }
 
+# CRITICAL: a bare `ping` or `pong` pending task is e2e fixture residue from a
+# failed live test run — never real work. Match exact, case-insensitive; do not
+# touch descriptive names like `reply-pong-to-test`.
+count_pingpong_residue_tasks() {
+  yq '.tasks | map(select(.status == "pending" and ((.name // "") | downcase | test("^(ping|pong)$")))) | length' TASKS.yaml 2>/dev/null || printf '0\n'
+}
+
 first_pending_task_json() {
   yq -o=json '.tasks | map(select(.status == "pending")) | .[0] // {}' TASKS.yaml 2>/dev/null || printf '{}\n'
 }
@@ -693,6 +700,13 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
     log "  Marking $INVALID_PENDING_COUNT pending task(s) with empty name as error"
     yq -i '(.tasks[] | select(.status == "pending" and ((.name // "") == ""))).status = "error"' TASKS.yaml
     TASKS_FAILED=$((TASKS_FAILED + INVALID_PENDING_COUNT))
+  fi
+
+  PINGPONG_RESIDUE_COUNT=$(count_pingpong_residue_tasks)
+  if [[ "$PINGPONG_RESIDUE_COUNT" -gt 0 ]]; then
+    log "  Marking $PINGPONG_RESIDUE_COUNT pending ping/pong residue task(s) as error"
+    yq -i '(.tasks[] | select(.status == "pending" and ((.name // "") | downcase | test("^(ping|pong)$")))).status = "error"' TASKS.yaml
+    TASKS_FAILED=$((TASKS_FAILED + PINGPONG_RESIDUE_COUNT))
   fi
 
   TASK_JSON=$(first_pending_task_json)

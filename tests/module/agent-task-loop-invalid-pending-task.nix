@@ -96,6 +96,16 @@ pkgs.runCommand "test-agent-task-loop-invalid-pending-task"
         status: pending
         source: email
         source_ref: "email-empty-name@test"
+      - name: "ping"
+        description: "Bare ping residue from failed e2e run"
+        status: pending
+        source: email
+        source_ref: "email-pingpong-residue-ping@test"
+      - name: "Pong"
+        description: "Bare pong residue (case-insensitive match) from failed e2e run"
+        status: pending
+        source: email
+        source_ref: "email-pingpong-residue-pong@test"
       - name: "reply-pong-to-test"
         description: "Reply with pong to the ping email from test@ncrmro.com"
         status: pending
@@ -147,6 +157,16 @@ pkgs.runCommand "test-agent-task-loop-invalid-pending-task"
           exit 1
         fi
         echo "PASS: invalid pending task marked error"
+
+        for residue_ref in "email-pingpong-residue-ping@test" "email-pingpong-residue-pong@test"; do
+          residue_status="$(yq "[.tasks[] | select(.source_ref == \"$residue_ref\")] | .[0].status" "$HOME/TASKS.yaml")"
+          if [[ "$residue_status" != "error" ]]; then
+            echo "FAIL: ping/pong residue task ($residue_ref) status is '$residue_status', expected 'error'" >&2
+            cat "$HOME/TASKS.yaml" >&2
+            exit 1
+          fi
+          echo "PASS: ping/pong residue task ($residue_ref) marked error"
+        done
 
         valid_status="$(yq '[.tasks[] | select(.source_ref == "email-1-test@ncrmro.com")] | .[0].status' "$HOME/TASKS.yaml")"
         if [[ "$valid_status" != "completed" ]]; then
