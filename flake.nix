@@ -59,6 +59,13 @@
       url = "github:nix-community/browser-previews";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Fresh-pin nixpkgs for selected fast-moving packages (chromium,
+    # signal-desktop). Intentionally does NOT follow `nixpkgs` — the whole point
+    # is to track nixos-unstable independently of the main pin, so a stale
+    # `nixpkgs` doesn't hold back security/feature-critical leaf packages.
+    # See `overlays/default.nix` for the curated package list; keep it short to
+    # bound /nix/store divergence.
+    nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # Desktop tools
     ghostty.url = "github:ghostty-org/ghostty";
@@ -130,6 +137,7 @@
       comodoro,
       llm-agents,
       browser-previews,
+      nixpkgs-fresh,
       ghostty,
       yazi,
       walker,
@@ -234,6 +242,7 @@
           comodoro
           llm-agents
           browser-previews
+          nixpkgs-fresh
           ghostty
           yazi
           agenix
