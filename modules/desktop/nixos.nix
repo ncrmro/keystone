@@ -140,6 +140,11 @@ in
     hardware.bluetooth.enable = mkDefault true;
     services.blueman.enable = mkDefault true;
 
+    # Fingerprint reader daemon — required for fprintd-enroll/verify/delete to
+    # find the D-Bus service. PAM integration (fprintAuth) is intentionally
+    # deferred; enable the daemon first so enrollment via the Walker menu works.
+    services.fprintd.enable = mkDefault true;
+
     # Printing (CUPS + Avahi/mDNS discovery)
     services.printing.enable = mkDefault true;
     services.avahi = {
@@ -187,6 +192,10 @@ in
         file-roller
         sushi
         loupe
+
+        # Fingerprint CLI tools — enrollment terminal inherits user PATH, not
+        # the wrapper's runtimeInputs, so the binaries must be globally present.
+        fprintd
 
         # System utilities
         pavucontrol
