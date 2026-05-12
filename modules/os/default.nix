@@ -639,6 +639,19 @@ in
   config = mkIf cfg.enable {
     keystone.security.privilegedApproval.enable = mkDefault true;
 
+    # Default home-manager to back up clobbered files instead of
+    # aborting activation. Keystone manages a lot of dotfiles
+    # (hyprland.conf, waybar.css, ghostty config, mako, etc.) so the
+    # very first activation on a host that was provisioned
+    # out-of-band — or migrated from another config — reliably hits
+    # file conflicts under ~/.config that the operator hasn't
+    # cleaned. Without a backup extension, the entire activation
+    # fails (exit 4 on switch-to-configuration) instead of the
+    # conflicts being moved aside. mkDefault leaves operators free
+    # to override to a different suffix or to `force = true` per
+    # file.
+    home-manager.backupFileExtension = mkDefault "hm-backup";
+
     # Derive adminUsername from the user flagged admin = true.
     # mkDefault keeps explicit assignments winning; consistency with the
     # admin flag is validated by assertions in modules/os/users.nix.
