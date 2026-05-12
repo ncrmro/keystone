@@ -10,6 +10,7 @@
   comodoro,
   llm-agents,
   browser-previews,
+  nixpkgs-fresh,
   ghostty,
   yazi,
   agenix,
@@ -59,6 +60,12 @@ in
 final: prev:
 let
   system = final.stdenv.hostPlatform.system;
+  # Fresh-pinned nixpkgs for high-cadence leaf packages. Keep `allowUnfree`
+  # because signal-desktop and chromium-related deps require it.
+  nixpkgsFreshPkgs = import nixpkgs-fresh {
+    inherit system;
+    config.allowUnfree = true;
+  };
   llmAgentsPkgs = import prev.path {
     inherit system;
     config.allowUnfree = true;
@@ -209,6 +216,17 @@ in
   };
   # Top-level overrides so programs.ghostty/yazi use flake versions
   yazi = yazi-flake.packages.${system}.default;
+
+  # Top-level overrides pulled from the dedicated `nixpkgs-fresh` input.
+  # These packages need to track upstream more aggressively than the main
+  # nixpkgs pin (chromium ships weekly CVE patches; signal-desktop force-
+  # deprecates older clients). Add new entries here sparingly — each one
+  # duplicates a slice of transitive deps in /nix/store. See `flake.nix`
+  # `nixpkgs-fresh` input comment for the rationale.
+  inherit (nixpkgsFreshPkgs)
+    chromium
+    signal-desktop
+    ;
 }
 // prev.lib.optionalAttrs prev.stdenv.isLinux {
   ghostty = ghostty-flake.packages.${prev.stdenv.hostPlatform.system}.default;
