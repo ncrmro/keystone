@@ -194,32 +194,12 @@ in
 
     security.polkit.enable = mkDefault true;
 
-    # The XML policy in $out/share/polkit-1/actions/com.ncrmro.keystone.approve.policy
-    # declares `auth_admin_keep` and a `org.freedesktop.policykit.exec.path`
-    # annotation pointing at the symlink path
-    # `/run/current-system/sw/bin/keystone-approve-exec`. That annotation
-    # is *not* honoured at runtime: pkexec calls `realpath()` on the
-    # program before handing it to polkit, so polkit looks up the
-    # canonical Nix store path. The annotation matches the symlink path,
-    # never the canonical, so polkit silently falls back to the generic
-    # `org.freedesktop.policykit.exec` action — whose default for
-    # `allow_active` is `auth_admin` (no `_keep`). Result: a fresh
-    # password prompt on every pkexec call, including the post-build
-    # activation that `warm_polkit_cache` is meant to cover.
-    #
-    # Adding a JS rule that matches the *canonical* helper path
-    # (`${approvalHelper}/bin/keystone-approve-exec` is interpolated at
-    # build time) is the only way to actually get `AUTH_ADMIN_KEEP`
-    # applied. The XML policy stays in place for the description/message
-    # strings the dialog shows.
-    #
-    # The rule mirrors the XML's stated `<defaults>` (allow_any=no,
-    # allow_inactive=no, allow_active=auth_admin_keep) by gating on
-    # `subject.active`: only an active local session caches; anything
-    # else is denied. Without this gate, an unattended SSH session
-    # could trigger keystone-approve-exec and the cached credential
-    # would survive — a wider blast radius than the XML policy
-    # advertised.
+    # pkexec realpath()s its target before handing it to polkit, so the
+    # XML policy's `exec.path` annotation (which names the
+    # /run/current-system symlink) never matches and the keep cache is
+    # never applied. This JS rule matches the canonical store path
+    # instead. `subject.active` gate mirrors the XML's allow_active /
+    # allow_inactive=no defaults — only an active local session caches.
     security.polkit.extraConfig = ''
       polkit.addRule(function(action, subject) {
         if (action.id == "org.freedesktop.policykit.exec" &&

@@ -78,21 +78,10 @@ in
         "center on, match:class ^$, match:title ^(Authentication required)$"
         "size 486 246, match:class ^$, match:title ^(Authentication required)$"
         "pin on, match:class ^$, match:title ^(Authentication required)$"
-        # Translucency makes the polkit dialog read like the rest of the
-        # keystone surface (ghostty, walker) instead of an opaque Qt
-        # slab. Hyprland's global decoration.blur block blurs the
-        # backdrop *proportional to the window's transparency* — at
-        # 0.97 alpha you only see 3% of the blurred backdrop, which
-        # reads as no blur at all. Hyprland 0.54 dropped per-window
-        # `blur on` (used to draw blur regardless of alpha), so the only
-        # lever we have is opacity. 0.85 / 0.78 lets enough of the
-        # blurred backdrop through to be obviously blurry while keeping
-        # the password field readable. Rounding matches the desktop.
-        # The Hyprland outer border stays visible (per-window
-        # `noborder`/`bordersize` aren't valid fields in 0.54 either);
-        # if it ever reads as a double frame against the QML's inner
-        # gold border, the fix is a global `general.border_size = 0`
-        # toggle, not a per-window rule.
+        # Global decoration.blur shows backdrop proportional to (1 - alpha),
+        # and Hyprland 0.54 dropped per-window `blur on`, so opacity is the
+        # only lever for a translucent-blurred dialog. 0.85/0.78 is the
+        # readability/blur sweet spot. Rounding matches the desktop.
         "opacity 0.85 0.78, match:class ^$, match:title ^(Authentication required)$"
         "rounding 12, match:class ^$, match:title ^(Authentication required)$"
       ];

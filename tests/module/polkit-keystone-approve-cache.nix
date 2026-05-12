@@ -1,22 +1,16 @@
-# polkit-keystone-approve-cache — regression test for the
-# canonical-path polkit rule that makes auth_admin_keep actually
-# apply to keystone-approve-exec.
+# Regression test for the canonical-path polkit rule that makes
+# auth_admin_keep apply to keystone-approve-exec.
 #
-# History: pkexec calls realpath() on its target before handing it to
-# polkit, so polkit looks up the canonical Nix store path. The XML
-# policy's `org.freedesktop.policykit.exec.path` annotation pointed at
-# the /run/current-system symlink — never matched, so polkit fell back
-# to the generic action's auth_admin (no _keep) and re-prompted on
-# every pkexec call. The fix is a JS rule in security.polkit.extraConfig
-# that matches the canonical helper path (Nix interpolates it).
+# pkexec calls realpath() on its target before handing it to polkit,
+# so the XML policy's `exec.path` annotation pointing at the
+# `/run/current-system` symlink never matches and polkit falls back to
+# the generic `auth_admin` (no `_keep`), re-prompting on every call.
+# The JS rule in security.polkit.extraConfig matches the canonical
+# Nix store path (interpolated at build time) so the keep cache hits.
 #
-# This test pins the fix at the rendered-config level. Specifically it
-# guards against:
-#   - reverting to /run/current-system in the rule (would break
-#     auth_admin_keep again — exactly the bug we just fixed)
-#   - dropping subject.active gating (would let inactive sessions
-#     cache, breaching the XML's allow_inactive=no semantics)
-#   - removing AUTH_ADMIN_KEEP entirely
+# Asserts the rendered rule contains the canonical store path, gates
+# on subject.active, returns AUTH_ADMIN_KEEP, and does NOT reference
+# the /run/current-system symlink.
 #
 # Build: nix build .#test-polkit-keystone-approve-cache
 {
