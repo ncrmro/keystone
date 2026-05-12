@@ -56,6 +56,22 @@ in
   };
 
   config = mkIf cfg.enable {
+    # Walker dispatches `ks update --approve` through `systemd-inhibit`
+    # so suspend/shutdown can't wedge a switch. systemd-inhibit runs
+    # without AllowInteractive, and walker.service lives in user@.service
+    # (no logind seat session), so polkit's subject.active and
+    # subject.local are both false for it. Grant the admin user the
+    # inhibit-* actions directly — gating on session attributes would
+    # re-break walker.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (subject.user == "${config.keystone.os.adminUsername}" &&
+            action.id.indexOf("org.freedesktop.login1.inhibit-") == 0) {
+          return polkit.Result.YES;
+        }
+      });
+    '';
+
     # Flatpak support (declarative via nix-flatpak)
     services.flatpak.enable = mkDefault true;
 
