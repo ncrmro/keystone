@@ -498,6 +498,12 @@
             inherit home-manager;
             self = self;
           };
+          desktopFprintd = import ./tests/module/desktop-fprintd.nix {
+            pkgs = ksPkgs;
+            lib = ksPkgs.lib;
+            inherit nixpkgs;
+            self = self;
+          };
           agentctlRegression = import ./tests/module/agentctl-regression.nix {
             inherit pkgs;
           };
@@ -548,6 +554,7 @@
           desktop-walker-surfaces = desktopWalkerSurfaces;
           desktop-autostart-assertion = desktopAutostartAssertion;
           hyprland-config-smoke = hyprlandConfigSmoke;
+          desktop-fprintd = desktopFprintd;
           ks-approve = ksApprove;
           approve-exec-script = approveExecScript;
           polkit-keystone-approve-cache = polkitKeystoneApproveCache;
@@ -612,6 +619,7 @@
             ln -s ${desktopWalkerSurfaces} "$out/desktop-walker-surfaces"
             ln -s ${desktopAutostartAssertion} "$out/desktop-autostart-assertion"
             ln -s ${hyprlandConfigSmoke} "$out/hyprland-config-smoke"
+            ln -s ${desktopFprintd} "$out/desktop-fprintd"
           '';
 
           # Agent runtime and miscellaneous module tests
