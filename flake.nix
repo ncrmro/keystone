@@ -411,6 +411,10 @@
             inherit pkgs lib;
             self = self;
           };
+          polkitUpdateSessionInhibit = import ./tests/module/polkit-update-session-inhibit.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
             inherit pkgs;
           };
@@ -551,6 +555,7 @@
           ks-approve = ksApprove;
           approve-exec-script = approveExecScript;
           polkit-keystone-approve-cache = polkitKeystoneApproveCache;
+          polkit-update-session-inhibit = polkitUpdateSessionInhibit;
           ks-doctor-report = ksDoctorReport;
           ks-rust-tests = ksRustTests;
           ks-rust-clippy = ksRustClippy;
@@ -587,6 +592,7 @@
             ln -s ${ksApprove} "$out/approve"
             ln -s ${approveExecScript} "$out/approve-exec-script"
             ln -s ${polkitKeystoneApproveCache} "$out/polkit-keystone-approve-cache"
+            ln -s ${polkitUpdateSessionInhibit} "$out/polkit-update-session-inhibit"
             ln -s ${ksDoctorReport} "$out/doctor-report"
             ln -s ${ksLockSync} "$out/lock-sync"
           '';
