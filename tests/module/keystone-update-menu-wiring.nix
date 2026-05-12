@@ -175,15 +175,11 @@ pkgs.runCommand "test-keystone-update-menu-wiring"
     #
     # CRITICAL: keystone-main-menu.sh emits a top-level "Update" entry that
     # parallels the dedicated keystone-update submenu's "Run update" action.
-    # PR #404 retired the legacy `ghostty -e ks update` terminal ceremony in
-    # the dedicated submenu (Lua → Rust dispatch), but the top-level entry
-    # was missed and silently regressed back to the terminal path on every
-    # host until #414 caught it.
-    #
-    # The fix is for keystone-main-menu.sh's dispatch to delegate to
-    # `ks menu update dispatch`, NOT to spawn its own terminal. These greps
-    # are behavior-shaped: they assert what the dispatch DOES, not just what
-    # token strings appear. Add new assertions here when the contract grows.
+    # The top-level entry MUST delegate to `ks menu update dispatch`, NOT
+    # spawn its own terminal — otherwise the two entry points diverge and
+    # the top-level silently regresses to a terminal path while the
+    # submenu uses the Lua→Rust dispatch. These greps are behavior-shaped:
+    # they assert what the dispatch DOES, not just what tokens appear.
 
     # Strip comment-only lines before grepping, so the deprecation comment
     # documenting WHY this regression matters doesn't trip its own test.
