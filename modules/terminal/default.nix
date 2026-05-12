@@ -56,6 +56,7 @@ in
     ./grafana.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
+    ./agents.nix
     ./conventions.nix
     ./ai-extensions.nix
     ./generated-agent-assets.nix
