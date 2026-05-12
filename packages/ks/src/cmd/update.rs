@@ -80,7 +80,10 @@ async fn git_pull_ff_with_upstream_repair(path: &Path, name: &str) -> Result<()>
             );
         }
 
-        eprintln!("Configuring upstream for {}: {} -> origin/{}", name, branch, branch);
+        eprintln!(
+            "Configuring upstream for {}: {} -> origin/{}",
+            name, branch, branch
+        );
         let set_status = tokio::process::Command::new("git")
             .args(["-C"])
             .arg(path)
