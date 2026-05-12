@@ -24,6 +24,93 @@ async fn repo_checkout_candidates(repo_root: &Path, key: &str) -> Vec<PathBuf> {
     ]
 }
 
+// Run `git pull --ff-only` after self-healing missing upstream tracking.
+// Repos bootstrapped with `git init` + `git remote add` + `git push` (no
+// `-u`) end up on a branch with no `branch.<name>.remote/merge` — git
+// pull then aborts with "There is no tracking information for the
+// current branch" and ks would have to warn-and-continue, leaving the
+// repo stale without telling the user why.
+async fn git_pull_ff_with_upstream_repair(path: &Path, name: &str) -> Result<()> {
+    let upstream = tokio::process::Command::new("git")
+        .args(["-C"])
+        .arg(path)
+        .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
+        .output()
+        .await
+        .context("Failed to query upstream")?;
+
+    if !upstream.status.success() {
+        let branch_out = tokio::process::Command::new("git")
+            .args(["-C"])
+            .arg(path)
+            .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
+            .output()
+            .await
+            .context("Failed to read current branch")?;
+        if !branch_out.status.success() {
+            anyhow::bail!("{} is in detached HEAD state at {}", name, path.display());
+        }
+        let branch = String::from_utf8_lossy(&branch_out.stdout)
+            .trim()
+            .to_string();
+
+        let _ = tokio::process::Command::new("git")
+            .args(["-C"])
+            .arg(path)
+            .args(["fetch", "--quiet", "origin"])
+            .status()
+            .await;
+
+        let remote_ref = format!("refs/remotes/origin/{}", branch);
+        let has_remote = tokio::process::Command::new("git")
+            .args(["-C"])
+            .arg(path)
+            .args(["rev-parse", "--quiet", "--verify", &remote_ref])
+            .status()
+            .await
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if !has_remote {
+            anyhow::bail!(
+                "{} branch '{}' has no upstream and origin/{} does not exist at {}",
+                name,
+                branch,
+                branch,
+                path.display()
+            );
+        }
+
+        eprintln!("Configuring upstream for {}: {} -> origin/{}", name, branch, branch);
+        let set_status = tokio::process::Command::new("git")
+            .args(["-C"])
+            .arg(path)
+            .args([
+                "branch",
+                "--set-upstream-to",
+                &format!("origin/{}", branch),
+                &branch,
+            ])
+            .status()
+            .await
+            .context("Failed to configure upstream")?;
+        if !set_status.success() {
+            anyhow::bail!("Failed to configure upstream for {}", name);
+        }
+    }
+
+    let pull_status = tokio::process::Command::new("git")
+        .args(["-C"])
+        .arg(path)
+        .args(["pull", "--ff-only"])
+        .status()
+        .await
+        .context("Failed to run git pull")?;
+    if !pull_status.success() {
+        anyhow::bail!("git pull --ff-only failed for {}", name);
+    }
+    Ok(())
+}
+
 async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
     let registry = repo::get_repos_registry(repo_root).await?;
     let obj = match registry.as_object() {
@@ -55,16 +142,8 @@ async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
 
         if target.join(".git").exists() {
             eprintln!("Pulling {}...", key);
-            let status = tokio::process::Command::new("git")
-                .args(["-C"])
-                .arg(&target)
-                .args(["pull", "--ff-only"])
-                .status()
-                .await;
-            if let Ok(status) = status {
-                if !status.success() {
-                    eprintln!("Warning: failed to pull {}", key);
-                }
+            if let Err(err) = git_pull_ff_with_upstream_repair(&target, key).await {
+                eprintln!("Warning: failed to pull {}: {}", key, err);
             }
         } else {
             eprintln!("Cloning {}...", key);
@@ -164,16 +243,8 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     // so the user is not interrupted after a long build phase.
     let _sudo_guard = cmd::switch::ensure_sudo(repo_root, hosts).await?;
 
-    let pull_status = tokio::process::Command::new("git")
-        .args(["-C"])
-        .arg(repo_root)
-        .args(["pull", "--ff-only"])
-        .status()
-        .await;
-    if let Ok(status) = pull_status {
-        if !status.success() {
-            eprintln!("Warning: failed to pull nixos-config");
-        }
+    if let Err(err) = git_pull_ff_with_upstream_repair(repo_root, "nixos-config").await {
+        eprintln!("Warning: failed to pull nixos-config: {}", err);
     }
 
     pull_managed_repos(repo_root).await?;
