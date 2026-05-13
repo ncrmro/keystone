@@ -16,6 +16,8 @@ name: Bump flake inputs
 #   2. Runs `nix flake update llm-agents browser-previews nixpkgs` (targeted —
 #      never bare `nix flake update`, per tool.nix rule 4).
 #   3. Opens a PR with the lock diff and the `automated/flake-bump` label.
+#   4. Enables auto-merge (squash) — once validate.yml goes green, the PR
+#      lands without human touch.
 #
 # What happens after the bump PR merges:
 #   - Downstream consumers (`ncrmro/nixos-config`, `noah-horton/keystone-config`)
@@ -158,3 +160,12 @@ jobs:
             --title "chore(deps): weekly flake bump (${WEEK})" \
             --body-file /tmp/pr-body.md)"
           echo "Opened ${PR_URL}"
+
+          # Enable auto-merge so the PR squashes itself once validate.yml goes
+          # green. Requires (a) "Allow auto-merge" enabled in repo settings and
+          # (b) `secrets.FLAKE_BUMP_TOKEN` set — without the PAT, validate never
+          # triggers, so auto-merge waits forever. `|| true` keeps the workflow
+          # green if auto-merge can't be enabled (e.g. token lacks scope) — the
+          # PR still exists and can be merged manually.
+          gh pr merge --auto --squash "${PR_URL}" || \
+            echo "::warning::Could not enable auto-merge on ${PR_URL} — merge manually after validate passes."
