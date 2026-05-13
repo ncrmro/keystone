@@ -3,15 +3,27 @@ name: Bump flake inputs
 # Sundays 08:00 UTC: refresh llm-agents (claude-code et al), browser-previews
 # (google-chrome), and nixpkgs (chromium + fleet-wide). Opens a PR with the
 # lock diff; closes last week's PR if still open. Manual merge.
+#
+# Uses secrets.GH_FINEGRANED_CI_TOKEN (a fine-grained PAT scoped to this repo)
+# rather than the default GITHUB_TOKEN. Two reasons:
+#   1. GITHUB_TOKEN cannot create pull requests unless the org/repo enables
+#      "Allow GitHub Actions to create and approve pull requests" — a setting
+#      that varies between repos. A PAT makes this workflow portable.
+#   2. PRs opened by GITHUB_TOKEN do not trigger `pull_request` workflows
+#      (validate.yml). A PAT-opened PR triggers them normally.
+#
+# Token shape (set at https://github.com/settings/personal-access-tokens):
+#   - Repository access:  only `ncrmro/keystone`
+#   - Contents:           Read and write   (for git push)
+#   - Pull requests:      Read and write   (gh pr create/list/close)
+#   - Issues:             Read and write   (gh label create — labels live
+#                                            under the Issues API)
+#   - Expiration:         max 366d — rotate annually
 
 on:
   schedule:
     - cron: "0 8 * * 0"
   workflow_dispatch:
-
-permissions:
-  contents: write
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -21,11 +33,12 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
 
       - uses: cachix/install-nix-action@v31
         with:
