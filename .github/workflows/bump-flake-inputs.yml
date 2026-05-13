@@ -16,30 +16,7 @@ name: Bump flake inputs
 #   2. Runs `nix flake update llm-agents browser-previews nixpkgs` (targeted —
 #      never bare `nix flake update`, per tool.nix rule 4).
 #   3. Opens a PR with the lock diff and the `automated/flake-bump` label.
-#   4. Enables auto-merge (squash) — once validate.yml goes green, the PR
-#      lands without human touch.
-#
-# What happens after the bump PR merges:
-#   - Downstream consumers (`ncrmro/nixos-config`, `noah-horton/keystone-config`)
-#     pick up the new closures via `nix flake update keystone` on their next
-#     refresh. They follow keystone's pins, so no per-consumer bump is needed.
-#   - ks-systems.cachix.org receives the rebuilt closures via warm-cache.yml,
-#     so downstream hosts get cache hits.
-#
-# Token requirement:
-#   PRs opened with the default `GITHUB_TOKEN` do NOT trigger `pull_request`
-#   workflows (validate.yml) — that's a GitHub safety rail against recursive
-#   CI. To trigger validate on the bump PR, provide a PAT as
-#   `secrets.FLAKE_BUMP_TOKEN` (repo: contents+pull-requests). Without it the
-#   PR still opens, but a maintainer must push an empty commit (or close/reopen)
-#   to trigger validate before merging.
-#
-# Failure modes:
-#   - No lock changes (rare for a 3-input bump) → skip cleanly.
-#   - Validate fails on the bump PR → don't merge; investigate which input
-#     broke. The auto-close on next Sunday will retire this PR if still open.
-#   - Network/rate-limit on `nix flake update` → workflow fails; existing
-#     locks unchanged; next Sunday retries.
+#      Review and merge is manual — keeps the failure mode obvious.
 
 on:
   schedule:
@@ -65,7 +42,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.FLAKE_BUMP_TOKEN || github.token }}
 
       - uses: cachix/install-nix-action@v31
         with:
@@ -89,11 +65,9 @@ jobs:
       - name: Ensure label exists
         if: steps.update.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.FLAKE_BUMP_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Idempotent — `gh label create` is a no-op if the label already exists
-          # when `--force` is passed; without it we ignore "already exists" errors.
           gh label create "automated/flake-bump" \
             --color "FBCA04" \
             --description "Weekly automated flake.lock bump" \
@@ -102,7 +76,7 @@ jobs:
       - name: Close stale bump PRs
         if: steps.update.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.FLAKE_BUMP_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Only open PRs — merged PRs are excluded by --state open.
@@ -125,7 +99,7 @@ jobs:
       - name: Open PR
         if: steps.update.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.FLAKE_BUMP_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # %G-W%V is ISO week-year + ISO week — stays consistent across New Year.
@@ -148,8 +122,6 @@ jobs:
           - `nixpkgs` — chromium + fleet-wide
 
           **Downstream:** After merge, downstream consumer flakes pick this up via `nix flake update keystone`. New closures are warmed into `ks-systems.cachix.org` by `warm-cache.yml`.
-
-          If `validate` did not run on this PR, push an empty commit or close/reopen — PRs opened by `GITHUB_TOKEN` don't trigger `pull_request` workflows by default. Set `secrets.FLAKE_BUMP_TOKEN` (a PAT with `contents` + `pull-requests`) to fix this permanently.
           EOF
 
           PR_URL="$(gh pr create \
@@ -160,12 +132,3 @@ jobs:
             --title "chore(deps): weekly flake bump (${WEEK})" \
             --body-file /tmp/pr-body.md)"
           echo "Opened ${PR_URL}"
-
-          # Enable auto-merge so the PR squashes itself once validate.yml goes
-          # green. Requires (a) "Allow auto-merge" enabled in repo settings and
-          # (b) `secrets.FLAKE_BUMP_TOKEN` set — without the PAT, validate never
-          # triggers, so auto-merge waits forever. `|| true` keeps the workflow
-          # green if auto-merge can't be enabled (e.g. token lacks scope) — the
-          # PR still exists and can be merged manually.
-          gh pr merge --auto --squash "${PR_URL}" || \
-            echo "::warning::Could not enable auto-merge on ${PR_URL} — merge manually after validate passes."
