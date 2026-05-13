@@ -4,7 +4,7 @@ name: Bump flake inputs
 # (google-chrome), and nixpkgs (chromium + fleet-wide). Opens a PR with the
 # lock diff; closes last week's PR if still open. Manual merge.
 #
-# Uses secrets.FLAKE_BUMP_TOKEN (a fine-grained PAT scoped to this repo)
+# Uses secrets.GH_FINEGRANED_CI_TOKEN (a fine-grained PAT scoped to this repo)
 # rather than the default GITHUB_TOKEN. Two reasons:
 #   1. GITHUB_TOKEN cannot create pull requests unless the org/repo enables
 #      "Allow GitHub Actions to create and approve pull requests" — a setting
@@ -33,12 +33,12 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.FLAKE_BUMP_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.FLAKE_BUMP_TOKEN }}
+          token: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
 
       - uses: cachix/install-nix-action@v31
         with:
