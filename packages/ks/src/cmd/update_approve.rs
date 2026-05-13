@@ -402,12 +402,117 @@ async fn ensure_in_sync(repo_root: &Path) -> Result<()> {
             "could not resolve {remote_ref}; ensure the branch is published before running supervised update"
         )
     })?;
-    if local_sha != remote_sha {
+    if local_sha == remote_sha {
+        return Ok(());
+    }
+
+    // Auto-resolve is gated on the default branch only. Feature branches
+    // often carry intentional divergence (in-progress rebases, force-pushed
+    // history); silently rebasing them onto origin can destroy state.
+    let default_branch = git_default_branch(repo_root).await?;
+    if branch != default_branch {
         anyhow::bail!(
-            "consumer flake branch {branch} ({local_sha}) is out of sync with origin/{branch} ({remote_sha}); pull or push before updating"
+            "consumer flake branch {branch} ({local_sha}) is out of sync with origin/{branch} ({remote_sha}); \
+             pull or push before updating (auto-resolve only runs on the default branch '{default_branch}')"
+        );
+    }
+
+    let local_is_ancestor = git_is_ancestor(repo_root, &local_sha, &remote_sha).await?;
+    let remote_is_ancestor = git_is_ancestor(repo_root, &remote_sha, &local_sha).await?;
+
+    match (local_is_ancestor, remote_is_ancestor) {
+        (true, _) => {
+            eprintln!("consumer flake {branch} is behind origin/{branch}; fast-forwarding");
+            git_run(repo_root, &["merge", "--ff-only", &remote_ref])
+                .await
+                .with_context(|| format!("fast-forward of {branch} failed"))?;
+        }
+        (_, true) => {
+            // Strictly ahead — push_lock at end of update will publish.
+        }
+        (false, false) => {
+            eprintln!("consumer flake {branch} has diverged from origin/{branch}; rebasing");
+            git_run(repo_root, &["rebase", &remote_ref])
+                .await
+                .with_context(|| {
+                    format!(
+                        "rebase of {branch} onto {remote_ref} failed; resolve conflicts and retry"
+                    )
+                })?;
+        }
+    }
+    Ok(())
+}
+
+/// `git merge-base --is-ancestor`: exit 0 = ancestor, exit 1 = not, anything
+/// else = error. Used to classify the local/remote relationship into
+/// behind / ahead / diverged.
+async fn git_is_ancestor(repo_root: &Path, anc: &str, desc: &str) -> Result<bool> {
+    let status = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["merge-base", "--is-ancestor", anc, desc])
+        .status()
+        .await
+        .with_context(|| format!("failed to invoke git merge-base --is-ancestor {anc} {desc}"))?;
+    match status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        other => anyhow::bail!(
+            "git merge-base --is-ancestor {anc} {desc} exited {:?} in {}",
+            other,
+            repo_root.display()
+        ),
+    }
+}
+
+/// Run a git subcommand, bailing on non-zero. Inherits stdio so the user
+/// (and journal, when invoked via systemd-cat) sees git's progress and
+/// any conflict output verbatim.
+async fn git_run(repo_root: &Path, args: &[&str]) -> Result<()> {
+    let status = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(args)
+        .status()
+        .await
+        .with_context(|| format!("failed to invoke git {}", args.join(" ")))?;
+    if !status.success() {
+        anyhow::bail!(
+            "git {} exited {:?} in {}",
+            args.join(" "),
+            status.code(),
+            repo_root.display()
         );
     }
     Ok(())
+}
+
+/// Resolve the repo's default branch via `git symbolic-ref --short
+/// refs/remotes/origin/HEAD` (e.g. `origin/master` → `master`). Surfaces
+/// an error if origin/HEAD is unset rather than guessing a name —
+/// misidentifying the default would silently disable the safety gate.
+async fn git_default_branch(repo_root: &Path) -> Result<String> {
+    let output = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .output()
+        .await
+        .context("failed to invoke git symbolic-ref refs/remotes/origin/HEAD")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "git symbolic-ref refs/remotes/origin/HEAD exited {:?} in {}: {} \
+             (run `git remote set-head origin -a` to populate)",
+            output.status.code(),
+            repo_root.display(),
+            stderr.trim()
+        );
+    }
+    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stripped = raw.strip_prefix("origin/").unwrap_or(&raw);
+    Ok(stripped.to_string())
 }
 
 /// Resolve `<refspec>` to a commit SHA via `git rev-parse`. Pulled out
