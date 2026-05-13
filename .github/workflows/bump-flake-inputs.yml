@@ -1,0 +1,61 @@
+name: Bump flake inputs
+
+# Sundays 08:00 UTC: refresh llm-agents (claude-code et al), browser-previews
+# (google-chrome), and nixpkgs (chromium + fleet-wide). Opens a PR with the
+# lock diff; closes last week's PR if still open. Manual merge.
+
+on:
+  schedule:
+    - cron: "0 8 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: experimental-features = nix-command flakes
+
+      - name: Bump and open PR
+        run: |
+          set -euo pipefail
+          # Targeted updates per tool.nix rule 4 — never bare `nix flake update`.
+          nix flake update llm-agents browser-previews nixpkgs
+          git diff --quiet flake.lock && { echo "No lock changes."; exit 0; }
+
+          WEEK="$(date -u +%G-W%V)"
+          BR="automated/flake-bump-${WEEK}-${{ github.run_id }}"
+
+          gh label create automated/flake-bump --color FBCA04 \
+            --description "Weekly automated flake.lock bump" 2>/dev/null || true
+
+          for pr in $(gh pr list --label automated/flake-bump --state open --json number --jq '.[].number'); do
+            gh pr close "$pr" --comment "Superseded by this week's bump." --delete-branch || true
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${BR}"
+          git commit -am "chore(deps): weekly flake bump (${WEEK})"
+          git push origin "${BR}"
+
+          gh pr create --base main --head "${BR}" \
+            --label automated/flake-bump --label chore \
+            --title "chore(deps): weekly flake bump (${WEEK})" \
+            --body "Automated weekly refresh of \`llm-agents\` (claude-code et al), \`browser-previews\` (google-chrome), and \`nixpkgs\` (chromium + fleet-wide). Downstream flakes pick this up via \`nix flake update keystone\` after merge."
