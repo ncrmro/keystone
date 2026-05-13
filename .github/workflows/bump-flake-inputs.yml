@@ -32,6 +32,10 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    # `release` env scopes GH_FINEGRANED_CI_TOKEN to workflows running from
+    # main (only branch allowed by the env's deployment policy). PR-authored
+    # workflow files can't pull the secret, since they don't run from main.
+    environment: release
     env:
       GH_TOKEN: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
     steps:
