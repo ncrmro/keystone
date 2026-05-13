@@ -32,6 +32,17 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    # Hard-gate to main. The job mutates main's flake.lock and opens a PR
+    # against main — running from another ref is never the intent and would
+    # also fail silently to read GH_FINEGRANED_CI_TOKEN unless that ref is
+    # in the release env's deployment policy. Better to skip with a clear
+    # log line than fail mid-run with empty-token errors.
+    if: github.ref == 'refs/heads/main'
+    # `release` env scopes GH_FINEGRANED_CI_TOKEN to workflows whose ref is
+    # allowed by the env's deployment policy. Combined with the `if:` above,
+    # only scheduled runs and manual dispatches from main can read the PAT —
+    # a PR-authored workflow file can't exfil it.
+    environment: release
     env:
       GH_TOKEN: ${{ secrets.GH_FINEGRANED_CI_TOKEN }}
     steps:
