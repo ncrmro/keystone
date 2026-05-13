@@ -1,35 +1,18 @@
 name: Bump flake inputs
 
-# Weekly flake-input refresh for chrome/chromium/claude-code (and friends).
-#
-# Why this exists:
-#   `claude-code` / `gemini-cli` / `codex` / `opencode` come from the
-#   `llm-agents` input (numtide/llm-agents.nix) pinned at nightly-latest.
-#   `google-chrome` comes from `browser-previews` (nix-community). Chromium
-#   ships from `nixpkgs` (`nixos-unstable`). Without a forcing mechanism
-#   these inputs only advance when someone runs `nix flake update <name>`
-#   locally — so CVE fixes and new agent releases land at human cadence.
-#
-# What this workflow does (Sundays 08:00 UTC + workflow_dispatch):
-#   1. Closes any still-open PR from last week's run (label-based) so stale
-#      bumps don't pile up. Merged PRs are unaffected.
-#   2. Runs `nix flake update llm-agents browser-previews nixpkgs` (targeted —
-#      never bare `nix flake update`, per tool.nix rule 4).
-#   3. Opens a PR with the lock diff and the `automated/flake-bump` label.
-#      Review and merge is manual — keeps the failure mode obvious.
+# Sundays 08:00 UTC: refresh llm-agents (claude-code et al), browser-previews
+# (google-chrome), and nixpkgs (chromium + fleet-wide). Opens a PR with the
+# lock diff; closes last week's PR if still open. Manual merge.
 
 on:
   schedule:
-    - cron: "0 8 * * 0"  # Sundays 08:00 UTC
+    - cron: "0 8 * * 0"
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
-# Serialize runs so a manual workflow_dispatch can't race the scheduled run.
-# cancel-in-progress: false — cancelling mid-run could leave a branch pushed
-# without an accompanying PR.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -37,98 +20,42 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
 
       - uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
+          extra_nix_config: experimental-features = nix-command flakes
 
-      - name: Update flake inputs
-        id: update
+      - name: Bump and open PR
         run: |
           set -euo pipefail
           # Targeted updates per tool.nix rule 4 — never bare `nix flake update`.
           nix flake update llm-agents browser-previews nixpkgs
-          if git diff --quiet flake.lock; then
-            echo "No lock changes after bump — nothing to do."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git diff --quiet flake.lock && { echo "No lock changes."; exit 0; }
 
-      - name: Ensure label exists
-        if: steps.update.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh label create "automated/flake-bump" \
-            --color "FBCA04" \
-            --description "Weekly automated flake.lock bump" \
-            2>/dev/null || true
-
-      - name: Close stale bump PRs
-        if: steps.update.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # Only open PRs — merged PRs are excluded by --state open.
-          STALE="$(gh pr list \
-            --label "automated/flake-bump" \
-            --state open \
-            --json number \
-            --jq '.[].number')"
-          if [ -z "${STALE}" ]; then
-            echo "No stale bump PRs."
-            exit 0
-          fi
-          for pr in ${STALE}; do
-            echo "Closing stale PR #${pr}"
-            gh pr close "${pr}" \
-              --comment "Superseded by this week's automated flake bump." \
-              --delete-branch
-          done
-
-      - name: Open PR
-        if: steps.update.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # %G-W%V is ISO week-year + ISO week — stays consistent across New Year.
           WEEK="$(date -u +%G-W%V)"
-          BR="automated/flake-bump-$(date -u +%Y%m%d)-${{ github.run_id }}"
+          BR="automated/flake-bump-${WEEK}-${{ github.run_id }}"
+
+          gh label create automated/flake-bump --color FBCA04 \
+            --description "Weekly automated flake.lock bump" 2>/dev/null || true
+
+          for pr in $(gh pr list --label automated/flake-bump --state open --json number --jq '.[].number'); do
+            gh pr close "$pr" --comment "Superseded by this week's bump." --delete-branch || true
+          done
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "${BR}"
-          git --no-pager diff --stat flake.lock
           git commit -am "chore(deps): weekly flake bump (${WEEK})"
           git push origin "${BR}"
 
-          cat >/tmp/pr-body.md <<'EOF'
-          Automated weekly flake bump.
-
-          **Inputs refreshed:**
-          - `llm-agents` — claude-code, gemini-cli, codex, opencode
-          - `browser-previews` — google-chrome
-          - `nixpkgs` — chromium + fleet-wide
-
-          **Downstream:** After merge, downstream consumer flakes pick this up via `nix flake update keystone`. New closures are warmed into `ks-systems.cachix.org` by `warm-cache.yml`.
-          EOF
-
-          PR_URL="$(gh pr create \
-            --base main \
-            --head "${BR}" \
-            --label "automated/flake-bump" \
-            --label "chore" \
+          gh pr create --base main --head "${BR}" \
+            --label automated/flake-bump --label chore \
             --title "chore(deps): weekly flake bump (${WEEK})" \
-            --body-file /tmp/pr-body.md)"
-          echo "Opened ${PR_URL}"
+            --body "Automated weekly refresh of \`llm-agents\` (claude-code et al), \`browser-previews\` (google-chrome), and \`nixpkgs\` (chromium + fleet-wide). Downstream flakes pick this up via \`nix flake update keystone\` after merge."
