@@ -71,6 +71,7 @@ keystone.os.agents.drago = {
   archetype = "engineer";        # Convention archetype (engineer, product)
   fullName = "Drago";
   email = "agent-drago@example.com";
+  persona = ./agents/drago.md;    # Canonical persona; replaces notes/AGENTS.md as the prompt's identity layer
   terminal.enable = true;
   desktop = { enable = true; resolution = "1920x1080"; vncPort = null; };
   chrome = { enable = true; debugPort = null; mcp.port = null; };

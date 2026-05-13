@@ -197,6 +197,29 @@ in
           example = "researcher@ks.systems";
         };
 
+        persona = mkOption {
+          type = types.nullOr types.path;
+          default = null;
+          description = ''
+            Canonical persona markdown for this agent. When set:
+
+            - Materialized to ~/.claude/agents/<name>.md and
+              ~/.copilot/agents/<name>.md via the keystone.terminal.agents
+              module (auto-derived) on every home-manager profile where the
+              terminal surface is enabled (the human user and each agent user).
+            - `agentctl <name> claude` invokes `claude --agent <name>` so
+              Claude Code loads the persona natively from
+              ~/.claude/agents/<name>.md.
+            - `agentctl <name> codex` / `gemini` prepend the persona file
+              contents to the composed system prompt via that tool's native
+              injection mechanism.
+
+            Leave null for OS agents that should keep the legacy behaviour
+            (no persona prompt; agentctl injects only project + role layers).
+          '';
+          example = literalExpression "./agents/drago.md";
+        };
+
         terminal = {
           enable = mkOption {
             type = types.bool;

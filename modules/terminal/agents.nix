@@ -16,6 +16,7 @@
 {
   config,
   lib,
+  osConfig ? null,
   ...
 }:
 
@@ -29,6 +30,19 @@ let
     ".claude/agents/${name}.md"
     ".copilot/agents/${name}.md"
   ];
+
+  # Bridge to NixOS-level keystone.os.agents via the standard osConfig pattern
+  # (see modules/terminal/generated-agent-assets.nix:30-34). Auto-derive
+  # subagent definitions from each agent's `persona` so a single declaration on
+  # the OS module surfaces in every home-manager profile that enables this
+  # module — both the human user and each agent user.
+  osAgents =
+    if osConfig != null && osConfig.keystone ? os && osConfig.keystone.os ? agents then
+      osConfig.keystone.os.agents
+    else
+      { };
+  osDerivedDefinitions = mapAttrs (_: a: a.persona) (filterAttrs (_: a: a.persona != null) osAgents);
+  effectiveDefinitions = osDerivedDefinitions // cfg.definitions;
 in
 {
   imports = [ ../shared/experimental.nix ];
@@ -36,13 +50,14 @@ in
   options.keystone.terminal.agents = {
     enable = mkOption {
       type = types.bool;
-      default = config.keystone.experimental;
-      defaultText = literalExpression "config.keystone.experimental";
+      default = config.keystone.experimental || osDerivedDefinitions != { };
+      defaultText = literalExpression "config.keystone.experimental || osDerivedDefinitions != { }";
       description = ''
         Install user agent definitions to every CLI coding tool with a native
         subagent directory (EXPERIMENTAL). Auto-enables when
-        keystone.experimental is true; can be enabled per-host without flipping
-        the global experimental flag.
+        keystone.experimental is true OR any keystone.os.agents.<name>.persona
+        is declared — the latter is a stronger explicit opt-in. Can also be
+        set per-host without flipping the global experimental flag.
       '';
     };
 
@@ -68,7 +83,7 @@ in
     };
   };
 
-  config = mkIf (terminalCfg.enable && cfg.enable && cfg.definitions != { }) {
+  config = mkIf (terminalCfg.enable && cfg.enable && effectiveDefinitions != { }) {
     # Legacy hand-symlinked layouts may have ~/.claude/agents (or .copilot/)
     # pointing at a now-defunct dotfiles checkout. Home-manager refuses to
     # write under a symlink it didn't create, so strip dangling ones first.
@@ -89,7 +104,7 @@ in
             value = { inherit source; };
           }) (installPaths name)
         )
-      ) cfg.definitions
+      ) effectiveDefinitions
     );
   };
 }
