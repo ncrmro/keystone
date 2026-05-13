@@ -110,7 +110,6 @@ in
           # Application launchers
           "$mod, Return, exec, ghostty"
           "$mod, Q, killactive,"
-          "$mod, M, exit,"
           "$mod, E, exec, nautilus"
           "$mod, V, togglefloating,"
           "$mod, P, pseudo,"

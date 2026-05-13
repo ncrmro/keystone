@@ -37,7 +37,6 @@ in
         "$mod, W, killactive,"
         "CTRL ALT, DELETE, exec, hyprctl dispatch closewindow address:*"
         "$mod SHIFT, V, togglefloating,"
-        "$mod, M, exit,"
         "$mod, P, pseudo,"
 
         # Move focus with vim keys
