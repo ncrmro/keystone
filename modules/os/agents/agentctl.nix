@@ -38,6 +38,14 @@ let
   agentNotesCases = concatStringsSep "\n" (
     mapAttrsToList (name: agentCfg: "    ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;") cfg
   );
+  agentPersonaCases = concatStringsSep "\n" (
+    mapAttrsToList (
+      name: agentCfg:
+      "    ${name}) AGENT_PERSONA_FILE=\"${
+            if agentCfg.persona != null then toString agentCfg.persona else ""
+          }\" ;;"
+    ) cfg
+  );
   agentVncCases = concatStringsSep "\n" (
     mapAttrsToList (
       name: agentCfg: "    ${name}) VNC_PORT=\"${toString (globalAgentVncPort name agentCfg)}\" ;;"
@@ -101,6 +109,13 @@ let
         set_agent_notes_dir() {
           case "$1" in
     ${agentNotesCases}
+          esac
+        }
+
+        set_agent_persona() {
+          AGENT_PERSONA_FILE=""
+          case "$1" in
+    ${agentPersonaCases}
           esac
         }
 

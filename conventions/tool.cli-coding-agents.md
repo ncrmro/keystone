@@ -164,11 +164,11 @@ when OpenCode-specific configuration is needed.
 
 ### `modules/os/agents/scripts/agentctl.sh`
 
-1. MUST assemble the 4-layer system prompt (system conventions → notes identity → project AGENTS.md → roles)
+1. MUST assemble the system prompt from four layers in order: (1) system-wide conventions — loaded natively by each tool from its instruction file (`~/.claude/CLAUDE.md` etc.), NOT SP-composed; (2) agent persona — sourced from `keystone.os.agents.<name>.persona` and materialized at `~/.claude/agents/<name>.md` by `keystone.terminal.agents`; (3) project `AGENTS.md`; (4) role composition via `--role`/`--roles`. Layer 2 is delivered through each tool's native subagent mechanism (see rule 2), not concatenated into the SP string. The `notes-resident AGENTS.md` is no longer part of prompt assembly.
 2. MUST pass assembled prompt via each tool's native injection mechanism:
-   - Claude: `--append-system-prompt`
+   - Claude: `--agent <name>` for the persona; `--append-system-prompt` for project + role layers when present
    - Gemini: `--prompt-interactive`
-   - Codex: `--instructions`
+   - Codex: persona file contents prepended to the SP, written via `model_instructions_file` config key
    - OpenCode: reads `AGENTS.md` natively from working directory
 3. For sandboxed (Podman) agents, SHOULD generate overlay instruction files at the tool-native paths inside the container
 
