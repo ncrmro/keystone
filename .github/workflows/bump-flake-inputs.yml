@@ -4,13 +4,21 @@ name: Bump flake inputs
 # (google-chrome), and nixpkgs (chromium + fleet-wide). Opens a PR with the
 # lock diff; closes last week's PR if still open. Manual merge.
 #
-# Uses secrets.FLAKE_BUMP_TOKEN (a PAT with `repo` scope) rather than the
-# default GITHUB_TOKEN. Two reasons:
+# Uses secrets.FLAKE_BUMP_TOKEN (a fine-grained PAT scoped to this repo)
+# rather than the default GITHUB_TOKEN. Two reasons:
 #   1. GITHUB_TOKEN cannot create pull requests unless the org/repo enables
 #      "Allow GitHub Actions to create and approve pull requests" — a setting
-#      that varies between repos. Using a PAT makes this workflow portable.
+#      that varies between repos. A PAT makes this workflow portable.
 #   2. PRs opened by GITHUB_TOKEN do not trigger `pull_request` workflows
 #      (validate.yml). A PAT-opened PR triggers them normally.
+#
+# Token shape (set at https://github.com/settings/personal-access-tokens):
+#   - Repository access:  only `ncrmro/keystone`
+#   - Contents:           Read and write   (for git push)
+#   - Pull requests:      Read and write   (gh pr create/list/close)
+#   - Issues:             Read and write   (gh label create — labels live
+#                                            under the Issues API)
+#   - Expiration:         max 366d — rotate annually
 
 on:
   schedule:
