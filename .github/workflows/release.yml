@@ -119,6 +119,7 @@ jobs:
     needs:
       - prepare
       - validate
+    environment: release
     uses: ./.github/workflows/warm-cache.yml
     with:
       cache_branch_name: ${{ github.ref_name }}

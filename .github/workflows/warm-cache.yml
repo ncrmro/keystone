@@ -17,6 +17,8 @@ on:
     secrets:
       CACHIX_CI_AUTH_TOKEN:
         required: false
+      CACHIX_AUTH_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -30,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CACHIX_CI_AUTH_TOKEN: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,11 +51,14 @@ jobs:
           gc-max-store-size-linux: 6G
           save: ${{ github.event_name == 'workflow_call' && inputs.save_nix_cache || false }}
 
-      # Pull from ks-systems (read-only, trusted production cache)
+      # Push to ks-systems (production cache — what every Keystone user pulls from).
+      # Falls back to read-only when CACHIX_AUTH_TOKEN isn't injected (e.g. PR validate
+      # callers that don't run under the release environment).
       - name: Configure Cachix (ks-systems)
         uses: cachix/cachix-action@v15
         with:
           name: ks-systems
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
 
       # Push to ks-ci (CI-only cache, isolated from production)
       - name: Configure Cachix (ks-ci)
