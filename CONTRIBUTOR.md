@@ -162,13 +162,25 @@ and `ks switch` regenerates them as committable git diffs.
 ## DeepWork job sync
 
 Shared DeepWork jobs are discovered through `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`.
-In development mode, Keystone sets that env var to two live job roots:
+In development mode, Keystone sets that env var to the live job roots:
 
 - `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs` — shared library
-- `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs` — keystone-native
+- `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs` — keystone-native, published
+  to adopters via `pkgs.keystone.keystone-deepwork-jobs`
+- `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal` — keystone-native,
+  development-only (contributor authoring tools, in-progress stubs); appended
+  in dev mode only and intentionally excluded from the published package, so
+  it never reaches adopter hosts
 
-Outside development mode, those resolve to packaged derivations. Edits to job
-files in development mode take effect immediately without rebuild.
+Outside development mode, the first two roots resolve to packaged derivations
+and the internal root is absent. Edits to job files in development mode take
+effect immediately without rebuild.
+
+When adding a new keystone-native job, decide its directory by whether any
+adopter-installed code references it: workflows users invoke and runtime jobs
+the OS agent calls (e.g. `task_loop`) live in `.deepwork/jobs/`;
+contributor-only authoring tools and in-progress stubs live in
+`.deepwork/jobs-internal/`.
 
 DeepWork `keystone_system/issue` draft bodies are temporary artifacts — write
 them under `.deepwork/tmp/`, not `.deepwork/jobs/`.

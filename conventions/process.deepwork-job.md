@@ -6,7 +6,7 @@ This convention governs the design of [DeepWork](https://deepwork.dev) jobs — 
 
 ## Terminology
 
-1. A **job** MUST represent a single capability area packaged at `.deepwork/jobs/{name}/job.yml` containing steps, workflows, and shared context — jobs define what is possible.
+1. A **job** MUST represent a single capability area packaged at `.deepwork/jobs/{name}/job.yml` (or `.deepwork/jobs-internal/{name}/job.yml` for keystone-development-only jobs — see `process.keystone-development` rules 21–22) containing steps, workflows, and shared context — jobs define what is possible.
 2. A **workflow** MUST be a named execution path through a job's steps, invoked via `start_workflow(job_name, workflow_name, ...)` — workflows define how to execute.
 3. A **step** MUST be the atomic unit of work within a job, with its own instructions, inputs, outputs, and optional quality reviews.
 
@@ -46,7 +46,7 @@ This convention governs the design of [DeepWork](https://deepwork.dev) jobs — 
 ## Versioning and Documentation
 
 21. Job versions MUST follow semantic versioning: patch (0.0.x) for instruction tweaks, minor (0.x.0) for review criteria or input/output changes, major (x.0.0) for step additions/removals or workflow restructuring.
-22. Job-specific learnings MUST be captured in `.deepwork/jobs/{job}/AGENTS.md`.
+22. Job-specific learnings MUST be captured in `.deepwork/jobs/{job}/AGENTS.md` (or `.deepwork/jobs-internal/{job}/AGENTS.md` for keystone-development-only jobs).
 23. The AGENTS.md file MUST include a "Last Updated" section with date and conversation context.
 
 ## Golden Example

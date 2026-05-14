@@ -170,13 +170,21 @@ When `keystone.development = true`:
 ## DeepWork integration
 
 The DeepWork MCP server binary (`pkgs.keystone.deepwork`) is installed by
-`ai.nix`. The server discovers jobs from two roots via
+`ai.nix`. The server discovers jobs from up to three roots via
 `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`:
 
 1. **Shared library jobs** — from the `Unsupervisedcom/deepwork` repo's
    `library/jobs/` directory.
-2. **Keystone-native jobs** — from `ncrmro/keystone/.deepwork/jobs/`.
+2. **Keystone-native jobs (published)** — from
+   `ncrmro/keystone/.deepwork/jobs/`. Shipped to adopters via
+   `pkgs.keystone.keystone-deepwork-jobs`.
+3. **Keystone-native jobs (internal)** — from
+   `ncrmro/keystone/.deepwork/jobs-internal/`. Holds keystone-development-only
+   plumbing (contributor authoring tools, in-progress stubs); appended to the
+   discovery path only in dev mode and intentionally absent from the published
+   package, so it never reaches adopter hosts.
 
-In locked mode both resolve to Nix store copies (`pkgs.keystone.deepwork-library-jobs`
-and `pkgs.keystone.keystone-deepwork-jobs`). In dev mode both resolve to local
+In locked mode the first two roots resolve to Nix store copies
+(`pkgs.keystone.deepwork-library-jobs` and `pkgs.keystone.keystone-deepwork-jobs`)
+and the internal root is absent. In dev mode all three resolve to local
 checkouts.

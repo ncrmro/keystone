@@ -105,7 +105,7 @@ pkgs.runCommand "ks-doctor-report"
     export NOTES_DIR="$HOME/notes"
     export CODE_DIR="$HOME/repos"
     export WORKTREE_DIR="$HOME/.worktrees"
-    export DEEPWORK_ADDITIONAL_JOBS_FOLDERS="$HOME/.keystone/repos/ncrmro/keystone/.deepwork/jobs:$HOME/missing-jobs"
+    export DEEPWORK_ADDITIONAL_JOBS_FOLDERS="$HOME/.keystone/repos/ncrmro/keystone/.deepwork/jobs:$HOME/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal:$HOME/missing-jobs"
     export NIXOS_CONFIG_DIR="$HOME/nixos-config"
 
     output="$(${pkgs.bash}/bin/bash ${../../packages/ks-legacy/doctor-report.sh} \
@@ -128,6 +128,12 @@ pkgs.runCommand "ks-doctor-report"
     printf '%s\n' "$output" | grep -F "### Notes repo" >/dev/null
     printf '%s\n' "$output" | grep -F "**legacy artifacts**: .agents" >/dev/null
     printf '%s\n' "$output" | grep -F "### Worktrees" >/dev/null
+    # Doctor renders one line per colon-delimited entry. Assert both the
+    # published and internal jobs paths render so the fixture change is
+    # actually covered. Use grep -E with a non-`-` boundary so the published
+    # `.deepwork/jobs` assertion does not substring-match `.deepwork/jobs-internal`.
+    printf '%s\n' "$output" | grep -E '\.deepwork/jobs($|[^-])' >/dev/null
+    printf '%s\n' "$output" | grep -F '$HOME/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal' >/dev/null
     printf '%s\n' "$output" | grep -F '$HOME/missing-jobs' >/dev/null
 
     touch "$out"

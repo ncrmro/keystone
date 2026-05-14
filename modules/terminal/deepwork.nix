@@ -11,6 +11,15 @@
 # - deepwork repo → library jobs from local checkout's library/jobs/
 # - keystone repo → keystone-native jobs from local checkout's .deepwork/jobs/
 # When development mode is off, all paths resolve to Nix store copies.
+#
+# Published vs internal jobs: only `.deepwork/jobs/` is packaged into
+# pkgs.keystone.keystone-deepwork-jobs and reaches adopters. The sibling
+# `.deepwork/jobs-internal/` directory holds keystone-development-only
+# plumbing (contributor authoring tools like agent_builder, in-progress stubs)
+# and is appended to the discovery path only in dev mode so contributors can
+# still invoke it. Runtime jobs that adopter-installed code invokes (e.g.
+# task_loop, called by modules/os/agents/scripts/task-loop.sh) MUST live in
+# `.deepwork/jobs/`.
 {
   config,
   lib,
@@ -80,21 +89,28 @@ in
   config = mkIf (config.keystone.terminal.enable && cfg.enable) {
     # Colon-delimited list of directories consumed by deepwork's discovery module.
     # In dev mode both sources swap to local checkouts; in locked mode both use store.
+    # The internal jobs path is appended only in dev mode — it is intentionally
+    # absent from the published keystone-deepwork-jobs package.
     home.sessionVariables = {
-      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" [
-        (
-          if isDev && !isAgent && deepworkPath != null then
-            "${deepworkPath}/library/jobs"
-          else
-            "${pkgs.keystone.deepwork-library-jobs}"
-        )
-        (
-          if isDev && !isAgent && keystonePath != null then
-            "${keystonePath}/.deepwork/jobs"
-          else
-            "${pkgs.keystone.keystone-deepwork-jobs}"
-        )
-      ];
+      DEEPWORK_ADDITIONAL_JOBS_FOLDERS = builtins.concatStringsSep ":" (
+        [
+          (
+            if isDev && !isAgent && deepworkPath != null then
+              "${deepworkPath}/library/jobs"
+            else
+              "${pkgs.keystone.deepwork-library-jobs}"
+          )
+          (
+            if isDev && !isAgent && keystonePath != null then
+              "${keystonePath}/.deepwork/jobs"
+            else
+              "${pkgs.keystone.keystone-deepwork-jobs}"
+          )
+        ]
+        ++ lib.optional (
+          isDev && !isAgent && keystonePath != null
+        ) "${keystonePath}/.deepwork/jobs-internal"
+      );
     };
   };
 }

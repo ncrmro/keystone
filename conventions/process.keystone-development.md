@@ -16,8 +16,11 @@ at the Nix module level, see `process.keystone-development-mode`.
    that imports keystone modules. Put things here when they are specific to this
    fleet (host names, secrets, user preferences).
 3. **`Unsupervisedcom/deepwork`** is the DeepWork framework and shared job library.
-   Edit `library/jobs/` here for shared library jobs. Keystone-native jobs live in
-   `ncrmro/keystone/.deepwork/jobs/`.
+   Edit `library/jobs/` here for shared library jobs. Keystone-native jobs split
+   across two directories: `ncrmro/keystone/.deepwork/jobs/` for workflows
+   published to adopters via `pkgs.keystone.keystone-deepwork-jobs`, and
+   `ncrmro/keystone/.deepwork/jobs-internal/` for keystone-development-only
+   plumbing that is intentionally excluded from the published package.
 
 ## `ks` commands
 
@@ -83,10 +86,20 @@ at the Nix module level, see `process.keystone-development-mode`.
 ## DeepWork jobs
 
 19. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode — see
-    `process.keystone-development-mode` rule 10) points at two live job roots:
+    `process.keystone-development-mode` rule 10) points at the live job roots:
     - `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs/` — shared library jobs
-    - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/` — keystone-native jobs
+    - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/` — published keystone-native jobs
+    - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal/` — keystone-development-only jobs (appended in dev mode only; absent on adopter hosts)
 20. Edits to job files in these directories take effect immediately without rebuild.
 21. When fixing or extending a shared library job, edit it in
-    `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit in
-    `ncrmro/keystone/.deepwork/jobs/`.
+    `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit
+    them in `ncrmro/keystone/.deepwork/jobs/` if any adopter-installed code
+    (user workflows, OS-agent runtime, systemd services) invokes them, or in
+    `ncrmro/keystone/.deepwork/jobs-internal/` if they are only reachable from
+    a keystone contributor's local checkout.
+22. A keystone-native job MUST live in `.deepwork/jobs/` if any adopter-installed
+    code references it — including runtime-infrastructure jobs the OS agent
+    invokes (e.g. `task_loop` is called from `modules/os/agents/scripts/task-loop.sh`).
+    Jobs MUST live in `.deepwork/jobs-internal/` only when no adopter-installed
+    code references them: contributor authoring tools (e.g. `agent_builder`) and
+    in-progress stubs without a working `job.yml`.
