@@ -1145,6 +1145,21 @@ mod tests {
             .expect("git push");
         assert!(s.success(), "git push -u origin master failed");
 
+        // `resolve_default_branch_from_origin_head` requires refs/remotes/origin/HEAD
+        // to be a symbolic ref. `git clone` sets this automatically; `git init` +
+        // `git remote add` + `git push` does not, so we set it explicitly here.
+        let s = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&local)
+            .args([
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/master",
+            ])
+            .status()
+            .expect("git symbolic-ref");
+        assert!(s.success(), "git symbolic-ref refs/remotes/origin/HEAD failed");
+
         (tmp, local, remote)
     }
 
