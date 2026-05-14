@@ -325,15 +325,26 @@ apply_layout() {
   local monitor_name="$1"
   local relation="$2"
   local target_name="$3"
-  local rule position mirror_target
+  local rule position
 
   if [[ "$relation" == "mirror" ]]; then
-    mirror_target="$target_name"
-    position="auto"
-  else
-    mirror_target="none"
-    position=$(layout_position "$monitor_name" "$relation" "$target_name")
+    # "Mirror <target>" clones $monitor_name onto $target_name, matching
+    # the menu subtext. Reconfigure the target to mirror the source — never
+    # the source itself, since wiping the active display destroys its layer
+    # surfaces (walker, waybar) and looks like a crash to the user.
+    #
+    # Use the minimal "preferred, auto, 1" form (the same shape the
+    # autoMirror static rule uses) rather than the target's live mode/scale/
+    # transform. Hyprland ignores resolution and position for mirror anyway,
+    # and feeding the renderer a fresh mode+scale+transform mid-frame trips
+    # an aquamarine "Cannot commit when a page-flip is awaiting" race that
+    # SEGVs CHyprRenderer::renderMonitor on Hyprland 0.54.
+    apply_rule "$target_name, preferred, auto, 1, mirror, $monitor_name"
+    notify "Monitor updated" "$target_name now mirrors $monitor_name"
+    return 0
   fi
+
+  position=$(layout_position "$monitor_name" "$relation" "$target_name")
 
   rule=$(build_monitor_rule \
     "$monitor_name" \
@@ -341,15 +352,10 @@ apply_layout() {
     "$position" \
     "$(current_scale "$monitor_name")" \
     "$(current_transform "$monitor_name")" \
-    "$mirror_target")
+    "none")
 
   apply_rule "$rule"
-
-  if [[ "$relation" == "mirror" ]]; then
-    notify "Monitor updated" "$monitor_name now mirrors $target_name"
-  else
-    notify "Monitor updated" "$monitor_name placed $relation $target_name"
-  fi
+  notify "Monitor updated" "$monitor_name placed $relation $target_name"
 }
 
 apply_enable() {
