@@ -1158,7 +1158,10 @@ mod tests {
             ])
             .status()
             .expect("git symbolic-ref");
-        assert!(s.success(), "git symbolic-ref refs/remotes/origin/HEAD failed");
+        assert!(
+            s.success(),
+            "git symbolic-ref refs/remotes/origin/HEAD failed"
+        );
 
         (tmp, local, remote)
     }
