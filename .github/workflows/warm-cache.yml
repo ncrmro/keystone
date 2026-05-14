@@ -14,9 +14,9 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      CACHIX_CI_AUTH_TOKEN:
-        required: false
+    # No secrets: block — this workflow resolves CACHIX_AUTH_TOKEN from its
+    # own 'environment: release', not from the caller. Callers do not need to
+    # forward it (and cannot, unless they themselves are in the environment).
 
 permissions:
   contents: read
@@ -28,8 +28,11 @@ concurrency:
 jobs:
   warm-cache:
     runs-on: ubuntu-latest
-    env:
-      CACHIX_CI_AUTH_TOKEN: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
+    # Scoped to the release environment so secrets.CACHIX_AUTH_TOKEN
+    # (held there) is injected. Branch policies on the environment allow
+    # both 'main' (release pushes) and 'ci/installer-cache-warm-validation'
+    # (the PR validate caller) to run this job.
+    environment: release
     steps:
       - uses: actions/checkout@v4
 
@@ -48,19 +51,17 @@ jobs:
           gc-max-store-size-linux: 6G
           save: ${{ github.event_name == 'workflow_call' && inputs.save_nix_cache || false }}
 
-      # Pull from ks-systems (read-only, trusted production cache)
-      - name: Configure Cachix (ks-systems)
+      # Push to ks-systems (production cache — what every Keystone user pulls
+      # from); pull ks-ci as a substituter too. Must be a single cachix-action
+      # call: 'cachix authtoken' writes a single global slot in
+      # ~/.config/cachix/cachix.dhall, so two configure steps would overwrite
+      # each other and break later 'cachix watch-exec ks-systems' pushes.
+      - name: Configure Cachix
         uses: cachix/cachix-action@v15
         with:
           name: ks-systems
-
-      # Push to ks-ci (CI-only cache, isolated from production)
-      - name: Configure Cachix (ks-ci)
-        if: env.CACHIX_CI_AUTH_TOKEN != ''
-        uses: cachix/cachix-action@v15
-        with:
-          name: ks-ci
-          authToken: ${{ env.CACHIX_CI_AUTH_TOKEN }}
+          extraPullNames: ks-ci
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Warm cache
         run: |
