@@ -49,7 +49,6 @@ let
   calendula-flake = calendula;
   cardamum-flake = cardamum;
   comodoro-flake = comodoro;
-  llm-agents-src = llm-agents;
   browser-previews-flake = browser-previews;
   ghostty-flake = ghostty;
   yazi-flake = yazi;
@@ -59,34 +58,6 @@ in
 final: prev:
 let
   system = final.stdenv.hostPlatform.system;
-  llmAgentsPkgs = import prev.path {
-    inherit system;
-    config.allowUnfree = true;
-  };
-  llmAgentsWrapBuddy =
-    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/wrapBuddy/package.nix"
-      { };
-  llmAgentsVersionCheckHomeHook =
-    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/versionCheckHomeHook/default.nix"
-      { };
-  # Required since llm-agents.nix commit 4049025 (2026-04-26): packages like
-  # gemini-cli `inherit (perSystem.self) buildNpmPackage`. Upstream wraps
-  # nixpkgs' buildNpmPackage with an eval-time guard that requires
-  # fetchNpmDeps to support `fetcherVersion = 2`. The guard's failure message
-  # tells you to bump nixpkgs (>= 203662a570c4, 2026-02-15) or switch to
-  # overlays.default / the flake packages directly. Without this attr, the
-  # inherit fails with "attribute 'buildNpmPackage' missing" and blocks every
-  # host build.
-  llmAgentsBuildNpmPackage =
-    llmAgentsPkgs.callPackage "${llm-agents-src}/packages/buildNpmPackage/default.nix"
-      { };
-  llmAgentsPerSystem = {
-    self = {
-      wrapBuddy = llmAgentsWrapBuddy;
-      versionCheckHomeHook = llmAgentsVersionCheckHomeHook;
-      buildNpmPackage = llmAgentsBuildNpmPackage;
-    };
-  };
 in
 {
   # Expose crane library for Rust package builds — auto-resolved by callPackage
@@ -142,43 +113,15 @@ in
         '';
       }
     );
-    # Import only the four upstream agent packages Keystone exposes. Avoid
-    # llm-agents.packages.${system}: unrelated broken upstream packages can make
-    # the whole package set fail evaluation during nixos-install.
-    claude-code = import "${llm-agents-src}/packages/claude-code/default.nix" {
-      pkgs = llmAgentsPkgs;
-      perSystem = llmAgentsPerSystem;
-    };
-    gemini-cli = import "${llm-agents-src}/packages/gemini-cli/default.nix" {
-      pkgs = llmAgentsPkgs;
-      perSystem = llmAgentsPerSystem;
-    };
-    codex =
-      (import "${llm-agents-src}/packages/codex/default.nix" {
-        pkgs = llmAgentsPkgs;
-      }).overrideAttrs
-        (old: {
-          cargoDeps = llmAgentsPkgs.rustPlatform.fetchCargoVendor {
-            inherit (old) src;
-            name = "codex-${old.version}";
-            sourceRoot = "source/codex-rs";
-            hash = "sha256-nXdZrcmI935E5OGZBp0YbkOQFsqKllwdf+HJlvhn4n4=";
-            postBuild = ''
-              # SECURITY: nixpkgs' vendoring helper recursively probes every
-              # Cargo.toml in git dependencies. The rules_rust repo pulled in by
-              # Codex's `runfiles` crate contains many intentionally broken test
-              # and example workspaces, so keep only the standalone runfiles
-              # crate subtree that Codex actually depends on.
-              rules_rust_tree="$out/git/b56cbaa8465e74127f1ea216f813cd377295ad81"
-              find "$rules_rust_tree" -mindepth 1 -maxdepth 1 ! -name rust -exec rm -rf {} +
-              find "$rules_rust_tree/rust" -mindepth 1 -maxdepth 1 ! -name runfiles -exec rm -rf {} +
-            '';
-          };
-        });
-    opencode = import "${llm-agents-src}/packages/opencode/default.nix" {
-      pkgs = llmAgentsPkgs;
-      perSystem = llmAgentsPerSystem;
-    };
+    # Consume llm-agents' own flake outputs rather than re-importing source.
+    # llm-agents owns the package's nixpkgs alignment, helper plumbing
+    # (wrapBuddy, versionCheckHomeHook, buildNpmPackage), and Rust vendor
+    # hashes — keeping those downstream caused recurring drift every time
+    # a Cargo.lock moved upstream.
+    claude-code = llm-agents.packages.${system}.claude-code;
+    gemini-cli = llm-agents.packages.${system}.gemini-cli;
+    codex = llm-agents.packages.${system}.codex;
+    opencode = llm-agents.packages.${system}.opencode;
     # Browsers from browser-previews
     google-chrome = browser-previews-flake.packages.${system}.google-chrome;
     # Desktop tools from flake inputs
