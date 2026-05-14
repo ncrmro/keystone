@@ -162,7 +162,7 @@ in
             inherit (old) src;
             name = "codex-${old.version}";
             sourceRoot = "source/codex-rs";
-            hash = "sha256-2ZoibDx2LFVdE+dQNei60/eh+qMeDVPVR5DLlK2E+XM=";
+            hash = "sha256-nXdZrcmI935E5OGZBp0YbkOQFsqKllwdf+HJlvhn4n4=";
             postBuild = ''
               # SECURITY: nixpkgs' vendoring helper recursively probes every
               # Cargo.toml in git dependencies. The rules_rust repo pulled in by
