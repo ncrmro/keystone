@@ -1145,6 +1145,24 @@ mod tests {
             .expect("git push");
         assert!(s.success(), "git push -u origin master failed");
 
+        // `resolve_default_branch_from_origin_head` requires refs/remotes/origin/HEAD
+        // to be a symbolic ref. `git clone` sets this automatically; `git init` +
+        // `git remote add` + `git push` does not, so we set it explicitly here.
+        let s = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&local)
+            .args([
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/master",
+            ])
+            .status()
+            .expect("git symbolic-ref");
+        assert!(
+            s.success(),
+            "git symbolic-ref refs/remotes/origin/HEAD failed"
+        );
+
         (tmp, local, remote)
     }
 
@@ -1182,10 +1200,29 @@ mod tests {
     #[tokio::test]
     async fn ensure_in_sync_refuses_when_local_is_ahead_of_origin() {
         // The exact failure mode that motivated this commit: local
-        // master had two cherry-picked commits beyond origin/master, so
-        // the supervised flow's post-activation `git push` tripped on a
-        // non-fast-forward. Refuse up front instead.
+        // had two cherry-picked commits beyond origin, so the supervised
+        // flow's post-activation `git push` tripped on a non-fast-forward.
+        // Refuse up front instead.
+        //
+        // CRITICAL: since f23ccaf2 auto-resolves ahead/behind/diverged on
+        // the default branch, this test exercises a non-default feature
+        // branch where the hard-refuse semantics still apply.
         let (_tmp, local, _remote) = make_in_sync_fixture();
+
+        // Switch to a feature branch and publish it so `origin/feature`
+        // exists, then add a local-only commit on top.
+        for args in [
+            vec!["switch", "-c", "feature"],
+            vec!["push", "-u", "origin", "feature"],
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&local)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
 
         // Add a commit locally without pushing.
         std::fs::write(local.join("ahead.txt"), "ahead\n").expect("write ahead file");
@@ -1208,7 +1245,7 @@ mod tests {
             "error should name the failure mode: {msg}"
         );
         assert!(
-            msg.contains("master"),
+            msg.contains("feature"),
             "error should name the branch: {msg}"
         );
     }
@@ -1327,9 +1364,28 @@ mod tests {
         // Symmetric to the ahead case: if origin has commits the local
         // doesn't, the lock-bump commit would be on a stale base. The
         // user almost certainly wants `git pull --rebase` first.
+        //
+        // CRITICAL: since f23ccaf2 auto-resolves ahead/behind/diverged on
+        // the default branch, this test exercises a non-default feature
+        // branch where the hard-refuse semantics still apply.
         let (_tmp, local, remote) = make_in_sync_fixture();
 
-        // Make a parallel clone, push a new commit, then cleanup.
+        // Switch local to a feature branch and publish it so the
+        // parallel clone can push a commit onto origin/feature.
+        for args in [
+            vec!["switch", "-c", "feature"],
+            vec!["push", "-u", "origin", "feature"],
+        ] {
+            let s = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&local)
+                .args(&args)
+                .status()
+                .expect("git command");
+            assert!(s.success(), "git {args:?} failed");
+        }
+
+        // Make a parallel clone, push a new commit on `feature`.
         let other = local.parent().unwrap().join("other");
         let s = std::process::Command::new("git")
             .args(["clone"])
@@ -1353,11 +1409,19 @@ mod tests {
                 .then_some(())
                 .expect("git config failed");
         }
+        // Check out `feature` in the parallel clone before committing.
+        let s = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&other)
+            .args(["switch", "feature"])
+            .status()
+            .expect("git switch feature");
+        assert!(s.success(), "git switch feature failed");
         std::fs::write(other.join("behind.txt"), "behind\n").expect("write behind file");
         for args in [
             vec!["add", "behind.txt"],
             vec!["commit", "-m", "remote-ahead"],
-            vec!["push", "origin", "master"],
+            vec!["push", "origin", "feature"],
         ] {
             let s = std::process::Command::new("git")
                 .arg("-C")
@@ -1368,9 +1432,9 @@ mod tests {
             assert!(s.success(), "git {args:?} failed");
         }
 
-        // Now `local` is behind `origin/master`. ensure_in_sync should
-        // refuse. The fetch inside ensure_in_sync will refresh
-        // origin/master to the new tip.
+        // Now `local` is behind `origin/feature`. ensure_in_sync should
+        // refuse on the non-default branch. The fetch inside
+        // ensure_in_sync will refresh origin/feature to the new tip.
         let err = ensure_in_sync(&local)
             .await
             .expect_err("behind-origin must be rejected");
@@ -1378,6 +1442,10 @@ mod tests {
         assert!(
             msg.contains("out of sync"),
             "error should name the failure mode: {msg}"
+        );
+        assert!(
+            msg.contains("feature"),
+            "error should name the branch: {msg}"
         );
     }
 }

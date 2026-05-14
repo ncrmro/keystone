@@ -94,9 +94,15 @@ xorriso -osirrox on -indev "$iso_path" -extract /version.txt "$tmp/version.txt" 
 grep -Eq '^[0-9]{2}\.[0-9]{2}\.' "$tmp/version.txt"
 
 xorriso -osirrox on -indev "$iso_path" -extract /nix-store.squashfs "$tmp/nix-store.squashfs" >/dev/null 2>&1
-# Keep the known-good ICU read gate that caught the earlier corrupt squashfs issue.
-unsquashfs -cat "$tmp/nix-store.squashfs" 4424mzk2pyia5v1j33zjgrjaivrdy03y-icu4c-76.1/lib/libicudata.so.76 >/dev/null
 unsquashfs -ll "$tmp/nix-store.squashfs" > "$tmp/nix-store.list"
+# Force a real read of a large compressed file so any squashfs data corruption
+# (vs index-only listing) trips here. icu4c's libicudata.so is ~30 MB of
+# Unicode tables — the largest single .so in most NixOS closures. Discover
+# the path from the listing so this survives nixpkgs revision bumps; pinning
+# the store hash made this gate fail on every bump.
+icu_lib="$(grep -oE '[a-z0-9]{32}-icu4c-[0-9.]+/lib/libicudata\.so\.[0-9]+' "$tmp/nix-store.list" | head -1)"
+[ -n "$icu_lib" ] || { echo "no icu4c/libicudata in closure"; exit 1; }
+unsquashfs -cat "$tmp/nix-store.squashfs" "$icu_lib" >/dev/null
 
 # Make sure the live installer closure still carries the commands the ISO boot flow needs.
 for tool in ks disko nixos-install; do
