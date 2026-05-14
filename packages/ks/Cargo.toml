@@ -23,7 +23,7 @@ futures = "0.3"
 clap = { version = "4", features = ["derive"] }
 
 # Git
-git2 = "0.19"
+git2 = "0.20"
 
 # SSH keys
 ssh-key = { version = "0.6", features = ["ed25519", "std"] }
