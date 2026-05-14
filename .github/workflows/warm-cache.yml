@@ -30,6 +30,11 @@ concurrency:
 jobs:
   warm-cache:
     runs-on: ubuntu-latest
+    # Scoped to the release environment so secrets.CACHIX_AUTH_TOKEN
+    # (held there) is injected. Branch policies on the environment allow
+    # both 'main' (release pushes) and 'ci/installer-cache-warm-validation'
+    # (the PR validate caller) to run this job.
+    environment: release
     env:
       CACHIX_CI_AUTH_TOKEN: ${{ secrets.CACHIX_CI_AUTH_TOKEN }}
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
