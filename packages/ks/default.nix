@@ -1,5 +1,6 @@
 {
   lib,
+  stdenv,
   craneLib,
   pkg-config,
   openssl,
@@ -53,22 +54,26 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-  runtimePath = lib.makeBinPath [
-    bash
-    coreutils
-    cups
-    fzf
-    git
-    glow
-    hostname
-    nix
-    openssh
-    pandoc
-    polkit
-    sudo
-    systemd
-    python3Packages.weasyprint
-  ];
+  runtimePath = lib.makeBinPath (
+    [
+      bash
+      coreutils
+      fzf
+      git
+      glow
+      hostname
+      nix
+      openssh
+      pandoc
+      python3Packages.weasyprint
+    ]
+    ++ lib.optionals stdenv.hostPlatform.isLinux [
+      cups
+      polkit
+      sudo
+      systemd
+    ]
+  );
 
   package = craneLib.buildPackage (
     commonArgs
