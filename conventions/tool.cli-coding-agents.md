@@ -74,12 +74,14 @@ tool loads conventions natively (without prompt injection).
 - `~/.codex/config.toml` — managed MCP server configs, merged with the user's existing Codex settings
 - `~/.codex/skills/` — Codex-native skills generated for the curated Keystone surface (`$ks`, `$ks-dev`, `$deepwork`)
 
-**Important nuance**: Codex 0.114.0 does not reliably discover skills when
-`SKILL.md` and `agents/openai.yaml` are symlinks. Keystone MUST materialize its
-managed skill payload files under `~/.codex/skills/` as regular files. In
-development mode, `ks sync-agent-assets` is the supported no-sudo refresh path
-for these copied skill files, and activation (`ks switch`, `ks update --dev`)
-MUST run the same refresh path.
+**Important nuance**: Codex 0.114.0 does not reliably discover skills when the
+individual `SKILL.md` or `agents/openai.yaml` *files* are symlinks. The
+consumer-flake symlink model (see "Consumer Flake Agent Assets" below)
+sidesteps this: `~/.codex/skills` itself is a directory symlink, but each
+`SKILL.md` and `agents/openai.yaml` at the resolved path is a regular file in
+the user's git checkout. Codex reads them as ordinary files. The refresh path
+is `ks sync-agent-assets` (manual), which writes regenerated skill content
+into the consumer flake — never directly into `~/.codex/skills/`.
 
 ### OpenCode
 
@@ -132,6 +134,87 @@ when OpenCode-specific configuration is needed.
 | Codex       | `~/.codex/AGENTS.md`           | `./AGENTS.md`                                   | `~/.codex/config.toml`             |
 | OpenCode    | `~/.config/opencode/AGENTS.md` | `./AGENTS.md`                                   | `~/.config/opencode/opencode.json` |
 | Copilot CLI | `~/.copilot/agents/*.md`       | `.github/copilot-instructions.md` + `AGENTS.md` | `~/.copilot/mcp-config.json`       |
+
+## Consumer Flake Agent Assets
+
+Keystone-generated CLI coding agent assets (per-tool skills and subagents) are
+materialized into the consumer flake at `<consumer-flake>/agents/<tool>/`, and
+each tool's home-dir subdirectory is a home-manager-managed symlink pointing
+there. This makes every change to a keystone-shipped skill visible as a git
+diff in the consumer flake, so users can review skill upgrades commit-by-commit
+and roll back via standard git workflow.
+
+### Source layout
+
+The canonical source-of-truth in the consumer flake:
+
+```
+<consumer-flake>/agents/
+  claude/
+    skills/<name>/SKILL.md            → ~/.claude/skills/<name>/SKILL.md
+    agents/<name>.md                  → ~/.claude/agents/<name>.md
+  gemini/
+    skills/<name>/SKILL.md            → ~/.gemini/skills/<name>/SKILL.md
+    agents/                           reserved; Gemini lacks subagents today
+  codex/
+    skills/<name>/SKILL.md            → ~/.codex/skills/<name>/SKILL.md
+    skills/<name>/agents/openai.yaml  → ~/.codex/skills/<name>/agents/openai.yaml
+    agents/                           reserved; Codex lacks subagents today
+```
+
+Each `<tool>/<subdir>` (e.g. `claude/skills`, `claude/agents`, `gemini/skills`,
+`codex/skills`) is a directory symlink from the home dir. SKILL.md and
+subagent files at the resolved path are regular files in the user's git
+checkout — not symlinks themselves — so each tool reads them normally.
+
+### Rules
+
+11. The consumer flake at `<consumer-flake>/agents/<tool>/<subdir>/` MUST be
+    the sole source-of-truth for keystone-generated and user-authored agent
+    assets in that subdirectory. There is no parallel source in `$HOME`.
+12. Home-manager activation MUST create each `~/.<tool>/<subdir>` as a
+    directory symlink pointing into `<consumer-flake>/agents/<tool>/<subdir>/`.
+    Activation MUST `mkdir -p` the consumer-flake target before linking so the
+    symlink is never dangling on first run.
+13. The consumer-flake path MUST be resolved at runtime from
+    `/run/current-system/keystone-system-flake` (the canonical symlink set by
+    `modules/shared/system-flake.nix`). A `KEYSTONE_CONSUMER_FLAKE` env var
+    MUST be honoured as an override for testing and ad-hoc invocations.
+14. The `ks sync-agent-assets` command MUST be the only writer to the
+    consumer-flake `agents/` directory. It MUST be run manually — home-manager
+    activation MUST NOT auto-trigger it. This guarantees the user's git tree
+    is never silently rewritten during `ks switch` / `ks update --dev`.
+15. `ks sync-agent-assets` MUST unconditionally overwrite keystone-generated
+    files. The user's override mechanism is git: review the diff, `git checkout`
+    to restore a previous version, then commit. No in-file markers, no skip-if-exists.
+16. User-authored skills and keystone-generated skills MUST share a single
+    namespace per tool. Keystone-curated skills use the `ks*` name prefix
+    (e.g. `ks.notes`, `ks.dev`); user-authored skills SHOULD avoid that
+    prefix to reduce collision risk on regen.
+17. Subagent format support is currently Claude-only (`~/.claude/agents/<name>.md`).
+    Gemini and Codex subagent paths are reserved but the sync script writes
+    nothing to them. When upstream Gemini/Codex add subagent loaders, the
+    convention extends with no compatibility break.
+18. The symlink activation MUST run for both the admin user and OS agent users.
+    Each agent's `~/.<tool>/<subdir>` MUST symlink to the same consumer-flake
+    `agents/<tool>/<subdir>/` path the admin uses. This L1→L2 inheritance
+    mechanism lets `keystone.os.agents.<name>` principals run the same
+    skills/agents the admin authored, without per-agent duplication, and is
+    the foundation for OS-agent auto-loops that don't require DeepWork.
+    For OS agent users, the activation MUST NOT attempt to `mkdir -p` the
+    consumer-flake target — the admin's prior activation created it, and the
+    agent lacks write permission inside the admin's home.
+
+### Forward direction
+
+Instruction files (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`,
+`~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`) are still generated by
+`modules/terminal/conventions.nix` directly to home (immutable `home.file` in
+locked mode; script-managed in dev mode). They are candidates for migration
+under the same consumer-flake-symlink pattern in a follow-up change — same
+audit-via-git-diff benefit. This convention reserves the path
+`<consumer-flake>/agents/<tool>/<instruction-file>` (e.g.
+`<flake>/agents/claude/CLAUDE.md`) for that future migration.
 
 ## Keystone Module Responsibilities
 
