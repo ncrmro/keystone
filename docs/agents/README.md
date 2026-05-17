@@ -82,10 +82,10 @@ and the loop's behaviour is reviewable in git like any other skill.
 
 ## Future direction
 
-- **Instruction files migrate under the same pattern.** Today `~/.claude/CLAUDE.md`,
-  `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md` are still generated directly to
-  the home dir. Migrating them to `<consumer-flake>/agents/<tool>/<instruction-file>`
-  with symlinks gives the same auditable-git-diff benefit.
+- **OpenCode joins the symlink set.** `~/.config/opencode/AGENTS.md` and
+  `~/.config/opencode/skills/` still write to the home dir directly; future
+  scope is to bring them under the same consumer-flake pattern as the other
+  three tools.
 - **No-DeepWork OS-agent task loop.** Basic auto-looping today depends on the
   DeepWork-driven `task_loop` job. Future work will offer a platform-native
   alternative for fleets that don't want DeepWork — a small skill plus a

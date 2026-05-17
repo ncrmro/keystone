@@ -113,6 +113,30 @@ let
   toolSymlinkShellPairs = concatStringsSep " " (
     map (s: "${s.tool}:${s.subdir}:${s.homePath}") toolSymlinks
   );
+  # Per-tool instruction files that symlink as individual files (not dirs)
+  # from the home dir into the consumer flake. Convention rule 19. Format is
+  # `(tool, consumer-flake-filename, home-dir-relative-path)`; the link is
+  # `$HOME/<home-rel-path>` → `<consumerFlakeAgents>/<tool>/<consumer-flake-filename>`.
+  instructionFileSymlinks = [
+    {
+      tool = "claude";
+      filename = "CLAUDE.md";
+      homeRelPath = ".claude/CLAUDE.md";
+    }
+    {
+      tool = "gemini";
+      filename = "GEMINI.md";
+      homeRelPath = ".gemini/GEMINI.md";
+    }
+    {
+      tool = "codex";
+      filename = "AGENTS.md";
+      homeRelPath = ".codex/AGENTS.md";
+    }
+  ];
+  instructionFileShellPairs = concatStringsSep " " (
+    map (f: "${f.tool}:${f.filename}:${f.homeRelPath}") instructionFileSymlinks
+  );
   syncScriptPath =
     if repoCheckout != null then
       "${repoCheckout}/${scriptRelPath}"
@@ -217,6 +241,50 @@ in
             fi
           elif [ -e "$link" ]; then
             echo "keystone-agent-asset-symlinks: $link exists and is not a directory or symlink; leaving untouched" >&2
+            continue
+          fi
+
+          ln -s "$target" "$link"
+        done
+
+        # Per-tool instruction files (CLAUDE.md, GEMINI.md, AGENTS.md) —
+        # file-level symlinks. Content lives in
+        # `<consumer-flake>/agents/<tool>/<filename>`, written by
+        # `ks sync-agent-assets`. If the target doesn't exist yet, skip
+        # with a clear warning (the user has not run sync-agent-assets).
+        # Convention rules 19 and 20.
+        for entry in ${instructionFileShellPairs}; do
+          tool="''${entry%%:*}"
+          rest="''${entry#*:}"
+          filename="''${rest%%:*}"
+          home_rel="''${rest##*:}"
+
+          target="$agents_root/$tool/$filename"
+          link="$HOME/$home_rel"
+
+          if [ ! -f "$target" ]; then
+            echo "keystone-agent-asset-symlinks: instruction file $target does not exist yet; skipping $link (run 'ks sync-agent-assets' to populate)" >&2
+            continue
+          fi
+
+          # Ensure parent dir of the link exists.
+          mkdir -p "$(dirname "$link")"
+
+          if [ -L "$link" ]; then
+            current="$(readlink "$link")"
+            if [ "$current" = "$target" ]; then
+              continue
+            fi
+            rm -f "$link"
+          elif [ -f "$link" ]; then
+            # A regular file at the link site — possibly user-edited, possibly
+            # a leftover from a pre-symlink generation home-manager hasn't
+            # cleaned. Refuse rather than silently clobbering user content.
+            echo "keystone-agent-asset-symlinks: refusing to replace regular file $link with symlink to $target" >&2
+            echo "  Move or remove the file, then re-run home-manager activation." >&2
+            continue
+          elif [ -e "$link" ]; then
+            echo "keystone-agent-asset-symlinks: $link exists and is not a file or symlink; leaving untouched" >&2
             continue
           fi
 

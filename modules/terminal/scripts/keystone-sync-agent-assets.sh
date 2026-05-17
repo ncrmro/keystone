@@ -391,9 +391,14 @@ global_agents_content="$(cat "$global_agents_tmp")"
 rm -f "$global_agents_tmp"
 
 write_file "$HOME/.keystone/AGENTS.md" "$global_agents_content"
-write_file "$HOME/.claude/CLAUDE.md" "$global_agents_content"
-write_file "$HOME/.gemini/GEMINI.md" "$global_agents_content"
-write_file "$HOME/.codex/AGENTS.md" "$global_agents_content"
+# Per-tool instruction files land in the consumer flake, symlinked from $HOME
+# by the home-manager activation `keystoneAgentAssetSymlinks`. Convention
+# rule 19 in tool.cli-coding-agents.md.
+write_file "$CONSUMER_FLAKE_AGENTS/claude/CLAUDE.md" "$global_agents_content"
+write_file "$CONSUMER_FLAKE_AGENTS/gemini/GEMINI.md" "$global_agents_content"
+write_file "$CONSUMER_FLAKE_AGENTS/codex/AGENTS.md" "$global_agents_content"
+# OpenCode stays on the home dir for now (not yet wired into the symlink
+# activation; future scope).
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
 
 repos_agents_tmp="$(mktemp)"
