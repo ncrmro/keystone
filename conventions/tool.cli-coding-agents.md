@@ -186,14 +186,24 @@ into the symlink activation (future scope).
 
 11. The consumer flake at `<consumer-flake>/agents/<tool>/<subdir>/` MUST be
     the sole source-of-truth for keystone-generated and user-authored agent
-    assets in that subdirectory. There is no parallel source in `$HOME`.
+    assets for the symlinked tools (Claude, Gemini, Codex). There is no
+    parallel source in `$HOME` for those tools. **OpenCode is exempt** for
+    now — its skills and instruction file still write to `$HOME` directly
+    while it is being prepared to join the symlink set in a future change.
 12. Home-manager activation MUST create each `~/.<tool>/<subdir>` as a
     directory symlink pointing into `<consumer-flake>/agents/<tool>/<subdir>/`.
-    Activation MUST `mkdir -p` the consumer-flake target before linking so the
-    symlink is never dangling on first run.
+    For the admin user, activation MUST `mkdir -p` the consumer-flake target
+    before linking so the symlink is never dangling on first run. For OS
+    agent users, the activation MUST NOT `mkdir -p` the target — see rule 18.
 13. The consumer-flake path MUST be resolved at runtime from
-    `/run/current-system/keystone-system-flake` (the canonical symlink set by
-    `modules/shared/system-flake.nix`). A `KEYSTONE_CONSUMER_FLAKE` env var
+    `/run/current-system/keystone-system-flake`. This is a **regular file**
+    written by `modules/shared/system-flake.nix` containing the consumer
+    flake path as text (single line plus trailing newline), not a symlink —
+    implementations MUST read it with `read`/`cat` and strip the trailing
+    newline, matching the Rust precedent in
+    `packages/ks/src/repo.rs:read_system_flake_pointer_from`. Implementations
+    MUST NOT use `[ -L ... ]`/`readlink` against this path (always false /
+    always returns the wrong value). A `KEYSTONE_CONSUMER_FLAKE` env var
     MUST be honoured as an override for testing and ad-hoc invocations.
 14. The `ks sync-agent-assets` command MUST be the only writer to the
     consumer-flake `agents/` directory. It MUST be run manually — home-manager

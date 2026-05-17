@@ -110,8 +110,12 @@ let
       homePath = ".codex";
     }
   ];
-  toolSymlinkShellPairs = concatStringsSep " " (
-    map (s: "${s.tool}:${s.subdir}:${s.homePath}") toolSymlinks
+  # Render the symlink list as a properly-escaped bash array literal so we can
+  # iterate safely regardless of values. Currently every component is a simple
+  # identifier with no shell metacharacters or whitespace, but escapeShellArg
+  # future-proofs the contract — see PR #539 review.
+  toolSymlinkBashArray = concatStringsSep " " (
+    map (s: lib.escapeShellArg "${s.tool}:${s.subdir}:${s.homePath}") toolSymlinks
   );
   # Per-tool instruction files that symlink as individual files (not dirs)
   # from the home dir into the consumer flake. Convention rule 19. Format is
@@ -134,8 +138,8 @@ let
       homeRelPath = ".codex/AGENTS.md";
     }
   ];
-  instructionFileShellPairs = concatStringsSep " " (
-    map (f: "${f.tool}:${f.filename}:${f.homeRelPath}") instructionFileSymlinks
+  instructionFileBashArray = concatStringsSep " " (
+    map (f: lib.escapeShellArg "${f.tool}:${f.filename}:${f.homeRelPath}") instructionFileSymlinks
   );
   syncScriptPath =
     if repoCheckout != null then
@@ -180,11 +184,15 @@ in
         }:$PATH"
 
         # Resolve consumer-flake agents root at runtime. Prefer the runtime
-        # symlink (survives Nix evaluation, follows the active system flake)
-        # so re-evaluating with a different flake doesn't strand the symlinks.
+        # pointer file (survives Nix evaluation, follows the active system
+        # flake) so re-evaluating with a different flake doesn't strand the
+        # symlinks. The pointer is a *regular file* written by
+        # modules/shared/system-flake.nix containing the path as text — not a
+        # symlink — so read it with `read`, not `readlink`. Matches the Rust
+        # pattern at packages/ks/src/repo.rs:131-137.
         consumer_flake=""
-        if [ -L /run/current-system/keystone-system-flake ]; then
-          consumer_flake="$(readlink -f /run/current-system/keystone-system-flake 2>/dev/null || true)"
+        if [ -f /run/current-system/keystone-system-flake ]; then
+          IFS= read -r consumer_flake < /run/current-system/keystone-system-flake || consumer_flake=""
         fi
         if [ -z "$consumer_flake" ]; then
           # Fall back to the Nix-eval-time value if available.
@@ -203,7 +211,8 @@ in
 
         is_agent_user=${if isAgent then "1" else "0"}
 
-        for entry in ${toolSymlinkShellPairs}; do
+        tool_symlinks=( ${toolSymlinkBashArray} )
+        for entry in "''${tool_symlinks[@]}"; do
           tool="''${entry%%:*}"
           rest="''${entry#*:}"
           subdir="''${rest%%:*}"
@@ -215,6 +224,7 @@ in
           # Admin pre-creates the consumer-flake target dir so agents (which
           # cannot write inside the admin's home) find it ready. Agents skip
           # this step and just install their symlink at their own home.
+          # See convention rule 18.
           if [ "$is_agent_user" = "0" ]; then
             mkdir -p "$target"
           elif [ ! -d "$target" ]; then
@@ -228,12 +238,16 @@ in
           if [ -L "$link" ]; then
             current="$(readlink "$link")"
             if [ "$current" = "$target" ]; then
-              continue
+              # No-op for matching symlink, but still surface empty-dir hint below.
+              :
+            else
+              rm -f "$link"
+              ln -s "$target" "$link"
             fi
-            rm -f "$link"
           elif [ -d "$link" ]; then
             if [ -z "$(ls -A "$link" 2>/dev/null)" ]; then
               rmdir "$link"
+              ln -s "$target" "$link"
             else
               echo "keystone-agent-asset-symlinks: refusing to replace non-empty directory $link with symlink to $target" >&2
               echo "  Move or remove the existing directory, then re-run home-manager activation." >&2
@@ -242,9 +256,25 @@ in
           elif [ -e "$link" ]; then
             echo "keystone-agent-asset-symlinks: $link exists and is not a directory or symlink; leaving untouched" >&2
             continue
+          else
+            ln -s "$target" "$link"
           fi
 
-          ln -s "$target" "$link"
+          # OS agent users need traversal permission down the admin's home dir
+          # chain. If `test -r` fails, the symlink itself is valid but reads
+          # through it will fail with EACCES — warn explicitly so the operator
+          # can fix permissions before tools surface a confusing ENOENT.
+          if [ "$is_agent_user" = "1" ] && [ ! -r "$target" ]; then
+            echo "keystone-agent-asset-symlinks: $target is not readable by $USER; CLI tools running as this agent will fail to read skills/agents through $link until traversal permissions are fixed on the admin's home chain" >&2
+          fi
+
+          # Empty-target hint: after this PR, ks switch no longer auto-syncs
+          # content. If the admin's target dir is empty, point them at the
+          # manual refresh path so they don't see empty skills/agents
+          # subdirs without explanation.
+          if [ "$is_agent_user" = "0" ] && [ -z "$(ls -A "$target" 2>/dev/null)" ]; then
+            echo "keystone-agent-asset-symlinks: $target is empty — run 'ks sync-agent-assets' to populate keystone-curated content" >&2
+          fi
         done
 
         # Per-tool instruction files (CLAUDE.md, GEMINI.md, AGENTS.md) —
@@ -253,7 +283,8 @@ in
         # `ks sync-agent-assets`. If the target doesn't exist yet, skip
         # with a clear warning (the user has not run sync-agent-assets).
         # Convention rules 19 and 20.
-        for entry in ${instructionFileShellPairs}; do
+        instruction_files=( ${instructionFileBashArray} )
+        for entry in "''${instruction_files[@]}"; do
           tool="''${entry%%:*}"
           rest="''${entry#*:}"
           filename="''${rest%%:*}"

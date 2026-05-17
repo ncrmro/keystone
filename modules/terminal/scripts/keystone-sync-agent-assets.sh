@@ -33,9 +33,17 @@ if [[ ! -f "$manifest_path" ]]; then
 fi
 
 # Resolve the consumer-flake agents root. This is where skill content lands.
-# Prefer the env-var override, then the manifest's eval-time value, then the
-# runtime symlink (/run/current-system/keystone-system-flake).
+# Precedence (matches the Rust precedence in packages/ks/src/app.rs:current_system_flake_path):
+#   1. KEYSTONE_CONSUMER_FLAKE env var (test override)
+#   2. /run/current-system/keystone-system-flake (runtime pointer file)
+#   3. Manifest's eval-time consumerFlakeAgents value (Nix-eval fallback)
+# The runtime pointer is a *regular file* written by modules/shared/system-flake.nix
+# containing the path as text — not a symlink — so read with `read`, not
+# `readlink`. The activation in generated-agent-assets.nix uses the same pattern.
 consumer_flake_root="${KEYSTONE_CONSUMER_FLAKE:-}"
+if [[ -z "$consumer_flake_root" && -f /run/current-system/keystone-system-flake ]]; then
+  IFS= read -r consumer_flake_root < /run/current-system/keystone-system-flake || consumer_flake_root=""
+fi
 if [[ -z "$consumer_flake_root" ]]; then
   manifest_consumer="$(jq -r '.consumerFlakeAgents // ""' "$manifest_path")"
   if [[ -n "$manifest_consumer" ]]; then
@@ -43,9 +51,6 @@ if [[ -z "$consumer_flake_root" ]]; then
     # to get the flake root so the rest of this script can re-append per-tool.
     consumer_flake_root="${manifest_consumer%/agents}"
   fi
-fi
-if [[ -z "$consumer_flake_root" && -L /run/current-system/keystone-system-flake ]]; then
-  consumer_flake_root="$(readlink -f /run/current-system/keystone-system-flake 2>/dev/null || true)"
 fi
 if [[ -z "$consumer_flake_root" ]]; then
   echo "Error: cannot determine consumer-flake path. Set KEYSTONE_CONSUMER_FLAKE or ensure /run/current-system/keystone-system-flake is present." >&2
