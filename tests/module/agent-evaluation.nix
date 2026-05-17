@@ -223,14 +223,25 @@ let
         fi
         # We expect /home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs
         # because ncrmro/keystone is the guessed name for the keystone input.
-        if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"; then
+        # Anchor on a trailing colon/quote so we don't match `.deepwork/jobs-internal`
+        # as a substring — otherwise dropping the published path would still pass.
+        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/\.keystone/repos/ncrmro/keystone/\.deepwork/jobs(:|\")"; then
           echo "  ✓ Found local keystone jobs path"
         else
           echo "  ✗ Missing local keystone jobs path"
           echo "  Actual Session Vars: ${sessionVarsJson}"
           exit 1
         fi
-        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs"'; then
+        # Internal jobs path is appended only in dev mode and is intentionally
+        # absent from the published keystone-deepwork-jobs package.
+        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/\.keystone/repos/ncrmro/keystone/\.deepwork/jobs-internal(:|\")"; then
+          echo "  ✓ Found local keystone internal jobs path"
+        else
+          echo "  ✗ Missing local keystone internal jobs path"
+          echo "  Actual Session Vars: ${sessionVarsJson}"
+          exit 1
+        fi
+        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal"'; then
           echo "  ✓ Found development-mode DeepWork MCP env value"
         else
           echo "  ✗ Missing development-mode DeepWork MCP env value"
