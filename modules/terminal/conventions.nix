@@ -300,15 +300,19 @@ in
       home.file.".config/keystone/conventions".source = conventionsPath;
     }
     // mkIf (!isDev) {
-      # Generate the canonical Keystone instruction file and derive tool-native
-      # instruction files from the same content. In development mode these are
-      # refreshed from the live checkout by keystone-sync-agent-assets instead of
-      # being immutable Home Manager text outputs.
+      # Keystone-canonical files: not under the consumer-flake pattern because
+      # no tool reads them at these paths. They stay as immutable Nix-store
+      # writes (in development mode they are refreshed from the live checkout
+      # by keystone-sync-agent-assets instead of being immutable).
       home.file.".keystone/AGENTS.md".text = agentsMdContent;
-      home.file.".claude/CLAUDE.md".text = agentsMdContent;
-      home.file.".gemini/GEMINI.md".text = agentsMdContent;
-      home.file.".codex/AGENTS.md".text = agentsMdContent;
-      home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
       home.file.".keystone/repos/AGENTS.md".text = reposAgentsMdContent;
+      # OpenCode is not yet wired into the symlink activation; instruction
+      # file stays on the immutable write path for now (future scope).
+      home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
+      # ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md, ~/.codex/AGENTS.md are
+      # owned by the consumer-flake symlink activation in
+      # modules/terminal/generated-agent-assets.nix per
+      # conventions/tool.cli-coding-agents.md rule 19. They MUST NOT be
+      # written here — doing so would conflict with the symlinks.
     };
 }
