@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sync generated Keystone agent assets from the current profile manifest.
-# See conventions/code.shell-scripts.md
+# See conventions/code.shell-scripts.md and
+# conventions/tool.cli-coding-agents.md § "Consumer Flake Agent Assets".
 
 set -euo pipefail
 
@@ -11,8 +12,13 @@ usage() {
 Usage: keystone-sync-agent-assets
 
 Refresh generated Keystone agent assets for the current user from the current
-profile manifest. This is the development-mode refresh path for instruction
-files, curated commands, and Codex skills.
+profile manifest. Skill content is written into the consumer flake at
+<consumer-flake>/agents/<tool>/skills/<name>/ — never directly to $HOME.
+Home-manager activation symlinks each ~/.<tool>/<subdir> at the corresponding
+consumer-flake path.
+
+Instruction files (CLAUDE.md, GEMINI.md, AGENTS.md) still write to $HOME for
+now — migration to the same consumer-flake pattern is future work.
 EOF
 }
 
@@ -25,6 +31,34 @@ if [[ ! -f "$manifest_path" ]]; then
   echo "Error: agent asset manifest not found at $manifest_path" >&2
   exit 1
 fi
+
+# Resolve the consumer-flake agents root. This is where skill content lands.
+# Prefer the env-var override, then the manifest's eval-time value, then the
+# runtime symlink (/run/current-system/keystone-system-flake).
+consumer_flake_root="${KEYSTONE_CONSUMER_FLAKE:-}"
+if [[ -z "$consumer_flake_root" ]]; then
+  manifest_consumer="$(jq -r '.consumerFlakeAgents // ""' "$manifest_path")"
+  if [[ -n "$manifest_consumer" ]]; then
+    # The manifest stores `<flake>/agents` already; strip the trailing /agents
+    # to get the flake root so the rest of this script can re-append per-tool.
+    consumer_flake_root="${manifest_consumer%/agents}"
+  fi
+fi
+if [[ -z "$consumer_flake_root" && -L /run/current-system/keystone-system-flake ]]; then
+  consumer_flake_root="$(readlink -f /run/current-system/keystone-system-flake 2>/dev/null || true)"
+fi
+if [[ -z "$consumer_flake_root" ]]; then
+  echo "Error: cannot determine consumer-flake path. Set KEYSTONE_CONSUMER_FLAKE or ensure /run/current-system/keystone-system-flake is present." >&2
+  exit 1
+fi
+
+CONSUMER_FLAKE_AGENTS="$consumer_flake_root/agents"
+CLAUDE_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/claude/skills"
+GEMINI_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/gemini/skills"
+CODEX_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/codex/skills"
+# OpenCode skills stay on the home dir for now — opencode is not yet wired into
+# the symlink activation. Future scope: parameterize when opencode joins.
+OPENCODE_SKILLS_DEST="$HOME/.config/opencode/skills"
 
 json_get() {
   local filter="$1"
@@ -118,8 +152,8 @@ write_codex_skill() {
   local description="$3"
   local skill_md="$4"
   local extra_yaml="${5:-}"
-  write_file "$HOME/.codex/skills/$skill_name/SKILL.md" "$skill_md"
-  write_file "$HOME/.codex/skills/$skill_name/agents/openai.yaml" "interface:
+  write_file "$CODEX_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
+  write_file "$CODEX_SKILLS_DEST/$skill_name/agents/openai.yaml" "interface:
   display_name: $(yaml_quote "$display_name")
   short_description: $(yaml_quote "$description")
 ${extra_yaml}"
@@ -128,9 +162,9 @@ ${extra_yaml}"
 write_shared_skill() {
   local skill_name="$1"
   local skill_md="$2"
-  write_file "$HOME/.claude/skills/$skill_name/SKILL.md" "$skill_md"
-  write_file "$HOME/.gemini/skills/$skill_name/SKILL.md" "$skill_md"
-  write_file "$HOME/.config/opencode/skills/$skill_name/SKILL.md" "$skill_md"
+  write_file "$CLAUDE_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
+  write_file "$GEMINI_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
+  write_file "$OPENCODE_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
 }
 
 render_codex_skill_body() {
@@ -423,12 +457,15 @@ done
 for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml wrap-up.toml; do
   rm -f "$HOME/.gemini/commands/$command_file"
 done
-rm -rf "$HOME/.claude/skills/ks"
-rm -rf "$HOME/.claude/skills/ks-pm"
-rm -rf "$HOME/.claude/skills/ks-assistant"
-rm -rf "$HOME/.config/opencode/skills/ks"
-rm -rf "$HOME/.config/opencode/skills/ks-pm"
-rm -rf "$HOME/.config/opencode/skills/ks-assistant"
+# Legacy single-skill cleanups (consumer-flake-resident now). If a user has a
+# consumer-flake skill colliding with one of these legacy names, the deletion
+# is visible in `git status` — `git checkout` restores it. Convention rule 15.
+rm -rf "$CLAUDE_SKILLS_DEST/ks"
+rm -rf "$CLAUDE_SKILLS_DEST/ks-pm"
+rm -rf "$CLAUDE_SKILLS_DEST/ks-assistant"
+rm -rf "$OPENCODE_SKILLS_DEST/ks"
+rm -rf "$OPENCODE_SKILLS_DEST/ks-pm"
+rm -rf "$OPENCODE_SKILLS_DEST/ks-assistant"
 
 for command_id in "${published_commands[@]}"; do
   description="$(command_description "$command_id")"
@@ -440,23 +477,23 @@ for command_id in "${published_commands[@]}"; do
 
   # Clean up legacy dash-named skill directories
   if [[ "$skill_name" != "$legacy_skill_name" ]]; then
-    rm -rf "$HOME/.claude/skills/${legacy_skill_name}"
-    rm -rf "$HOME/.gemini/skills/${legacy_skill_name}"
-    rm -rf "$HOME/.config/opencode/skills/${legacy_skill_name}"
+    rm -rf "$CLAUDE_SKILLS_DEST/${legacy_skill_name}"
+    rm -rf "$GEMINI_SKILLS_DEST/${legacy_skill_name}"
+    rm -rf "$OPENCODE_SKILLS_DEST/${legacy_skill_name}"
   fi
 
   # Skills are the canonical format — all CLIs with skill support get them
   ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
-  write_file "$HOME/.claude/skills/${skill_name}/SKILL.md" "$ks_skill_md"
-  write_file "$HOME/.gemini/skills/${skill_name}/SKILL.md" "$ks_skill_md"
-  write_file "$HOME/.config/opencode/skills/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$CLAUDE_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$GEMINI_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
+  write_file "$OPENCODE_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
 
   # Colocate conventions for skill commands
   skill_key="$(command_skill_key "$command_id")"
   if [[ -n "$skill_key" ]]; then
-    colocate_skill_conventions "$skill_key" "$HOME/.claude/skills/${skill_name}"
-    colocate_skill_conventions "$skill_key" "$HOME/.gemini/skills/${skill_name}"
-    colocate_skill_conventions "$skill_key" "$HOME/.config/opencode/skills/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$CLAUDE_SKILLS_DEST/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$GEMINI_SKILLS_DEST/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$OPENCODE_SKILLS_DEST/${skill_name}"
   fi
 done
 
@@ -574,7 +611,7 @@ legacy_codex_skill_names=(
 )
 
 for skill_name in "${legacy_codex_skill_names[@]}"; do
-  rm -rf "$HOME/.codex/skills/$skill_name"
+  rm -rf "$CODEX_SKILLS_DEST/$skill_name"
 done
 
 for command_id in "${published_commands[@]}"; do
@@ -597,6 +634,6 @@ dependencies:
   # Colocate conventions for skill commands in Codex
   skill_key="$(command_skill_key "$command_id")"
   if [[ -n "$skill_key" ]]; then
-    colocate_skill_conventions "$skill_key" "$HOME/.codex/skills/${skill_name}"
+    colocate_skill_conventions "$skill_key" "$CODEX_SKILLS_DEST/${skill_name}"
   fi
 done

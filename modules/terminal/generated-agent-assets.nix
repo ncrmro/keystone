@@ -62,6 +62,17 @@ let
       };
     };
   }) osAgents;
+  # Consumer-flake agent-assets root. Skills/subagents are materialized here
+  # by `ks sync-agent-assets`; home-manager activation symlinks each tool's
+  # home-dir subdir into the corresponding path. See
+  # conventions/tool.cli-coding-agents.md § "Consumer Flake Agent Assets".
+  consumerFlakeAgents =
+    if
+      osConfig != null && osConfig.keystone ? systemFlake && osConfig.keystone.systemFlake.path != null
+    then
+      "${osConfig.keystone.systemFlake.path}/agents"
+    else
+      null;
   manifestContent = builtins.toJSON {
     developmentMode = isDev;
     repoCheckout = repoCheckout;
@@ -72,7 +83,36 @@ let
     publishedCommands = config.keystone.terminal.aiExtensions.publishedCommands or [ ];
     repos = attrNames (config.keystone.repos or { });
     agents = agentsWithMcp;
+    consumerFlakeAgents = consumerFlakeAgents;
   };
+  # Tool subdirs the activation script links into the user's home dir.
+  # Each tuple is `(tool, subdir, home-dir-path)`; the link is
+  # `$HOME/<home-dir-path>/<subdir>` → `<consumerFlakeAgents>/<tool>/<subdir>`.
+  toolSymlinks = [
+    {
+      tool = "claude";
+      subdir = "skills";
+      homePath = ".claude";
+    }
+    {
+      tool = "claude";
+      subdir = "agents";
+      homePath = ".claude";
+    }
+    {
+      tool = "gemini";
+      subdir = "skills";
+      homePath = ".gemini";
+    }
+    {
+      tool = "codex";
+      subdir = "skills";
+      homePath = ".codex";
+    }
+  ];
+  toolSymlinkShellPairs = concatStringsSep " " (
+    map (s: "${s.tool}:${s.subdir}:${s.homePath}") toolSymlinks
+  );
   syncScriptPath =
     if repoCheckout != null then
       "${repoCheckout}/${scriptRelPath}"
@@ -100,27 +140,89 @@ in
       ];
     })
 
-    (mkIf (isDev && !isAgent) {
-      home.activation.keystoneSyncAgentAssets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    # Symlink each tool's home-dir agent-asset subdir (e.g. ~/.claude/skills)
+    # at the consumer flake's `agents/<tool>/<subdir>/` path. Runs for both
+    # admin and OS agent users — the L1→L2 inheritance contract in
+    # conventions/tool.cli-coding-agents.md rule 18. The actual *content*
+    # under that path is written by `ks sync-agent-assets` (manual), not by
+    # this activation. Activation never modifies file content; it only
+    # ensures the symlink topology is correct.
+    {
+      home.activation.keystoneAgentAssetSymlinks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         export PATH="${
           lib.makeBinPath [
-            pkgs.bash
             pkgs.coreutils
-            pkgs.findutils
-            pkgs.git
-            pkgs.gnugrep
-            pkgs.jq
-            pkgs.yq-go
           ]
         }:$PATH"
-        if [ -f "${syncScriptPath}" ]; then
-          KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
-            ${pkgs.bash}/bin/bash "${syncScriptPath}"
-        else
-          KEYSTONE_AGENT_ASSETS_MANIFEST="$HOME/${manifestRelPath}" \
-            ${scriptPackage}/bin/keystone-sync-agent-assets
+
+        # Resolve consumer-flake agents root at runtime. Prefer the runtime
+        # symlink (survives Nix evaluation, follows the active system flake)
+        # so re-evaluating with a different flake doesn't strand the symlinks.
+        consumer_flake=""
+        if [ -L /run/current-system/keystone-system-flake ]; then
+          consumer_flake="$(readlink -f /run/current-system/keystone-system-flake 2>/dev/null || true)"
         fi
+        if [ -z "$consumer_flake" ]; then
+          # Fall back to the Nix-eval-time value if available.
+          ${
+            if consumerFlakeAgents != null then
+              ''consumer_flake="${osConfig.keystone.systemFlake.path}"''
+            else
+              ''consumer_flake=""''
+          }
+        fi
+        if [ -z "$consumer_flake" ]; then
+          echo "keystone-agent-asset-symlinks: keystone.systemFlake.path is unset and /run/current-system/keystone-system-flake is missing; skipping symlink activation" >&2
+          exit 0
+        fi
+        agents_root="$consumer_flake/agents"
+
+        is_agent_user=${if isAgent then "1" else "0"}
+
+        for entry in ${toolSymlinkShellPairs}; do
+          tool="''${entry%%:*}"
+          rest="''${entry#*:}"
+          subdir="''${rest%%:*}"
+          home_path="''${rest##*:}"
+
+          target="$agents_root/$tool/$subdir"
+          link="$HOME/$home_path/$subdir"
+
+          # Admin pre-creates the consumer-flake target dir so agents (which
+          # cannot write inside the admin's home) find it ready. Agents skip
+          # this step and just install their symlink at their own home.
+          if [ "$is_agent_user" = "0" ]; then
+            mkdir -p "$target"
+          elif [ ! -d "$target" ]; then
+            echo "keystone-agent-asset-symlinks: consumer-flake target $target does not exist yet; skipping $link (admin should run home-manager activation first)" >&2
+            continue
+          fi
+
+          # Ensure the parent of the link exists (~/.claude, ~/.gemini, ~/.codex).
+          mkdir -p "$HOME/$home_path"
+
+          if [ -L "$link" ]; then
+            current="$(readlink "$link")"
+            if [ "$current" = "$target" ]; then
+              continue
+            fi
+            rm -f "$link"
+          elif [ -d "$link" ]; then
+            if [ -z "$(ls -A "$link" 2>/dev/null)" ]; then
+              rmdir "$link"
+            else
+              echo "keystone-agent-asset-symlinks: refusing to replace non-empty directory $link with symlink to $target" >&2
+              echo "  Move or remove the existing directory, then re-run home-manager activation." >&2
+              continue
+            fi
+          elif [ -e "$link" ]; then
+            echo "keystone-agent-asset-symlinks: $link exists and is not a directory or symlink; leaving untouched" >&2
+            continue
+          fi
+
+          ln -s "$target" "$link"
+        done
       '';
-    })
+    }
   ]);
 }
