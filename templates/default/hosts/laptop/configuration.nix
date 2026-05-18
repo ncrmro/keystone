@@ -40,10 +40,10 @@
   #   mode = "0400";
   # };
   #
-  # programs.zsh.initExtra = ''
+  # programs.zsh.interactiveShellInit = ''
   #   # Read the agenix-decrypted PAT into the env so gh + ks pick it up.
-  #   # Read at shell start (not via home.sessionVariables) to keep the secret
-  #   # out of the Nix store at evaluation time.
+  #   # Read at shell start (not via session vars) to keep the secret out of
+  #   # the Nix store at evaluation time.
   #   if [ -f /run/agenix/<username>-github-token ]; then
   #     export GITHUB_TOKEN="$(tr -d '\n' < /run/agenix/<username>-github-token)"
   #   fi

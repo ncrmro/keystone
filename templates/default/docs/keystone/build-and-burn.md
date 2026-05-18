@@ -10,15 +10,13 @@ matches your driver's OS.
 
 ## Build the ISO
 
-The ISO is one of the outputs of your `keystone-config` flake. Each host's
-configuration produces a tailored installer.
+Your `keystone-config` flake exposes a single ISO output. The image bakes in
+installer targets for every Linux host you declared in `flake.nix`, so one
+build covers the whole fleet.
 
 ```bash
-nix build .#nixosConfigurations.<host>.config.system.build.isoImage
+nix build .#iso
 ```
-
-Replace `<host>` with the directory name under `hosts/` you're bringing up
-first (e.g. `laptop`).
 
 After the build:
 

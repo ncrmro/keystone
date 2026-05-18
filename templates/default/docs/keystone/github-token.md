@@ -86,14 +86,17 @@ the `age.secrets` block and the shell-init hook in your host's
 `configuration.nix`:
 
 ```nix
-programs.zsh.initExtra = ''
+programs.zsh.interactiveShellInit = ''
   if [ -f /run/agenix/<username>-github-token ]; then
     export GITHUB_TOKEN="$(tr -d '\n' < /run/agenix/<username>-github-token)"
   fi
 '';
 ```
 
-(Use `programs.bash.initExtra` if the user's shell is bash.)
+The host config is a NixOS module, so use `programs.zsh.interactiveShellInit`
+(or `programs.bash.interactiveShellInit` for bash, or
+`environment.interactiveShellInit` to cover both). Home Manager's
+`programs.zsh.initExtra` is a different option and won't evaluate here.
 
 ## Step D — Rebuild
 
@@ -106,7 +109,7 @@ owned by the user, mode `0400`.
 
 ## Step E — Verify
 
-Open a fresh shell on the target (so `programs.zsh.initExtra` runs):
+Open a fresh shell on the target (so the interactive shell init hook runs):
 
 ```bash
 # GITHUB_TOKEN should be set

@@ -156,10 +156,11 @@ relies on Hydra cache hits).
 **Run:**
 
 ```bash
-nix build .#nixosConfigurations.laptop.config.system.build.isoImage
+nix build .#iso
 ```
 
-Substitute `laptop` for your chosen host name from Step 0.
+The ISO is a single artifact that bakes in installer targets for every Linux
+host declared in `flake.nix` — you don't build a per-host ISO.
 
 **Verify:**
 
