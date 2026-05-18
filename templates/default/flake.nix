@@ -23,6 +23,11 @@
       # inputs.llm-agents.follows = "llm-agents";
       # inputs.browser-previews.follows = "browser-previews";
     };
+
+    # No separate `agenix` input is needed: Keystone's operating-system module
+    # already imports `agenix.nixosModules.default`, so `age.secrets.*` is
+    # available on every host out of the box. See Step 8 of
+    # docs/keystone/onboarding.md for how to start using it.
   };
 
   outputs =

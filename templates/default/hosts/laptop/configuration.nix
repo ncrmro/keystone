@@ -18,4 +18,34 @@
   #
   # services.printing.enable = true;
   # networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+
+  # ---------------------------------------------------------------------------
+  # GitHub PAT secret (optional — uncomment with Step 8 of onboarding).
+  # See docs/keystone/github-token.md for the full setup.
+  # ---------------------------------------------------------------------------
+  #
+  # `age.secrets.*` is already wired by Keystone's operating-system module — you
+  # just declare the secret here.
+  #
+  # Requires:
+  #   - secrets/<username>-github-token.age created via `nix shell nixpkgs#agenix
+  #     --command agenix -e secrets/<username>-github-token.age`
+  #   - secrets.nix recipients including this host's age pubkey
+  #
+  # Replace <username> below with the value from flake.nix `admin.username`.
+  #
+  # age.secrets."<username>-github-token" = {
+  #   file = ../../secrets/<username>-github-token.age;
+  #   owner = "<username>";
+  #   mode = "0400";
+  # };
+  #
+  # programs.zsh.initExtra = ''
+  #   # Read the agenix-decrypted PAT into the env so gh + ks pick it up.
+  #   # Read at shell start (not via home.sessionVariables) to keep the secret
+  #   # out of the Nix store at evaluation time.
+  #   if [ -f /run/agenix/<username>-github-token ]; then
+  #     export GITHUB_TOKEN="$(tr -d '\n' < /run/agenix/<username>-github-token)"
+  #   fi
+  # '';
 }
