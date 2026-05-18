@@ -1,72 +1,66 @@
 # keystone-config
 
-This repository was generated from the Keystone flake template.
+This repository was generated from the Keystone flake template:
 
 ```bash
 nix flake new -t github:ncrmro/keystone keystone-config
 cd keystone-config
 ```
 
-The starter flake defines one shared Keystone system config and one `hosts` inventory. Keystone expands that inventory into:
+The starter flake defines one shared Keystone system config and a `hosts`
+inventory. Keystone expands that inventory into:
 
 - `nixosConfigurations` for Linux hosts
 - `homeConfigurations` for macOS hosts
 
-That keeps `flake.nix` short while still making the important host choices easy to scan.
+That keeps `flake.nix` short while still making the important host choices
+easy to scan.
 
-## Configure the template
+## Quick start
 
-Search for `TODO:` in the root flake and host hardware files:
+Open `docs/keystone/onboarding.md` and follow the numbered steps. Each step
+builds on the last, makes one focused change, and ends with a quick verification.
+You can stop after Step 2 if you only need a configured flake, after Step 5 if
+you only want a running host, or carry on through Step 8 for the full security +
+agenix setup.
+
+```bash
+$EDITOR docs/keystone/onboarding.md   # or `glow`, `bat`, `cat`…
+```
+
+If you'd rather see the existing `TODO:` markers up front:
 
 ```bash
 grep -RIn "TODO:" flake.nix hosts/
 ```
 
-Fill in:
-
-- `owner.name` in `flake.nix`
-- `owner.username` in `flake.nix` if your primary username is not `keystone`
-- `owner.email` in `flake.nix`
-- `defaults.timeZone` in `flake.nix`
-- hostnames in `flake.nix` if `laptop`, `server-ocean`, or `macbook` should be renamed
-- `system` in Linux `hardware.nix` files if the default architecture is wrong
-- `networking.hostId` only if you are not using `ks install`
-- `keystone.os.storage.devices` only if you are not using `ks install`
-
 ## File layout
 
-- `flake.nix`: shared owner/defaults, shared module hooks, global `keystoneServices`, and the `hosts` inventory
-- `hosts/laptop/`: laptop-specific Linux files
-- `hosts/server-ocean/`: server-specific Linux files
-- `hosts/macbook/`: optional macOS Home Manager overrides
-- `hosts/<name>/hardware.nix`: optional Linux hardware metadata and machine-specific module
-- `hosts/<name>/configuration.nix`: optional host-only overrides
+- `flake.nix` — shared owner/defaults, shared module hooks, global
+  `keystoneServices`, and the `hosts` inventory
+- `hosts/laptop/` — laptop-specific Linux files
+- `hosts/server-ocean/` — server-specific Linux files
+- `hosts/macbook/` — optional macOS Home Manager overrides
+- `hosts/<name>/hardware.nix` — optional Linux hardware metadata and
+  machine-specific module
+- `hosts/<name>/configuration.nix` — optional host-only overrides
+- `secrets/` and `secrets.nix` — agenix-encrypted secrets (empty until
+  Step 8 of onboarding)
+- `docs/keystone/` — onboarding walkthrough, GitHub PAT setup, build + burn
+  reference. **Edit the docs freely** — they live in your repo, not upstream.
 
-Linux `hardware.nix` files can export:
+`server-ocean` is just an example name. Rename to anything that fits.
 
-- `system`
-- `module`
+## Included docs
 
-Keystone uses those when present, but VPS-style servers can omit a hardware file entirely.
+- [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
+  walkthrough from `nix flake new` to a fully secured first host.
+- [`docs/keystone/build-and-burn.md`](docs/keystone/build-and-burn.md) — build
+  the installer ISO and write it to USB (Linux + macOS + Windows).
+- [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
+  an agenix-encrypted GitHub PAT to avoid rate-limit 403s.
 
-## Included defaults
-
-The default template includes:
-
-- `laptop`: desktop Linux host
-- `server-ocean`: Linux server host
-- `macbook`: terminal-only macOS Home Manager host
-
-`server-ocean` is only an example name. Rename it to any hostname that fits your system.
-
-The server host can represent either:
-
-- a VPS with no local hardware file
-- a baremetal machine with a generated hardware file
-
-Shared infrastructure placement belongs in the top-level `keystoneServices` block in `flake.nix`, not inside individual host blocks.
-
-## Where to investigate
+## Where to investigate Keystone itself
 
 - Unified host helper implementation: `keystone/lib/templates.nix`
 - Keystone admin and user option schema: `keystone/modules/os/default.nix`
@@ -75,22 +69,12 @@ Shared infrastructure placement belongs in the top-level `keystoneServices` bloc
 - Keystone terminal Home Manager module: `keystone/modules/terminal/default.nix`
 - Keystone desktop Home Manager module: `keystone/modules/desktop/home/default.nix`
 
-## Deploy
-
-Fresh laptop install:
+## Day-to-day commands after install
 
 ```bash
-nixos-anywhere --flake .#laptop root@<installer-ip>
-```
+# Update keystone + relock and deploy
+ks update
 
-Existing laptop host:
-
-```bash
-sudo nixos-rebuild switch --flake .#laptop
-```
-
-Server host:
-
-```bash
-sudo nixos-rebuild switch --flake .#server-ocean
+# Just rebuild without pulling new keystone revs
+sudo nixos-rebuild switch --flake .#<host>
 ```
