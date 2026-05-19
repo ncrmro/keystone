@@ -7,23 +7,45 @@ nix flake new -t github:ncrmro/keystone keystone-config
 cd keystone-config
 ```
 
-The starter `flake.nix` is one call to `keystone.lib.mkSystemFlake`. It
-expands a declarative inventory (admin, defaults, shared modules, hosts)
-into `nixosConfigurations`, `homeConfigurations`, and `packages.<system>.iso`.
-See [`docs/keystone/flake.md`](docs/keystone/flake.md) for the argument
-reference and output table.
+Most keystone config changes happen in the `flake.nix`, read more about how
+it works in [`docs/keystone/flake.md`](docs/keystone/flake.md).
+
+## After making changes
+
+```bash
+# Update the current host
+ks update
+
+# Update other hosts
+ks update HOST1,HOST2
+```
+
+## Ask an AI assistant
+
+This repo ships an [`AGENTS.md`](AGENTS.md) that any AI coding agent (Claude
+Code, Codex, Gemini CLI, opencode, etc.) reads automatically when you open
+the directory. Try one of these prompts:
+
+**Bootstrap a new host:**
+> Read `AGENTS.md` and `docs/keystone/onboarding.md`. Ask me a few
+> clarifying questions about my setup (the hosts I want, where my SSH key
+> lives, what OS I'm driving from), then walk me through the first three
+> steps, including the exact edits to `flake.nix`.
+
+**Learn more about how the flake is wired:**
+> Read `AGENTS.md` and `docs/keystone/flake.md`. Summarize how
+> `mkSystemFlake` turns my inventory into flake outputs, and call out
+> arguments I'm not using yet that might be relevant for my fleet.
+
+**Add an agenix-encrypted secret:**
+> Read `AGENTS.md` and `docs/keystone/github-token.md`. I want to add an
+> agenix-encrypted `<name>` secret consumed by the `<host>` host. Walk me
+> through encrypting it, declaring `age.secrets.*`, and reading it at
+> runtime without leaking through the Nix store.
 
 ## Quick start
 
-Open `docs/keystone/onboarding.md` and follow the numbered steps. Each step
-builds on the last, makes one focused change, and ends with a quick verification.
-You can stop after Step 2 if you only need a configured flake, after Step 5 if
-you only want a running host, or carry on through Step 8 for the full security +
-agenix setup.
-
-```bash
-$EDITOR docs/keystone/onboarding.md   # or `glow`, `bat`, `cat`…
-```
+Open `docs/keystone/onboarding.md`.
 
 If you'd rather see the existing `TODO:` markers up front:
 
@@ -73,13 +95,3 @@ match.
 - Keystone NixOS modules: `keystone/modules/`
 - Keystone terminal Home Manager module: `keystone/modules/terminal/default.nix`
 - Keystone desktop Home Manager module: `keystone/modules/desktop/home/default.nix`
-
-## Day-to-day commands after install
-
-```bash
-# Update keystone + relock and deploy
-ks update
-
-# Just rebuild without pulling new keystone revs
-sudo nixos-rebuild switch --flake .#<host>
-```
