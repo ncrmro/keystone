@@ -41,6 +41,14 @@ you want:
 > `<host>` host. Walk me through encrypting it, declaring `age.secrets.*`,
 > and reading it at runtime without leaking through the Nix store.
 
+**Diagnose system health and security posture:**
+> Run `ks doctor` and walk me through the output. Then audit my security
+> posture — LUKS unlock method (password / recovery key / TPM / hardware
+> key), Secure Boot enrollment, whether `ssh-agent` has my key loaded, and
+> whether fingerprint hardware is present but not enrolled. Call out which
+> of those `ks doctor` doesn't currently check so I know what's a real gap
+> vs. an unanswered question.
+
 ## Quick start
 
 Open `docs/keystone/onboarding.md`.

@@ -113,6 +113,50 @@ update --lock` does the same thing as part of the full deploy.
 - "Set up GitHub auth so I stop hitting 403s" → follow
   [`docs/keystone/github-token.md`](docs/keystone/github-token.md).
 
+## `ks doctor` — what it does and doesn't check
+
+`ks doctor` is the canonical first-pass health check. It currently reports on:
+
+- NixOS generation in use
+- Failed systemd units
+- Disk usage
+- `flake.lock` age (drift signal)
+- Ollama diagnostics
+- Per-host fleet health (other hosts' generations via SSH probe)
+- Agent service health and current task status
+- Desktop-trigger prerequisites: polkit agent, notification daemon,
+  `pkexec` setuid bit
+
+**It does NOT currently report on the host's security posture.** When a
+user asks "is this host secure" or runs the "diagnose system health"
+prompt, check these separately and surface the gaps explicitly:
+
+- **LUKS unlock method.** What's enrolled to decrypt `rpool`'s LUKS
+  container — password, recovery key, TPM, or hardware key (YubiKey /
+  FIDO2)? Inspect with `sudo cryptsetup luksDump /dev/<luks>` (list of
+  keyslots) and `sudo systemd-cryptenroll /dev/<luks>` (enrolled slot
+  types). Default keystone installs ship with a *temporary* `keystone`
+  password slot that should be removed once TPM unlock is wired up.
+- **TPM unlock state.** Is the TPM keyslot bound to a current PCR set and
+  actually unlocking on boot? `sudo systemd-cryptenroll --tpm2-device=auto
+  /dev/<luks>` shows enrollment; `journalctl -b -u systemd-cryptsetup@*`
+  shows boot-time unlock attempts. If TPM enrollment is present but boot
+  still prompts for a passphrase, the PCR binding is likely stale.
+- **Secure Boot.** `bootctl status` for general boot state; `sbctl status`
+  for whether keys are enrolled and which binaries are signed. Lanzaboote
+  reports here too.
+- **SSH agent.** Is `ssh-agent` running for the current session and does
+  it hold the expected identities? `ssh-add -L` prints loaded public keys;
+  empty output means no keys loaded.
+- **Fingerprint reader.** Is there reader hardware that just isn't enrolled
+  yet — a common state on fresh installs? Check `lsusb | rg -i fingerprint`
+  and `fprintd-list "$USER"` (requires `loginctl enable-linger`). If a
+  reader is present but `fprintd-list` returns no enrollments, walk the
+  user through `fprintd-enroll`.
+
+Treat these as a security-posture supplement to `ks doctor`'s output, not
+a replacement.
+
 ## Verification expectations
 
 Before you call a change done, at minimum:
