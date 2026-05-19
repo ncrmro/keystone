@@ -10,7 +10,7 @@ Use DeepWork workflows for tasks that benefit from structured steps or produce d
 - **personal_assistant/calendar_prioritize** — audit upcoming commitments and propose a priority-aligned calendar
 - **personal_assistant/memory_search** — find specific photos or memories in Keystone Photos (Immich)
 
-For presentations, use `/ks.projects` or the `presentation` DeepWork job directly.
+For presentations, use `/ks-projects` or the `presentation` DeepWork job directly.
 
 ## Routing rules
 

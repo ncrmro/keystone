@@ -298,7 +298,7 @@ archetypes:
 #    - colocated_roles: Role definition files copied into the skill folder
 
 skills:
-  ks.engineer:
+  ks-engineer:
     description: "Engineering — implementation, code review, architecture, and CI"
     template: engineer-skill.template.md
     colocated_conventions:
@@ -320,7 +320,7 @@ skills:
       - code-reviewer
       - architect
 
-  ks.product:
+  ks-product:
     description: "Product — planning, milestones, stakeholder communication"
     template: product-skill.template.md
     colocated_conventions:
@@ -335,7 +335,7 @@ skills:
       - business-analyst
       - project-lead
 
-  ks.project-manager:
+  ks-project-manager:
     description: "Project management — task decomposition, tracking, and boards"
     template: pm-skill.template.md
     colocated_conventions:
@@ -351,7 +351,7 @@ skills:
       - project-lead
       - task-decomposer
 
-  ks.ea:
+  ks-ea:
     description: "Executive assistant — calendar, inbox, events, portfolio reviews"
     template: ks-executive-assistant.template.md
     colocated_conventions:
@@ -381,7 +381,7 @@ skills:
     description: "Run DeepWork Reviews on the current branch — review changed files using .deepreview rules"
     template: review-skill.template.md
 
-  configure_reviews:
+  configure-reviews:
     description: "Set up DeepWork Reviews — automated code review rules using .deepreview config files"
     template: configure-reviews-skill.template.md
 

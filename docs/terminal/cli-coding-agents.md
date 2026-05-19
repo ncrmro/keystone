@@ -20,11 +20,11 @@ rules (commit format, privileged ops, shared surfaces), and reference links.
 
 Domain knowledge loads on demand when a skill is activated:
 
-- `/ks.engineer` — implementation, code review, architecture, CI
-- `/ks.product` — press releases, milestones, stakeholder communication
-- `/ks.pm` — task decomposition, tracking, boards
-- `/ks.notes` — durable notebook capture and repair
-- `/ks.projects` — project lifecycle workflows
+- `/ks-engineer` — implementation, code review, architecture, CI
+- `/ks-product` — press releases, milestones, stakeholder communication
+- `/ks-project-manager` — task decomposition, tracking, boards
+- `/ks-notes` — durable notebook capture and repair
+- `/ks-projects` — project lifecycle workflows
 
 Each skill folder colocates its conventions, role definitions, and DeepWork
 routing so all relevant context arrives together.
@@ -61,7 +61,7 @@ skills:
 
 At generation time, the sync script reads these lists and copies convention
 files into each skill directory alongside `SKILL.md`. This means when
-`/ks.engineer` is activated, the LLM receives all engineering conventions
+`/ks-engineer` is activated, the LLM receives all engineering conventions
 without them being pre-loaded in the instruction file.
 
 ### All four CLIs use skills
@@ -129,13 +129,13 @@ The set of published skills depends on resolved capabilities:
 | Capability | Skills enabled |
 |-----------|---------------|
 | `ks` (always) | `/ks` |
-| `notes` (default) | `/ks.notes` |
-| `project` (default) | `/ks.projects` |
-| `engineer` (archetype) | `/ks.engineer` |
-| `product` (archetype) | `/ks.product` |
-| `project-manager` (explicit) | `/ks.pm` |
-| `executive-assistant` (explicit) | `/ks.ea` |
-| `ks-dev` (dev mode only) | `/ks.dev` |
+| `notes` (default) | `/ks-notes` |
+| `project` (default) | `/ks-projects` |
+| `engineer` (archetype) | `/ks-engineer` |
+| `product` (archetype) | `/ks-product` |
+| `project-manager` (explicit) | `/ks-project-manager` |
+| `executive-assistant` (explicit) | `/ks-ea` |
+| `ks-dev` (dev mode only) | `/ks-dev` |
 
 Capabilities merge from base defaults, archetype defaults (e.g., `engineer`
 archetype auto-enables the `engineer` capability), explicit

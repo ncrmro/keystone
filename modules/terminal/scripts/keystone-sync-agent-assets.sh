@@ -210,23 +210,23 @@ EOF
 
 command_display_name() {
   case "$1" in
-    ks.system) printf '%s' "KS System" ;;
-    ks.assistant) printf '%s' "KS Assistant" ;;
-    ks.notes) printf '%s' "KS Notes" ;;
-    ks.projects) printf '%s' "KS Projects" ;;
-    ks.dev) printf '%s' "KS Development" ;;
-    ks.ea) printf '%s' "KS Executive Assistant" ;;
-    ks.engineer) printf '%s' "KS Engineer" ;;
-    ks.product) printf '%s' "KS Product" ;;
-    ks.project-manager) printf '%s' "KS Project Manager" ;;
+    ks-system) printf '%s' "KS System" ;;
+    ks-assistant) printf '%s' "KS Assistant" ;;
+    ks-notes) printf '%s' "KS Notes" ;;
+    ks-projects) printf '%s' "KS Projects" ;;
+    ks-dev) printf '%s' "KS Development" ;;
+    ks-ea) printf '%s' "KS Executive Assistant" ;;
+    ks-engineer) printf '%s' "KS Engineer" ;;
+    ks-product) printf '%s' "KS Product" ;;
+    ks-project-manager) printf '%s' "KS Project Manager" ;;
     *) return 1 ;;
   esac
 }
 
 command_argument_hint() {
   case "$1" in
-    ks.system|ks.assistant|ks.notes|ks.projects|ks.ea|ks.product|ks.project-manager) printf '%s' "<request>" ;;
-    ks.dev|ks.engineer) printf '%s' "<goal>" ;;
+    ks-system|ks-assistant|ks-notes|ks-projects|ks-ea|ks-product|ks-project-manager) printf '%s' "<request>" ;;
+    ks-dev|ks-engineer) printf '%s' "<goal>" ;;
     *) return 1 ;;
   esac
 }
@@ -239,11 +239,11 @@ command_template_name() {
     return
   fi
   case "$1" in
-    ks.system) printf '%s' "ks.template.md" ;;
-    ks.assistant) printf '%s' "ks-assistant.template.md" ;;
-    ks.notes) printf '%s' "ks-notes.template.md" ;;
-    ks.projects) printf '%s' "ks-projects.template.md" ;;
-    ks.dev) printf '%s' "ks-dev.template.md" ;;
+    ks-system) printf '%s' "ks.template.md" ;;
+    ks-assistant) printf '%s' "ks-assistant.template.md" ;;
+    ks-notes) printf '%s' "ks-notes.template.md" ;;
+    ks-projects) printf '%s' "ks-projects.template.md" ;;
+    ks-dev) printf '%s' "ks-dev.template.md" ;;
     *) return 1 ;;
   esac
 }
@@ -256,17 +256,17 @@ command_description() {
     return
   fi
   case "$1" in
-    ks.system)
+    ks-system)
       desc="Keystone system — may start keystone_system/issue or keystone_system/doctor"
       if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
         desc+=", or executive_assistant workflows"
       fi
       printf '%s' "$desc"
       ;;
-    ks.assistant) printf '%s' "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search" ;;
-    ks.notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
-    ks.projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, or project/success" ;;
-    ks.dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
+    ks-assistant) printf '%s' "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search" ;;
+    ks-notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
+    ks-projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, or project/success" ;;
+    ks-dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
     *) return 1 ;;
   esac
 }
@@ -325,31 +325,31 @@ while IFS= read -r repo_name; do
 done < <(json_get_lines '.repos')
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'assistant'; then
-  ks_allowed_routes_lines+=("- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to \`/ks.assistant\` instead of handling directly.")
+  ks_allowed_routes_lines+=("- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to \`/ks-assistant\` instead of handling directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  ks_allowed_routes_lines+=("- Notes workflows (repair, inbox, init, setup): direct the user to \`/ks.notes\` instead of starting a notes workflow directly.")
+  ks_allowed_routes_lines+=("- Notes workflows (repair, inbox, init, setup): direct the user to \`/ks-notes\` instead of starting a notes workflow directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project'; then
-  ks_allowed_routes_lines+=("- Project workflows (onboard, press release, success): direct the user to \`/ks.projects\` instead of starting a project workflow directly.")
+  ks_allowed_routes_lines+=("- Project workflows (onboard, press release, success): direct the user to \`/ks-projects\` instead of starting a project workflow directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
-  ks_allowed_routes_lines+=("- Executive assistant workflows (calendar, inbox, events, portfolio reviews, task coordination): direct the user to \`/ks.ea\` instead of starting executive_assistant workflows directly.")
+  ks_allowed_routes_lines+=("- Executive assistant workflows (calendar, inbox, events, portfolio reviews, task coordination): direct the user to \`/ks-ea\` instead of starting executive_assistant workflows directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'engineer'; then
-  ks_allowed_routes_lines+=("- Engineering workflows (implementation, code review, architecture, CI): direct the user to \`/ks.engineer\` instead of starting engineer workflows directly.")
+  ks_allowed_routes_lines+=("- Engineering workflows (implementation, code review, architecture, CI): direct the user to \`/ks-engineer\` instead of starting engineer workflows directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'product'; then
-  ks_allowed_routes_lines+=("- Product workflows (press releases, milestones, stakeholder communication): direct the user to \`/ks.product\` instead of starting project workflows directly.")
+  ks_allowed_routes_lines+=("- Product workflows (press releases, milestones, stakeholder communication): direct the user to \`/ks-product\` instead of starting project workflows directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project-manager'; then
-  ks_allowed_routes_lines+=("- Project management workflows (task decomposition, tracking, boards): direct the user to \`/ks.pm\` instead of managing tasks directly.")
+  ks_allowed_routes_lines+=("- Project management workflows (task decomposition, tracking, boards): direct the user to \`/ks-project-manager\` instead of managing tasks directly.")
 fi
 
 repo_checkout="$(json_get '.repoCheckout')"

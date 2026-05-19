@@ -367,8 +367,8 @@ directory aside before re-running activation.
 
 ### `modules/terminal/ai-extensions.nix`
 
-1. MUST generate only the curated Keystone command surface by default: `/ks`, optional `/ks.dev`, and `/deepwork`
-2. MUST gate `/ks.dev` on `keystone.development = true`
+1. MUST generate only the curated Keystone command surface by default: `/ks`, optional `/ks-dev`, and `/deepwork`
+2. MUST gate `/ks-dev` on `keystone.development = true`
 3. MUST derive tool-facing descriptions and labels from the generated command definitions
 4. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
 5. MUST render Gemini commands as native TOML rather than Markdown-based skill files

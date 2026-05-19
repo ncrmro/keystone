@@ -6,7 +6,7 @@ Run automated code reviews on the current branch based on `.deepreview` config f
 
 **STOP and redirect** if either of these applies:
 
-- User wants to **configure, create, or modify** review rules (e.g., "add a security review", "set up reviews for our API layer") → use the `configure_reviews` skill instead
+- User wants to **configure, create, or modify** review rules (e.g., "add a security review", "set up reviews for our API layer") → use the `configure-reviews` skill instead
 - User wants to **add a doc-sync rule** (keep a documentation file in sync with source files) → call `start_workflow` with `job_name="deepwork_reviews"` and `workflow_name="add_document_update_rule"`
 
 Only proceed past this section if the user wants to **run** reviews.

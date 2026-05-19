@@ -61,7 +61,7 @@ Keystone-generated skill content is materialized into the consumer flake at
 Home-manager activation symlinks each tool's home-dir subdirectory at the
 corresponding consumer-flake path. Every skill upgrade keystone ships becomes
 a reviewable commit in the user's `keystone-config` repo:
-`git log -p agents/claude/skills/ks.notes/` shows the entire upgrade history
+`git log -p agents/claude/skills/ks-notes/` shows the entire upgrade history
 of a single skill. Rollback is `git revert`; user override is just editing the
 file and committing — keystone's regen will overwrite on next run, the user's
 `git checkout` restores their version.

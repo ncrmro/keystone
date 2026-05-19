@@ -143,7 +143,7 @@ let
           description = ''
             Extra Keystone AI workflow capabilities for this user. These
             capabilities are merged with default terminal capabilities and
-            determine what the generated `/ks` and `/ks.dev` commands may do.
+            determine what the generated `/ks` and `/ks-dev` commands may do.
           '';
           example = [
             "notes"
