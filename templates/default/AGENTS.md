@@ -14,6 +14,11 @@ for orientation.
 These docs are owned by this repo, safe to edit, and worth reading **before**
 reasoning from scratch when a question falls in their scope:
 
+- [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md) —
+  how the consumer flake is organized: scopes (fleet-wide vs per-host,
+  system vs user), the NixOS-vs-Home-Manager boundary, where each kind of
+  program install belongs, and links to upstream Nix docs for the
+  fundamentals keystone deliberately doesn't re-explain.
 - [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
   walkthrough from `nix flake new` to a fully secured first host. Numbered
   steps, each with Goal → Edit → Run → Verify → If-it-fails.

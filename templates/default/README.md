@@ -44,27 +44,17 @@ If you'd rather see the existing `TODO:` markers up front:
 grep -RIn "TODO:" flake.nix hosts/
 ```
 
-## File layout
+## How this repo is organized
 
-- `flake.nix` — single `mkSystemFlake` call: owner/defaults, shared module
-  hooks, global `keystoneServices`, and the `hosts` inventory
-- `hosts/laptop/` — laptop-specific Linux files
-- `hosts/server/` — server-specific Linux files
-- `hosts/macbook/` — optional macOS Home Manager overrides (no NixOS system)
-- `hosts/<name>/hardware.nix` — optional Linux hardware metadata and
-  machine-specific module
-- `hosts/<name>/configuration.nix` — optional host-only overrides
-- `secrets/` and `secrets.nix` — agenix-encrypted secrets (empty until
-  Step 8 of onboarding)
-- `docs/keystone/` — onboarding walkthrough, GitHub PAT setup, build + burn
-  reference. **Edit the docs freely** — they live in your repo, not upstream.
-
-`server` is just an example name. Rename to anything that fits — make sure
-the entry in `flake.nix` `hosts = { ... }` and the directory under `hosts/`
-match.
+See [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md)
+for the mental model — scopes (fleet vs per-host, system vs user), where
+to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
 
 ## Included docs
 
+- [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md) —
+  mental model for this repo: scopes, NixOS vs Home Manager, where to
+  install programs, when to drop down to vanilla Nix.
 - [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
   walkthrough from `nix flake new` to a fully secured first host.
 - [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
