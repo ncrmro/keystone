@@ -7,11 +7,14 @@ nix flake new -t github:ncrmro/keystone keystone-config
 cd keystone-config
 ```
 
-The starter flake defines one shared Keystone system config and a `hosts`
-inventory. Keystone expands that inventory into:
+The starter `flake.nix` is one call to `keystone.lib.mkSystemFlake`: you
+declare owner identity, fleet-wide defaults, shared modules, and a `hosts`
+inventory, and the helper expands that into the standard flake outputs:
 
-- `nixosConfigurations` for Linux hosts
-- `homeConfigurations` for macOS hosts
+- `nixosConfigurations.<host>` for every Linux host
+- `homeConfigurations.<host>` for every macOS (`kind = "macbook"`) host
+- `packages.<system>.iso` — one installer ISO covering every Linux host
+- `packages.<system>.vm-image-<host>` — direct-boot qcow2 images per host
 
 That keeps `flake.nix` short while still making the important host choices
 easy to scan.
@@ -34,10 +37,28 @@ If you'd rather see the existing `TODO:` markers up front:
 grep -RIn "TODO:" flake.nix hosts/
 ```
 
+## `mkSystemFlake` at a glance
+
+The arguments you'll set in `flake.nix`:
+
+| Argument | Purpose |
+|---|---|
+| `admin` | Single source of truth for the admin user (`username`, `fullName`, `email`, `initialPassword`, `sshKeys`). Every host inherits this identity. |
+| `defaults` | Fleet-wide defaults — `timeZone`, `updateChannel` (`"stable"` or `"unstable"`). |
+| `hostsRoot` | Directory containing per-host subdirectories. The template uses `./hosts`. |
+| `shared.userModules` | Home Manager modules applied to every user on every host. |
+| `shared.systemModules` | NixOS modules applied OS-wide on every host. |
+| `shared.desktopUserModules` | Home Manager modules applied per-user on desktop hosts (laptop, workstation) only. |
+| `keystoneServices` | Global service → host wiring (`git.host = "server";`, `mail.host = "server";`, …). Keystone validates each `*.host` matches a declared host, then auto-enables both the server and any clients. |
+| `hosts` | Attrset of `<name> = { kind = "laptop" \| "workstation" \| "server" \| "macbook"; … };`. Each entry pulls `hosts/<name>/configuration.nix` and (for Linux) `hosts/<name>/hardware.nix` automatically. |
+
+The helper implementation lives at `keystone/lib/templates.nix` if you need
+to see exactly how the inventory becomes flake outputs.
+
 ## File layout
 
-- `flake.nix` — shared owner/defaults, shared module hooks, global
-  `keystoneServices`, and the `hosts` inventory
+- `flake.nix` — single `mkSystemFlake` call: owner/defaults, shared module
+  hooks, global `keystoneServices`, and the `hosts` inventory
 - `hosts/laptop/` — laptop-specific Linux files
 - `hosts/server/` — server-specific Linux files
 - `hosts/macbook/` — optional macOS Home Manager overrides (no NixOS system)
