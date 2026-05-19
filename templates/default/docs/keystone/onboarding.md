@@ -43,8 +43,10 @@ Every numbered step below uses the same anatomy:
 ## Step 0 — Decide your hosts
 
 **Goal:** Pick the first host you want to bring up. This walkthrough scaffolds a
-`laptop`. If you only need a server, use the `server-ocean` host instead — the
-flow is the same, just substitute the name.
+`laptop`. If you only need a server, use the `server` host instead — the
+flow is the same, just substitute the name. The shipped `macbook` host is a
+Home Manager-only target (no NixOS system, no ISO); see
+`hosts/macbook/configuration.nix` for that flow.
 
 **Edit:** Nothing yet.
 
@@ -52,7 +54,7 @@ flow is the same, just substitute the name.
 
 ```bash
 ls hosts/
-# laptop  macbook  server-ocean
+# laptop  macbook  server
 ```
 
 **Verify:** You can name the one host you'll bring up first.

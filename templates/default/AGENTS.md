@@ -13,9 +13,13 @@ for orientation.
 
 - `flake.nix` — the only file most changes touch. Owner identity, defaults,
   shared modules, `keystoneServices`, and the `hosts` inventory.
-- `hosts/<name>/configuration.nix` — host-only NixOS overrides. **These are
-  NixOS modules, not Home Manager modules.**
+- `hosts/<name>/configuration.nix` — host-only overrides. For Linux hosts
+  (`laptop` / `workstation` / `server`) this is a **NixOS module**. For
+  macOS hosts (`kind = "macbook"`) it's a **Home Manager module** — no NixOS
+  system, no agenix, just user-scope packages and dotfiles. The file in
+  `hosts/macbook/configuration.nix` documents the boundary.
 - `hosts/<name>/hardware.nix` — disk IDs, hostId, machine-specific knobs.
+  Linux hosts only; macbook has no hardware.nix.
 - `secrets/*.age` + `secrets.nix` — agenix-encrypted secrets and their
   recipient lists. `secrets/` is empty by default; you only populate it from
   Step 8 of onboarding onward.
@@ -42,9 +46,9 @@ Linux host in `flake.nix`. There is no per-host ISO output. Specifically:
 
 ## Conventions worth knowing before you edit
 
-**Host configs are NixOS modules.** When you wire up shell init, environment
-variables, services, etc. in `hosts/<name>/configuration.nix`, use NixOS option
-names:
+**Linux host configs are NixOS modules.** When you wire up shell init,
+environment variables, services, etc. in `hosts/<name>/configuration.nix` for
+a Linux host, use NixOS option names:
 
 - `programs.zsh.interactiveShellInit` (or `environment.interactiveShellInit`
   for shell-agnostic) — **not** `programs.zsh.initExtra`. The latter is a Home

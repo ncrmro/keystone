@@ -26,7 +26,7 @@
 #   # on first systemd-machined run).
 #   systems = {
 #     # laptop = "age1...";
-#     # server-ocean = "age1...";
+#     # server = "age1...";
 #   };
 #
 #   adminKeys = builtins.attrValues users;

@@ -39,8 +39,8 @@ grep -RIn "TODO:" flake.nix hosts/
 - `flake.nix` — shared owner/defaults, shared module hooks, global
   `keystoneServices`, and the `hosts` inventory
 - `hosts/laptop/` — laptop-specific Linux files
-- `hosts/server-ocean/` — server-specific Linux files
-- `hosts/macbook/` — optional macOS Home Manager overrides
+- `hosts/server/` — server-specific Linux files
+- `hosts/macbook/` — optional macOS Home Manager overrides (no NixOS system)
 - `hosts/<name>/hardware.nix` — optional Linux hardware metadata and
   machine-specific module
 - `hosts/<name>/configuration.nix` — optional host-only overrides
@@ -49,7 +49,9 @@ grep -RIn "TODO:" flake.nix hosts/
 - `docs/keystone/` — onboarding walkthrough, GitHub PAT setup, build + burn
   reference. **Edit the docs freely** — they live in your repo, not upstream.
 
-`server-ocean` is just an example name. Rename to anything that fits.
+`server` is just an example name. Rename to anything that fits — make sure
+the entry in `flake.nix` `hosts = { ... }` and the directory under `hosts/`
+match.
 
 ## Included docs
 

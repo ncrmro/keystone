@@ -98,8 +98,8 @@
         # then the matching machine auto-enables the corresponding service.
         #
         # Examples:
-        # git.host = "server-ocean";
-        # mail.host = "server-ocean";
+        # git.host = "server";
+        # mail.host = "server";
       };
 
       # Each block below represents a single host in this Keystone system.
@@ -124,11 +124,21 @@
         # ----------------------------------------------------------------------
         # Server config
         # ----------------------------------------------------------------------
-        server-ocean = {
+        server = {
           kind = "server";
-          hostname = "server-ocean"; # Example only. Rename this host to anything you want.
+          hostname = "server"; # Rename this host to anything you want — match hosts/<name>/.
         };
 
+        # ----------------------------------------------------------------------
+        # Macbook config — Home Manager only, no NixOS system.
+        #
+        # `kind = "macbook"` makes mkSystemFlake emit a `homeConfigurations.<name>`
+        # output (not `nixosConfigurations`). The macbook host has no
+        # hardware.nix, no system services, no agenix — it's just Home Manager
+        # packages + dotfiles for a user on someone else's macOS install.
+        # See hosts/macbook/configuration.nix for the module shape and deploy
+        # command.
+        # ----------------------------------------------------------------------
         macbook = {
           kind = "macbook";
         };
