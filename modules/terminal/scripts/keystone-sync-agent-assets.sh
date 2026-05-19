@@ -12,9 +12,17 @@ usage() {
 Usage: keystone-sync-agent-assets
 
 Refresh generated Keystone agent assets for the current user from the current
-profile manifest. All content is written into the consumer flake at
-<consumer-flake>/agents/ — never directly to $HOME (except ~/.keystone/AGENTS.md
-and ~/.config/opencode/AGENTS.md which remain home-manager-managed).
+profile manifest. Most content is written into the consumer flake at
+<consumer-flake>/agents/. Two files in the home dir are also (re)written
+unconditionally on every run:
+
+  ~/.keystone/AGENTS.md          host-rendered conventions copy
+  ~/.config/opencode/AGENTS.md   same content; OpenCode reads it natively
+
+The locked-mode home-manager activation in
+modules/terminal/conventions.nix also writes these via `home.file.text` for
+hosts without the dev-mode script entry point. The two paths produce the
+same content, so either order of activation + manual sync converges.
 
 The committed canonical surface:
 
@@ -137,22 +145,6 @@ render_template() {
   printf '%s\n' "$content"
 }
 
-render_frontmatter() {
-  local name="$1"
-  local description="$2"
-  local argument_hint="$3"
-  local display_name="$4"
-
-  cat <<EOF
----
-name: $(yaml_quote "$name")
-description: $(yaml_quote "$description")
-argument-hint: $(yaml_quote "$argument_hint")
-display-name: $(yaml_quote "$display_name")
----
-EOF
-}
-
 render_skill_md() {
   local name="$1"
   local description="$2"
@@ -166,29 +158,6 @@ description: "$(printf '%s' "$description" | sed 's/"/\\"/g')"
 
 $body
 EOF
-}
-
-command_display_name() {
-  case "$1" in
-    ks-system) printf '%s' "KS System" ;;
-    ks-assistant) printf '%s' "KS Assistant" ;;
-    ks-notes) printf '%s' "KS Notes" ;;
-    ks-projects) printf '%s' "KS Projects" ;;
-    ks-dev) printf '%s' "KS Development" ;;
-    ks-ea) printf '%s' "KS Executive Assistant" ;;
-    ks-engineer) printf '%s' "KS Engineer" ;;
-    ks-product) printf '%s' "KS Product" ;;
-    ks-project-manager) printf '%s' "KS Project Manager" ;;
-    *) return 1 ;;
-  esac
-}
-
-command_argument_hint() {
-  case "$1" in
-    ks-system|ks-assistant|ks-notes|ks-projects|ks-ea|ks-product|ks-project-manager) printf '%s' "<request>" ;;
-    ks-dev|ks-engineer) printf '%s' "<goal>" ;;
-    *) return 1 ;;
-  esac
 }
 
 command_template_name() {
@@ -231,18 +200,6 @@ command_description() {
   esac
 }
 
-# Derive a codex display name from the skill key. Falls back to title-casing
-# the key after splitting on `.`, `_`, and `-` when no explicit mapping exists.
-skill_display_name() {
-  local key="$1"
-  local dn
-  if dn="$(command_display_name "$key" 2>/dev/null)"; then
-    printf '%s' "$dn"
-    return
-  fi
-  printf '%s' "$key" | tr '._-' '   ' | sed -E 's/(^|[[:space:]])([a-z])/\1\U\2/g'
-}
-
 # Colocate conventions and roles for a skill. Each unique source file is
 # written once to `<consumer-flake>/agents/_shared/conventions/<name>.md`
 # (the central, deduplicated copy), then a symlink is created from the
@@ -264,6 +221,7 @@ colocate_skill_conventions() {
       canonical_file="${canonical_dir}/${conv_name}.md"
       write_file "$canonical_file" "$(cat "$src_file")"
       ln -snf "../../_shared/conventions/${conv_name}.md" "${target_dir}/${conv_name}.md"
+      canonical_conventions_used[$conv_name]=1
     fi
   done < <(jq -r --arg k "$skill_key" '.[$k].colocated_conventions[]? // empty' <<< "$merged_skills_json")
 
@@ -274,6 +232,7 @@ colocate_skill_conventions() {
       canonical_file="${canonical_dir}/${conv_name}.md"
       write_file "$canonical_file" "$(cat "$src_file")"
       ln -snf "../../_shared/conventions/${conv_name}.md" "${target_dir}/${conv_name}.md"
+      canonical_conventions_used[$conv_name]=1
     fi
   done < <(jq -r --arg k "$skill_key" '.[$k].colocated_roles[]? // empty' <<< "$merged_skills_json")
 }
@@ -353,15 +312,19 @@ if [[ ! -f "$archetypes_file" ]]; then
 fi
 
 # Build the effective skill map: keystone defaults + optional consumer-flake
-# overrides. User keys win wholesale (jq's `+` on objects replaces by key, no
-# deep merge — KISS over field-level inheritance).
+# overrides. Field-level merge (jq's `*` operator): missing user fields fall
+# back to keystone defaults, explicit user fields override per-field. This
+# lets a user override just `description` or `colocated_conventions` for a
+# built-in skill without having to repeat `template` (which would otherwise
+# fall back to a derived name like `ks-engineer-skill.template.md` that
+# doesn't exist, silently dropping the skill).
 keystone_skills_json="$(yq -o json '.skills // {}' "$archetypes_file")"
 if [[ -f "$USER_SKILLS_YAML" ]]; then
   user_skills_json="$(yq -o json '.skills // {}' "$USER_SKILLS_YAML")"
 else
   user_skills_json='{}'
 fi
-merged_skills_json="$(jq -n --argjson a "$keystone_skills_json" --argjson b "$user_skills_json" '$a + $b')"
+merged_skills_json="$(jq -n --argjson a "$keystone_skills_json" --argjson b "$user_skills_json" '$a * $b')"
 
 capabilities_display="_none_"
 if [[ ${#resolved_capabilities[@]} -gt 0 ]]; then
@@ -512,6 +475,25 @@ for command_id in "${published_commands[@]}"; do
   fi
 done
 
+# Prune stale skill directories before rendering. A skill that was emitted
+# on a previous sync but is no longer in the merged map (user removed it
+# from `_shared/skills.yaml`) or no longer in `publishedCommands` (host
+# capability set changed) must be removed from the consumer flake — the
+# files would otherwise stay tracked and discoverable. Idempotent.
+if [[ -d "$CANONICAL_SKILLS_DEST" ]]; then
+  while IFS= read -r -d '' existing_dir; do
+    skill_name="$(basename "$existing_dir")"
+    if [[ -z "${seen_skills[$skill_name]:-}" ]]; then
+      rm -rf "$existing_dir"
+    fi
+  done < <(find "$CANONICAL_SKILLS_DEST" -mindepth 1 -maxdepth 1 -type d -print0)
+fi
+
+# Track which canonical convention files this sync will emit, so the
+# colocate helper can prune stale ones afterwards. The set is populated as
+# colocate_skill_conventions writes files.
+declare -A canonical_conventions_used=()
+
 # Render each skill once into the canonical agents/skills/<name>/ tree.
 # Claude reads it via `~/.claude/skills` → consumer-flake/agents/skills/
 # symlink; Codex/Gemini/Copilot/Cursor/Kiro/OpenCode/Augment read it via
@@ -536,6 +518,20 @@ for skill_key in "${skills_to_emit[@]}"; do
   write_file "$CANONICAL_SKILLS_DEST/${skill_key}/SKILL.md" "$skill_md"
   colocate_skill_conventions "$skill_key" "$CANONICAL_SKILLS_DEST/${skill_key}"
 done
+
+# Prune stale canonical conventions. Any .md file under
+# `_shared/conventions/` that was NOT written by this sync (no longer
+# referenced by any emitted skill's colocated_conventions / colocated_roles)
+# is removed. README.md is excluded — it's re-rendered below regardless.
+if [[ -d "$CONSUMER_FLAKE_SHARED/conventions" ]]; then
+  while IFS= read -r -d '' existing_file; do
+    base_name="$(basename "$existing_file" .md)"
+    [[ "$(basename "$existing_file")" == "README.md" ]] && continue
+    if [[ -z "${canonical_conventions_used[$base_name]:-}" ]]; then
+      rm -f "$existing_file"
+    fi
+  done < <(find "$CONSUMER_FLAKE_SHARED/conventions" -mindepth 1 -maxdepth 1 -type f -name '*.md' -print0)
+fi
 
 # README emission. Every managed directory under `agents/` gets a README
 # explaining its purpose, layout, and how tools consume it. Re-written on
