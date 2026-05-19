@@ -243,42 +243,6 @@ skill_display_name() {
   printf '%s' "$key" | tr '._-' '   ' | sed -E 's/(^|[[:space:]])([a-z])/\1\U\2/g'
 }
 
-# Extract the description line from a role file. Expected structure:
-#   # <Title>
-#   [optional blank line]
-#   <one-line description>
-#   ...
-# Returns the first non-empty content line after the H1 heading.
-extract_role_description() {
-  awk '/^# /{found=1; next} found && NF{print; exit}' "$1"
-}
-
-# Write a Claude subagent file at <consumer-flake>/agents/claude/agents/<name>.md.
-# Wraps the source role body with the Claude subagent frontmatter
-# (name + description). Claude's Task tool discovers subagents from this
-# directory and uses the `description` field to decide when to delegate.
-write_claude_subagent() {
-  local role_name="$1"
-  local src_file="$2"
-  local description body content
-
-  description="$(extract_role_description "$src_file")"
-  body="$(cat "$src_file")"
-
-  content="$(
-    cat <<EOF
----
-name: $role_name
-description: $(yaml_quote "$description")
----
-
-$body
-EOF
-  )"
-
-  write_file "$CONSUMER_FLAKE_AGENTS/claude/agents/${role_name}.md" "$content"
-}
-
 # Colocate conventions and roles for a skill. Each unique source file is
 # written once to `<consumer-flake>/agents/_shared/conventions/<name>.md`
 # (the central, deduplicated copy), then a symlink is created from the
@@ -571,23 +535,4 @@ for skill_key in "${skills_to_emit[@]}"; do
   skill_md="$(render_skill_md "$skill_key" "$description" "$command_body")"
   write_file "$CANONICAL_SKILLS_DEST/${skill_key}/SKILL.md" "$skill_md"
   colocate_skill_conventions "$skill_key" "$CANONICAL_SKILLS_DEST/${skill_key}"
-done
-
-# Emit Claude subagents for every role colocated by an emitted skill. Each
-# role file from conventions/roles/<name>.md is wrapped with Claude subagent
-# frontmatter (name + description) and written to
-# `<consumer-flake>/agents/claude/agents/<name>.md`. The home-manager
-# activation symlinks `~/.claude/agents/` to that dir. Deduped: a role
-# referenced by multiple skills produces exactly one subagent file.
-declare -A written_subagents=()
-for skill_key in "${skills_to_emit[@]}"; do
-  while IFS= read -r role_name; do
-    [[ -z "$role_name" ]] && continue
-    [[ -n "${written_subagents[$role_name]:-}" ]] && continue
-    src_file="$conventions_dir/roles/${role_name}.md"
-    if [[ -f "$src_file" ]]; then
-      write_claude_subagent "$role_name" "$src_file"
-      written_subagents[$role_name]=1
-    fi
-  done < <(jq -r --arg k "$skill_key" '.[$k].colocated_roles[]? // empty' <<< "$merged_skills_json")
 done
