@@ -315,12 +315,8 @@ let
             # nothing real changed. `nix-gitignore.gitignoreSource` does not
             # reliably exclude symlinks-to-store (a `result` symlink survives
             # its filter), so use `builtins.path` with an explicit predicate.
-            shouldKeep =
-              path: type:
-              let
-                baseName = baseNameOf (toString path);
-              in
-              !(builtins.elem baseName [
+            ignoredBaseNames = {
+              exact = [
                 "result"
                 "installer-iso"
                 ".direnv"
@@ -328,13 +324,23 @@ let
                 ".gemini"
                 ".DS_Store"
                 "Thumbs.db"
-              ])
-              && !(lib.hasPrefix "result-" baseName)
-              && !(lib.hasPrefix ".test-iso" baseName)
-              && !(lib.hasSuffix ".iso" baseName)
-              && !(lib.hasSuffix ".swp" baseName)
-              && !(lib.hasSuffix ".swo" baseName)
-              && !(lib.hasSuffix "~" baseName);
+              ];
+              prefix = [
+                "result-"
+                ".test-iso"
+              ];
+              suffix = [
+                ".iso"
+                ".swp"
+                ".swo"
+                "~"
+              ];
+            };
+            isTransientArtifact =
+              baseName:
+              builtins.elem baseName ignoredBaseNames.exact
+              || lib.any (p: lib.hasPrefix p baseName) ignoredBaseNames.prefix
+              || lib.any (s: lib.hasSuffix s baseName) ignoredBaseNames.suffix;
             repoSource =
               if repoPath == null then
                 null
@@ -342,7 +348,7 @@ let
                 builtins.path {
                   path = repoPath;
                   name = "${repoName}-source";
-                  filter = shouldKeep;
+                  filter = path: _: !(isTransientArtifact (baseNameOf (toString path)));
                 };
 
             installRepo =
