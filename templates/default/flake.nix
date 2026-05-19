@@ -126,7 +126,10 @@
         # ----------------------------------------------------------------------
         server = {
           kind = "server";
-          hostname = "server"; # Rename this host to anything you want — match hosts/<name>/.
+          # The host attribute name above is also the hostname by default.
+          # Rename `server` to whatever fits — keep the directory under
+          # hosts/<name>/ in sync. Override only if hostname must differ
+          # from the attribute name: `hostname = "...";`.
         };
 
         # ----------------------------------------------------------------------
