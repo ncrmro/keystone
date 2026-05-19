@@ -243,23 +243,38 @@ skill_display_name() {
   printf '%s' "$key" | tr '._-' '   ' | sed -E 's/(^|[[:space:]])([a-z])/\1\U\2/g'
 }
 
-# Copy colocated conventions and roles into a skill directory. Reads from the
-# merged skill map (keystone defaults + optional consumer-flake overrides).
+# Colocate conventions and roles for a skill. Each unique source file is
+# written once to `<consumer-flake>/agents/_shared/conventions/<name>.md`
+# (the central, deduplicated copy), then a symlink is created from the
+# skill directory pointing at the central file. Multiple skills referencing
+# the same convention end up with separate symlinks to the same canonical
+# file, instead of duplicated bytes across skill dirs.
 colocate_skill_conventions() {
   local skill_key="$1"
   local target_dir="$2"
-  local conv_name src_file
+  local canonical_dir="$CONSUMER_FLAKE_SHARED/conventions"
+  local conv_name src_file canonical_file
+
+  mkdir -p "$target_dir"
 
   while IFS= read -r conv_name; do
     [[ -z "$conv_name" ]] && continue
     src_file="$conventions_dir/${conv_name}.md"
-    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+    if [[ -f "$src_file" ]]; then
+      canonical_file="${canonical_dir}/${conv_name}.md"
+      write_file "$canonical_file" "$(cat "$src_file")"
+      ln -snf "../../_shared/conventions/${conv_name}.md" "${target_dir}/${conv_name}.md"
+    fi
   done < <(jq -r --arg k "$skill_key" '.[$k].colocated_conventions[]? // empty' <<< "$merged_skills_json")
 
   while IFS= read -r conv_name; do
     [[ -z "$conv_name" ]] && continue
     src_file="$conventions_dir/roles/${conv_name}.md"
-    [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
+    if [[ -f "$src_file" ]]; then
+      canonical_file="${canonical_dir}/${conv_name}.md"
+      write_file "$canonical_file" "$(cat "$src_file")"
+      ln -snf "../../_shared/conventions/${conv_name}.md" "${target_dir}/${conv_name}.md"
+    fi
   done < <(jq -r --arg k "$skill_key" '.[$k].colocated_roles[]? // empty' <<< "$merged_skills_json")
 }
 
