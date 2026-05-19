@@ -307,40 +307,43 @@ let
         (
           { pkgs, ... }:
           let
-            installerRepoExtraIgnores = [
-              "result"
-              "result-*"
-              "installer-iso"
-              ".test-iso*"
-              "*.iso"
-              ".direnv/"
-              ".vscode/"
-              ".gemini/"
-              "*.swp"
-              "*.swo"
-              "*~"
-              ".DS_Store"
-              "Thumbs.db"
-            ];
-
+            # Drop transient build artifacts (esp. `result` symlinks left by
+            # `nix build`) from the snapshot the installer captures. Without
+            # this, every rebuild rotates the consumer-flake source narHash,
+            # which rotates `repoSource` → `closure-info` → the ISO drv,
+            # making the ISO byte-non-reproducible across builds even when
+            # nothing real changed. `nix-gitignore.gitignoreSource` does not
+            # reliably exclude symlinks-to-store (a `result` symlink survives
+            # its filter), so use `builtins.path` with an explicit predicate.
+            shouldKeep =
+              path: type:
+              let
+                baseName = baseNameOf (toString path);
+              in
+              !(builtins.elem baseName [
+                "result"
+                "installer-iso"
+                ".direnv"
+                ".vscode"
+                ".gemini"
+                ".DS_Store"
+                "Thumbs.db"
+              ])
+              && !(lib.hasPrefix "result-" baseName)
+              && !(lib.hasPrefix ".test-iso" baseName)
+              && !(lib.hasSuffix ".iso" baseName)
+              && !(lib.hasSuffix ".swp" baseName)
+              && !(lib.hasSuffix ".swo" baseName)
+              && !(lib.hasSuffix "~" baseName);
             repoSource =
               if repoPath == null then
                 null
               else
-                # Do not import the raw repo root with builtins.path.
-                #
-                # That eagerly copies every reachable file into the store before
-                # the installer snapshot logic runs, including large ignored VM
-                # artifacts like .test-iso-disk.raw. In practice that makes
-                # dev-mode ISO builds traverse local QEMU disks and other junk
-                # that should never be embedded in the live image.
-                #
-                # Instead, snapshot a gitignore-filtered working tree up front,
-                # then synthesize a fresh single-commit repo below for the ISO.
-                # gitignoreSource also loads repoPath/.gitignore automatically,
-                # so generated template repos keep their shared ignore rules
-                # while these extra patterns cover transient local build output.
-                pkgs.nix-gitignore.gitignoreSource installerRepoExtraIgnores repoPath;
+                builtins.path {
+                  path = repoPath;
+                  name = "${repoName}-source";
+                  filter = shouldKeep;
+                };
 
             installRepo =
               if repoSource == null then
