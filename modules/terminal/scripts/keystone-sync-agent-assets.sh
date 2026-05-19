@@ -20,8 +20,11 @@ consumer-flake path.
 The canonical instruction file is written once to
 <consumer-flake>/agents/_shared/AGENTS.md and each per-tool instruction
 filename (CLAUDE.md, GEMINI.md, codex AGENTS.md) is a symlink pointing at
-it. Consumer flakes commit _shared/AGENTS.md and gitignore the per-tool
-dirs (which contain only the symlink plus the rendered skills tree).
+it. Skill bodies and their colocated conventions/roles are written
+canonically to <consumer-flake>/agents/_shared/skills/<key>/ so they're
+reviewable as one copy per skill, not three. Consumer flakes commit
+_shared/ and gitignore the per-tool dirs (which contain gitignored
+rendered copies plus codex's hyphenated-name fan-out).
 
 The merged skill map is built from conventions/archetypes.yaml.skills
 (keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
@@ -66,6 +69,11 @@ fi
 
 CONSUMER_FLAKE_AGENTS="$consumer_flake_root/agents"
 CONSUMER_FLAKE_SHARED="$CONSUMER_FLAKE_AGENTS/_shared"
+# Canonical (committed) skill content. Claude and Gemini receive identical
+# SKILL.md content, so a single committed body per skill lives here and is
+# review-traceable in the consumer flake. Codex needs hyphenated names and a
+# skill-invocation footer, so its rendering stays in the gitignored codex dir.
+SHARED_SKILLS_DEST="$CONSUMER_FLAKE_SHARED/skills"
 CLAUDE_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/claude/skills"
 GEMINI_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/gemini/skills"
 CODEX_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/codex/skills"
@@ -569,6 +577,16 @@ for skill_key in "${skills_to_emit[@]}"; do
   fi
 
   shared_skill_md="$(render_skill_md "$skill_key" "$description" "$command_body")"
+  # Canonical committed skill body — Claude and Gemini get the identical
+  # content rendered into their per-tool dirs (gitignored), but the
+  # source-of-truth committed file lives here.
+  write_file "$SHARED_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
+  colocate_skill_conventions "$skill_key" "$SHARED_SKILLS_DEST/${skill_key}"
+
+  # Per-tool rendered copies (gitignored). Identical content to the canonical
+  # `_shared/skills/<key>/` tree; emitted so each tool's loader (which reads
+  # under its own `~/.<tool>/skills/<key>/`) finds the files at the path it
+  # expects without traversing into `_shared/`.
   write_file "$CLAUDE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
   write_file "$GEMINI_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
   write_file "$OPENCODE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
