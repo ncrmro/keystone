@@ -59,7 +59,7 @@ test-integration: ## Run integration tests
 
 test-template: ## Validate flake template evaluates correctly
 	@echo "🧪 Testing flake template..."
-	@cd templates/default && nix flake check --no-build
+	@cd templates/default && nix flake check --no-build --override-input keystone "path:$(CURDIR)"
 	@echo "✅ Template validation passed"
 
 test-template-eval: ## Evaluate template configs (TUI output contract)
