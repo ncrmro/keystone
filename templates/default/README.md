@@ -60,7 +60,7 @@ to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
 - [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
   `keystone.lib.mkSystemFlake`: every argument it accepts and every output
   it produces.
-- [`docs/keystone/build-and-burn.md`](docs/keystone/build-and-burn.md) — build
+- [`docs/keystone/os-installer.md`](docs/keystone/os-installer.md) — build
   the installer ISO and write it to USB (Linux + macOS + Windows).
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
   an agenix-encrypted GitHub PAT to avoid rate-limit 403s.

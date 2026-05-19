@@ -27,7 +27,7 @@ reasoning from scratch when a question falls in their scope:
   `defaults`, `hostsRoot`, `shared.*`, `keystoneServices`, `hosts`) and every
   output it produces (`nixosConfigurations`, `homeConfigurations`,
   `packages.<system>.iso`, …).
-- [`docs/keystone/build-and-burn.md`](docs/keystone/build-and-burn.md) — build
+- [`docs/keystone/os-installer.md`](docs/keystone/os-installer.md) — build
   the installer ISO and write it to USB. Cross-platform notes for Linux,
   macOS, and Windows drivers.
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
@@ -57,7 +57,7 @@ reasoning from scratch when a question falls in their scope:
 - `secrets/*.age` + `secrets.nix` — agenix-encrypted secrets and their
   recipient lists. `secrets/` is empty by default; you only populate it from
   Step 8 of onboarding onward.
-- `docs/keystone/` — the onboarding spine, the build-and-burn reference, the
+- `docs/keystone/` — the onboarding spine, the OS-installer reference, the
   GitHub-PAT setup. Owned by this repo; edit freely.
 - `bin/` — repo-local scripts. The shipped `bin/test-iso` is keystone's
   installer-ISO smoke test.

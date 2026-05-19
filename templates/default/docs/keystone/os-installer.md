@@ -1,12 +1,13 @@
 ---
-title: Build and burn the installer ISO
-description: Build the Keystone installer ISO for your host and write it to a USB stick
+title: OS installer — build the ISO and write it to USB
+description: Build the Keystone installer ISO from this flake and write it to a USB stick on Linux, macOS, or Windows
 ---
 
-# Build and burn the installer ISO
+# OS installer
 
-Companion to [`onboarding.md`](onboarding.md) steps 3–4. Pick the section that
-matches your driver's OS.
+Companion to [`onboarding.md`](onboarding.md) steps 3–4. Build the
+Keystone installer ISO from this flake and write it to a USB stick. Pick
+the section that matches your driver's OS.
 
 ## Build the ISO
 

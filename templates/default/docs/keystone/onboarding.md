@@ -155,7 +155,7 @@ accident. The public key starts with `ssh-` and is a single line.
 
 **Goal:** Produce a bootable ISO at `result/iso/` with your SSH key embedded.
 
-See [`build-and-burn.md`](build-and-burn.md) for cross-platform notes (building
+See [`os-installer.md`](os-installer.md) for cross-platform notes (building
 an x86_64-linux ISO from an aarch64-darwin MacBook needs a remote builder or
 relies on Hydra cache hits).
 
@@ -188,7 +188,7 @@ build on a host that already has it (e.g. another keystone machine).
 
 **Goal:** Write `result/iso/*.iso` to a USB stick.
 
-See [`build-and-burn.md`](build-and-burn.md) for the full commands. Summary:
+See [`os-installer.md`](os-installer.md) for the full commands. Summary:
 
 - **Linux:** `lsblk` → identify the USB device → `sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress conv=fsync && sync`
 - **macOS:** `diskutil list` → `diskutil unmountDisk /dev/diskN` → `sudo dd if=result/iso/*.iso of=/dev/rdiskN bs=4m status=progress && sync`
