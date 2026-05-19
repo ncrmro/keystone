@@ -128,14 +128,21 @@ The set of published skills depends on resolved capabilities:
 
 | Capability | Skills enabled |
 |-----------|---------------|
-| `ks` (always) | `/ks` |
-| `notes` (default) | `/ks-notes` |
+| (always — no capability gate) | `/ks-system` |
+| `assistant` (default) | `/ks-assistant` |
 | `project` (default) | `/ks-projects` |
+| `notes` (explicit) | `/ks-notes` |
 | `engineer` (archetype) | `/ks-engineer` |
 | `product` (archetype) | `/ks-product` |
 | `project-manager` (explicit) | `/ks-project-manager` |
 | `executive-assistant` (explicit) | `/ks-ea` |
 | `ks-dev` (dev mode only) | `/ks-dev` |
+
+Defaults come from `baseCapabilities` in `modules/terminal/ai-extensions.nix`
+(currently `[ "ks" "assistant" "project" ]`); the `"ks"` tag is internal
+plumbing and doesn't add a slash command directly. `notes` is explicit per
+host — declare it in `keystone.terminal.aiExtensions.capabilities` or pull
+it in via the OS-agent capability list to enable `/ks-notes`.
 
 Capabilities merge from base defaults, archetype defaults (e.g., `engineer`
 archetype auto-enables the `engineer` capability), explicit

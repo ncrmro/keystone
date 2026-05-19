@@ -296,10 +296,12 @@ can review them.
     [`.agents/skills/` spec][agent-skills-doc] — no dots, no underscores,
     no camelCase. Mismatch causes *silent* load failure in Codex and most
     spec-compliant tools.
-17. Subagent format support is currently Claude-only (`~/.claude/agents/<name>.md`).
-    Gemini and Codex subagent paths are reserved but the sync script writes
-    nothing to them. When upstream Gemini/Codex add subagent loaders, the
-    convention extends with no compatibility break.
+17. Subagent emission is currently scoped to Claude (`~/.claude/agents/<name>.md`).
+    Gemini has native subagent loading upstream and Codex has its own
+    persona surface, but keystone does not currently wire either — the
+    directories are reserved/not-yet-managed by keystone, not absent from
+    the tools. When the keystone convention extends to those tools, no
+    compatibility break is expected.
 18. The symlink activation MUST run for both the admin user and OS agent
     users. Each agent's `~/.agents/skills/` and `~/.claude/skills/` MUST
     symlink to the same consumer-flake `agents/skills/` path the admin

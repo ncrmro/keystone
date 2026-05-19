@@ -674,9 +674,10 @@ The `~/.claude/skills/` symlink resolves to `../skills/` (the
 cross-tool canonical), so Claude shares the skill catalog with every
 other spec-compliant agent. Only subagents are vendor-specific.
 
-Subagents are a Claude-specific feature; Gemini, Codex, OpenCode,
-Copilot, etc. have no equivalent today. If upstream tools add an
-equivalent, the keystone convention will extend.
+Gemini and Codex have their own subagent/persona surfaces upstream,
+but keystone does not currently emit content for them — only Claude.
+The directory layout is keystone-managed; the upstream tools may
+have richer support that keystone simply hasn'\''t wired in yet.
 '
 
 write_file "$CONSUMER_FLAKE_AGENTS/claude/agents/README.md" '# Claude subagents
