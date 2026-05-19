@@ -12,23 +12,30 @@ usage() {
 Usage: keystone-sync-agent-assets
 
 Refresh generated Keystone agent assets for the current user from the current
-profile manifest. Skill content is written into the consumer flake at
-<consumer-flake>/agents/<tool>/skills/<name>/ — never directly to $HOME.
-Home-manager activation symlinks each ~/.<tool>/<subdir> at the corresponding
-consumer-flake path.
+profile manifest. All content is written into the consumer flake at
+<consumer-flake>/agents/ — never directly to $HOME (except ~/.keystone/AGENTS.md
+and ~/.config/opencode/AGENTS.md which remain home-manager-managed).
 
-The canonical instruction file is written once to
-<consumer-flake>/agents/_shared/AGENTS.md and each per-tool instruction
-filename (CLAUDE.md, GEMINI.md, codex AGENTS.md) is a symlink pointing at
-it. Skill bodies and their colocated conventions/roles are written
-canonically to <consumer-flake>/agents/_shared/skills/<key>/ so they're
-reviewable as one copy per skill, not three. Consumer flakes commit
-_shared/ and gitignore the per-tool dirs (which contain gitignored
-rendered copies plus codex's hyphenated-name fan-out).
+The committed canonical surface:
+
+  <consumer-flake>/agents/
+    _shared/AGENTS.md             host-rendered instruction file
+    _shared/skills.yaml           optional user-authored skill overrides
+    skills/<name>/SKILL.md        per-skill body, spec-compliant naming
+    skills/<name>/<convention>.md colocated conventions/roles
+
+Home-manager activation symlinks ~/.agents/skills/ → <flake>/agents/skills/
+(read by Codex, Gemini, Copilot, Cursor, Kiro, OpenCode, Augment per the
+.agents/skills/ open standard) and ~/.claude/skills/ → <flake>/agents/skills/
+(Claude-only shadow at the same target). Per-tool instruction filenames
+(CLAUDE.md, GEMINI.md, codex AGENTS.md) symlink to _shared/AGENTS.md via
+the activation. No per-tool rendering, no hyphenated-codex fan-out — the
+spec-compliant naming makes one canonical tree sufficient for every agent.
 
 The merged skill map is built from conventions/archetypes.yaml.skills
 (keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
-(user overrides, wholesale-replace on key conflict).
+(user overrides, wholesale-replace on key conflict). See
+docs/research/agent-skills.md for the standard.
 EOF
 }
 
@@ -69,17 +76,11 @@ fi
 
 CONSUMER_FLAKE_AGENTS="$consumer_flake_root/agents"
 CONSUMER_FLAKE_SHARED="$CONSUMER_FLAKE_AGENTS/_shared"
-# Canonical (committed) skill content. Claude and Gemini receive identical
-# SKILL.md content, so a single committed body per skill lives here and is
-# review-traceable in the consumer flake. Codex needs hyphenated names and a
-# skill-invocation footer, so its rendering stays in the gitignored codex dir.
-SHARED_SKILLS_DEST="$CONSUMER_FLAKE_SHARED/skills"
-CLAUDE_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/claude/skills"
-GEMINI_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/gemini/skills"
-CODEX_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/codex/skills"
-# OpenCode skills stay on the home dir for now — opencode is not yet wired into
-# the symlink activation. Future scope: parameterize when opencode joins.
-OPENCODE_SKILLS_DEST="$HOME/.config/opencode/skills"
+# Canonical, spec-compliant skill tree. All CLI coding agents read from a
+# home-dir symlink (`~/.agents/skills/` for Codex/Gemini/Copilot/Cursor/Kiro/
+# OpenCode/Augment, `~/.claude/skills/` for Claude Code) that resolves here.
+# See docs/research/agent-skills.md for the standard.
+CANONICAL_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/skills"
 # Optional user-authored override for the skill map. Same flat schema as
 # archetypes.yaml.skills. Wholesale-replace merge: user keys win on conflict;
 # user-only keys are emitted as new skills. Absent file is fine.
@@ -152,10 +153,6 @@ display-name: $(yaml_quote "$display_name")
 EOF
 }
 
-codex_skill_name() {
-  printf '%s' "$1" | tr '.' '-'
-}
-
 render_skill_md() {
   local name="$1"
   local description="$2"
@@ -168,43 +165,6 @@ description: "$(printf '%s' "$description" | sed 's/"/\\"/g')"
 ---
 
 $body
-EOF
-}
-
-write_codex_skill() {
-  local skill_name="$1"
-  local display_name="$2"
-  local description="$3"
-  local skill_md="$4"
-  local extra_yaml="${5:-}"
-  write_file "$CODEX_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
-  write_file "$CODEX_SKILLS_DEST/$skill_name/agents/openai.yaml" "interface:
-  display_name: $(yaml_quote "$display_name")
-  short_description: $(yaml_quote "$description")
-${extra_yaml}"
-}
-
-write_shared_skill() {
-  local skill_name="$1"
-  local skill_md="$2"
-  write_file "$CLAUDE_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
-  write_file "$GEMINI_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
-  write_file "$OPENCODE_SKILLS_DEST/$skill_name/SKILL.md" "$skill_md"
-}
-
-render_codex_skill_body() {
-  local command_body="$1"
-  local skill_name="$2"
-  local skill_token="\$${skill_name}"
-
-  cat <<EOF
-$command_body
-
-## Codex skill invocation
-
-Use this skill when the user invokes \`${skill_token}\` or asks for this workflow implicitly.
-Interpret \`\$ARGUMENTS\` as any text that follows the skill mention. If the user did not
-provide extra text, continue without additional arguments.
 EOF
 }
 
@@ -430,17 +390,13 @@ rm -f "$global_agents_tmp"
 
 write_file "$HOME/.keystone/AGENTS.md" "$global_agents_content"
 # Canonical instruction file lives in the consumer flake at _shared/AGENTS.md.
-# Per-tool instruction filenames are symlinks pointing at it, so the three
-# tools always read the same bytes. Consumer flakes commit _shared/AGENTS.md
-# and gitignore the per-tool dirs (which contain only the symlink plus the
-# rendered skills tree).
+# Home-manager activation symlinks each per-tool instruction filename
+# (~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md, ~/.codex/AGENTS.md) directly to
+# this canonical path.
 write_file "$CONSUMER_FLAKE_SHARED/AGENTS.md" "$global_agents_content"
-mkdir -p "$CONSUMER_FLAKE_AGENTS/claude" "$CONSUMER_FLAKE_AGENTS/gemini" "$CONSUMER_FLAKE_AGENTS/codex"
-ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/claude/CLAUDE.md"
-ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/gemini/GEMINI.md"
-ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/codex/AGENTS.md"
-# OpenCode stays on the home dir for now (not yet wired into the symlink
-# activation; future scope).
+# OpenCode keeps its own home.file.text-managed instruction file via
+# modules/terminal/conventions.nix; the sync script also writes it here
+# so manual invocations don't leave it stale.
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
 
 repos_agents_tmp="$(mktemp)"
@@ -469,8 +425,8 @@ if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
 
 ## Notes command guidance
 
-- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-- Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
+- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks-notes`.
+- Use `ks-notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
 - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
 - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
 - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
@@ -496,7 +452,8 @@ rm -f "$repos_agents_tmp"
 
 write_file "$HOME/.keystone/repos/AGENTS.md" "$repos_agents_content"
 
-# Clean up legacy command files (skills are the canonical format now)
+# Legacy cleanup: remove old per-tool skill / command artifacts that predate
+# the `.agents/skills/` convention. Idempotent — safe to re-run.
 for command_file in ks.md ks.system.md ks.assistant.md ks.notes.md ks.projects.md ks.dev.md ks.ea.md ks.engineer.md ks.product.md ks.project-manager.md ks.pm.md; do
   rm -f "$HOME/.claude/commands/$command_file"
   rm -f "$HOME/.config/opencode/commands/$command_file"
@@ -504,40 +461,30 @@ done
 for command_file in ks.toml notes.toml projects.toml dev.toml deepwork.toml ks.ea.toml ks.engineer.toml ks.product.toml ks.pm.toml wrap-up.toml; do
   rm -f "$HOME/.gemini/commands/$command_file"
 done
-# Legacy single-skill cleanups (consumer-flake-resident now). If a user has a
-# consumer-flake skill colliding with one of these legacy names, the deletion
-# is visible in `git status` — `git checkout` restores it. Convention rule 15.
-rm -rf "$CLAUDE_SKILLS_DEST/ks"
-rm -rf "$CLAUDE_SKILLS_DEST/ks-pm"
-rm -rf "$CLAUDE_SKILLS_DEST/ks-assistant"
-rm -rf "$OPENCODE_SKILLS_DEST/ks"
-rm -rf "$OPENCODE_SKILLS_DEST/ks-pm"
-rm -rf "$OPENCODE_SKILLS_DEST/ks-assistant"
-
-legacy_codex_skill_names=(
-  agent-bootstrap agent-doctor agent-issue agent-onboard daily_status-send
-  deepwork-review engineer ks-convention ks-develop ks-doctor ks-issue
-  ks-update marketing-social_media_setup milestone-eng_handoff milestone-setup
-  notes-doctor notes-process_inbox notes-project notes-report portfolio-review
-  project-onboard project-press_release project-success repo-doctor repo-setup
-  research-deep research-quick task-ingest task-run
-  ks ks-pm
-)
-
-for skill_name in "${legacy_codex_skill_names[@]}"; do
-  rm -rf "$CODEX_SKILLS_DEST/$skill_name"
+# Remove the old per-tool skill trees in the consumer flake (superseded by
+# the canonical `agents/skills/` tree). Also clean up the previous PR #542
+# location at `agents/_shared/skills/`.
+for legacy_path in \
+  "$CONSUMER_FLAKE_AGENTS/claude/skills" \
+  "$CONSUMER_FLAKE_AGENTS/gemini/skills" \
+  "$CONSUMER_FLAKE_AGENTS/codex/skills" \
+  "$CONSUMER_FLAKE_AGENTS/_shared/skills" \
+  "$CONSUMER_FLAKE_AGENTS/claude/CLAUDE.md" \
+  "$CONSUMER_FLAKE_AGENTS/gemini/GEMINI.md" \
+  "$CONSUMER_FLAKE_AGENTS/codex/AGENTS.md"; do
+  rm -rf "$legacy_path"
 done
 
-# Build the set of skills to render: the union of (manifest-published ks.*
+# Build the set of skills to render: the union of (manifest-published ks-*
 # commands) and (always-on yaml keys). Always-on keys are anything in the
-# merged skill map that doesn't start with `ks.` — deepwork-family entries
-# and any user-authored additions in _shared/skills.yaml. ks.* keys are
+# merged skill map that doesn't start with `ks-` — deepwork-family entries
+# and any user-authored additions in _shared/skills.yaml. ks-* keys are
 # emitted only when published by the user's manifest.
 skills_to_emit=()
 declare -A seen_skills=()
 while IFS= read -r yaml_key; do
   [[ -z "$yaml_key" ]] && continue
-  if [[ "$yaml_key" != ks.* ]] && [[ -z "${seen_skills[$yaml_key]:-}" ]]; then
+  if [[ "$yaml_key" != ks-* ]] && [[ -z "${seen_skills[$yaml_key]:-}" ]]; then
     skills_to_emit+=("$yaml_key")
     seen_skills[$yaml_key]=1
   fi
@@ -550,14 +497,18 @@ for command_id in "${published_commands[@]}"; do
   fi
 done
 
+# Render each skill once into the canonical agents/skills/<name>/ tree.
+# Claude reads it via `~/.claude/skills` → consumer-flake/agents/skills/
+# symlink; Codex/Gemini/Copilot/Cursor/Kiro/OpenCode/Augment read it via
+# `~/.agents/skills/` → same target. Both symlinks are created by
+# home-manager activation in modules/terminal/generated-agent-assets.nix.
 for skill_key in "${skills_to_emit[@]}"; do
   description="$(command_description "$skill_key" || printf '%s' "")"
-  display_name="$(skill_display_name "$skill_key" || printf '%s' "$skill_key")"
   if ! template_name="$(command_template_name "$skill_key" 2>/dev/null)"; then
     template_name=""
   fi
   if [[ -z "$template_name" ]]; then
-    template_name="${skill_key//./-}-skill.template.md"
+    template_name="${skill_key}-skill.template.md"
   fi
   template_path="$templates_dir/$template_name"
   if [[ ! -f "$template_path" ]]; then
@@ -566,43 +517,7 @@ for skill_key in "${skills_to_emit[@]}"; do
   fi
 
   command_body="$(render_template "$template_path")"
-  codex_name="$(codex_skill_name "$skill_key")"
-
-  # Clean up legacy dash-named claude/gemini/opencode skill dirs that predate
-  # the dotted-key naming.
-  if [[ "$skill_key" != "$codex_name" ]]; then
-    rm -rf "$CLAUDE_SKILLS_DEST/${codex_name}"
-    rm -rf "$GEMINI_SKILLS_DEST/${codex_name}"
-    rm -rf "$OPENCODE_SKILLS_DEST/${codex_name}"
-  fi
-
-  shared_skill_md="$(render_skill_md "$skill_key" "$description" "$command_body")"
-  # Canonical committed skill body — Claude and Gemini get the identical
-  # content rendered into their per-tool dirs (gitignored), but the
-  # source-of-truth committed file lives here.
-  write_file "$SHARED_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
-  colocate_skill_conventions "$skill_key" "$SHARED_SKILLS_DEST/${skill_key}"
-
-  # Per-tool rendered copies (gitignored). Identical content to the canonical
-  # `_shared/skills/<key>/` tree; emitted so each tool's loader (which reads
-  # under its own `~/.<tool>/skills/<key>/`) finds the files at the path it
-  # expects without traversing into `_shared/`.
-  write_file "$CLAUDE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
-  write_file "$GEMINI_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
-  write_file "$OPENCODE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
-
-  codex_body="$(render_codex_skill_body "$command_body" "$codex_name")"
-  codex_skill_md="$(render_skill_md "$codex_name" "$description" "$codex_body")"
-  write_codex_skill "$codex_name" "$display_name" "$description" "$codex_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-  colocate_skill_conventions "$skill_key" "$CLAUDE_SKILLS_DEST/${skill_key}"
-  colocate_skill_conventions "$skill_key" "$GEMINI_SKILLS_DEST/${skill_key}"
-  colocate_skill_conventions "$skill_key" "$OPENCODE_SKILLS_DEST/${skill_key}"
-  colocate_skill_conventions "$skill_key" "$CODEX_SKILLS_DEST/${codex_name}"
+  skill_md="$(render_skill_md "$skill_key" "$description" "$command_body")"
+  write_file "$CANONICAL_SKILLS_DEST/${skill_key}/SKILL.md" "$skill_md"
+  colocate_skill_conventions "$skill_key" "$CANONICAL_SKILLS_DEST/${skill_key}"
 done

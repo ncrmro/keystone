@@ -85,29 +85,28 @@ let
     agents = agentsWithMcp;
     consumerFlakeAgents = consumerFlakeAgents;
   };
-  # Tool subdirs the activation script links into the user's home dir.
-  # Each tuple is `(tool, subdir, home-dir-path)`; the link is
-  # `$HOME/<home-dir-path>/<subdir>` → `<consumerFlakeAgents>/<tool>/<subdir>`.
+  # Home-dir → consumer-flake directory symlinks. Each tuple is
+  # `(linkRelPath, targetRelPath)`; the link is
+  # `$HOME/<linkRelPath>` → `<consumerFlakeAgents>/<targetRelPath>`.
+  #
+  # Canonical skill tree lives at `<consumer-flake>/agents/skills/` per the
+  # .agents/skills/ open standard (see docs/research/agent-skills.md). Most
+  # CLI coding agents (Codex, Gemini, Copilot CLI, Cursor, Rovo Dev, Kiro,
+  # OpenCode, Augment) read `~/.agents/skills/` natively. Claude Code is the
+  # only holdout and gets a second symlink at `~/.claude/skills/` pointing
+  # at the same target — same content, two access paths.
   toolSymlinks = [
     {
-      tool = "claude";
-      subdir = "skills";
-      homePath = ".claude";
+      linkRelPath = ".agents/skills";
+      targetRelPath = "skills";
     }
     {
-      tool = "claude";
-      subdir = "agents";
-      homePath = ".claude";
+      linkRelPath = ".claude/skills";
+      targetRelPath = "skills";
     }
     {
-      tool = "gemini";
-      subdir = "skills";
-      homePath = ".gemini";
-    }
-    {
-      tool = "codex";
-      subdir = "skills";
-      homePath = ".codex";
+      linkRelPath = ".claude/agents";
+      targetRelPath = "claude/agents";
     }
   ];
   # Render the symlink list as a properly-escaped bash array literal so we can
@@ -115,31 +114,27 @@ let
   # identifier with no shell metacharacters or whitespace, but escapeShellArg
   # future-proofs the contract — see PR #539 review.
   toolSymlinkBashArray = concatStringsSep " " (
-    map (s: lib.escapeShellArg "${s.tool}:${s.subdir}:${s.homePath}") toolSymlinks
+    map (s: lib.escapeShellArg "${s.linkRelPath}:${s.targetRelPath}") toolSymlinks
   );
   # Per-tool instruction files that symlink as individual files (not dirs)
-  # from the home dir into the consumer flake. Convention rule 19. Format is
-  # `(tool, consumer-flake-filename, home-dir-relative-path)`; the link is
-  # `$HOME/<home-rel-path>` → `<consumerFlakeAgents>/<tool>/<consumer-flake-filename>`.
+  # from the home dir to the canonical `_shared/AGENTS.md`. Each tool reads
+  # the same bytes via its native instruction-file path.
   instructionFileSymlinks = [
     {
-      tool = "claude";
-      filename = "CLAUDE.md";
-      homeRelPath = ".claude/CLAUDE.md";
+      linkRelPath = ".claude/CLAUDE.md";
+      targetRelPath = "_shared/AGENTS.md";
     }
     {
-      tool = "gemini";
-      filename = "GEMINI.md";
-      homeRelPath = ".gemini/GEMINI.md";
+      linkRelPath = ".gemini/GEMINI.md";
+      targetRelPath = "_shared/AGENTS.md";
     }
     {
-      tool = "codex";
-      filename = "AGENTS.md";
-      homeRelPath = ".codex/AGENTS.md";
+      linkRelPath = ".codex/AGENTS.md";
+      targetRelPath = "_shared/AGENTS.md";
     }
   ];
   instructionFileBashArray = concatStringsSep " " (
-    map (f: lib.escapeShellArg "${f.tool}:${f.filename}:${f.homeRelPath}") instructionFileSymlinks
+    map (f: lib.escapeShellArg "${f.linkRelPath}:${f.targetRelPath}") instructionFileSymlinks
   );
   syncScriptPath =
     if repoCheckout != null then
@@ -213,13 +208,11 @@ in
 
         tool_symlinks=( ${toolSymlinkBashArray} )
         for entry in "''${tool_symlinks[@]}"; do
-          tool="''${entry%%:*}"
-          rest="''${entry#*:}"
-          subdir="''${rest%%:*}"
-          home_path="''${rest##*:}"
+          link_rel="''${entry%%:*}"
+          target_rel="''${entry#*:}"
 
-          target="$agents_root/$tool/$subdir"
-          link="$HOME/$home_path/$subdir"
+          target="$agents_root/$target_rel"
+          link="$HOME/$link_rel"
 
           # Admin pre-creates the consumer-flake target dir so agents (which
           # cannot write inside the admin's home) find it ready. Agents skip
@@ -232,8 +225,8 @@ in
             continue
           fi
 
-          # Ensure the parent of the link exists (~/.claude, ~/.gemini, ~/.codex).
-          mkdir -p "$HOME/$home_path"
+          # Ensure the parent of the link exists (~/.claude, ~/.agents, etc.).
+          mkdir -p "$(dirname "$link")"
 
           if [ -L "$link" ]; then
             current="$(readlink "$link")"
@@ -285,13 +278,11 @@ in
         # Convention rules 19 and 20.
         instruction_files=( ${instructionFileBashArray} )
         for entry in "''${instruction_files[@]}"; do
-          tool="''${entry%%:*}"
-          rest="''${entry#*:}"
-          filename="''${rest%%:*}"
-          home_rel="''${rest##*:}"
+          link_rel="''${entry%%:*}"
+          target_rel="''${entry#*:}"
 
-          target="$agents_root/$tool/$filename"
-          link="$HOME/$home_rel"
+          target="$agents_root/$target_rel"
+          link="$HOME/$link_rel"
 
           if [ ! -f "$target" ]; then
             echo "keystone-agent-asset-symlinks: instruction file $target does not exist yet; skipping $link (run 'ks sync-agent-assets' to populate)" >&2
