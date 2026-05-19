@@ -70,6 +70,10 @@ made with `nix flake new`.
 `flake.nix` with your real identity. This is the user that will be created on
 every host.
 
+> `flake.nix` is one call to `keystone.lib.mkSystemFlake`. See
+> [`flake.md`](flake.md) for the full argument reference if you want
+> context on what else you could pass.
+
 **Edit:** `flake.nix`. Find the `admin` block (look for `TODO:` markers) and
 set:
 

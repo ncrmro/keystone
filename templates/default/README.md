@@ -7,17 +7,11 @@ nix flake new -t github:ncrmro/keystone keystone-config
 cd keystone-config
 ```
 
-The starter `flake.nix` is one call to `keystone.lib.mkSystemFlake`: you
-declare owner identity, fleet-wide defaults, shared modules, and a `hosts`
-inventory, and the helper expands that into the standard flake outputs:
-
-- `nixosConfigurations.<host>` for every Linux host
-- `homeConfigurations.<host>` for every macOS (`kind = "macbook"`) host
-- `packages.<system>.iso` — one installer ISO covering every Linux host
-- `packages.<system>.vm-image-<host>` — direct-boot qcow2 images per host
-
-That keeps `flake.nix` short while still making the important host choices
-easy to scan.
+The starter `flake.nix` is one call to `keystone.lib.mkSystemFlake`. It
+expands a declarative inventory (admin, defaults, shared modules, hosts)
+into `nixosConfigurations`, `homeConfigurations`, and `packages.<system>.iso`.
+See [`docs/keystone/flake.md`](docs/keystone/flake.md) for the argument
+reference and output table.
 
 ## Quick start
 
@@ -36,24 +30,6 @@ If you'd rather see the existing `TODO:` markers up front:
 ```bash
 grep -RIn "TODO:" flake.nix hosts/
 ```
-
-## `mkSystemFlake` at a glance
-
-The arguments you'll set in `flake.nix`:
-
-| Argument | Purpose |
-|---|---|
-| `admin` | Single source of truth for the admin user (`username`, `fullName`, `email`, `initialPassword`, `sshKeys`). Every host inherits this identity. |
-| `defaults` | Fleet-wide defaults — `timeZone`, `updateChannel` (`"stable"` or `"unstable"`). |
-| `hostsRoot` | Directory containing per-host subdirectories. The template uses `./hosts`. |
-| `shared.userModules` | Home Manager modules applied to every user on every host. |
-| `shared.systemModules` | NixOS modules applied OS-wide on every host. |
-| `shared.desktopUserModules` | Home Manager modules applied per-user on desktop hosts (laptop, workstation) only. |
-| `keystoneServices` | Global service → host wiring (`git.host = "server";`, `mail.host = "server";`, …). Keystone validates each `*.host` matches a declared host, then auto-enables both the server and any clients. |
-| `hosts` | Attrset of `<name> = { kind = "laptop" \| "workstation" \| "server" \| "macbook"; … };`. Each entry pulls `hosts/<name>/configuration.nix` and (for Linux) `hosts/<name>/hardware.nix` automatically. |
-
-The helper implementation lives at `keystone/lib/templates.nix` if you need
-to see exactly how the inventory becomes flake outputs.
 
 ## File layout
 
@@ -78,6 +54,9 @@ match.
 
 - [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
   walkthrough from `nix flake new` to a fully secured first host.
+- [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
+  `keystone.lib.mkSystemFlake`: every argument it accepts and every output
+  it produces.
 - [`docs/keystone/build-and-burn.md`](docs/keystone/build-and-burn.md) — build
   the installer ISO and write it to USB (Linux + macOS + Windows).
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up

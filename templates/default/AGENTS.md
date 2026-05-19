@@ -15,8 +15,8 @@ for orientation.
   `keystone.lib.mkSystemFlake { admin; defaults; hostsRoot; shared;
   keystoneServices; hosts; }` that expands the inventory into
   `nixosConfigurations`, `homeConfigurations`, and `packages.<system>.iso`.
-  Helper source: `keystone/lib/templates.nix`. The `mkSystemFlake at a glance`
-  table in `README.md` lists every argument and what it controls.
+  Argument and output reference: [`docs/keystone/flake.md`](docs/keystone/flake.md).
+  Helper source: `keystone/lib/templates.nix`.
 - `hosts/<name>/configuration.nix` — host-only overrides. For Linux hosts
   (`laptop` / `workstation` / `server`) this is a **NixOS module**. For
   macOS hosts (`kind = "macbook"`) it's a **Home Manager module** — no NixOS
