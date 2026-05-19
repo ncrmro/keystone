@@ -24,30 +24,15 @@ ks update HOST1,HOST2
 
 Any AI coding agent (Claude Code, Codex, Gemini CLI, opencode, etc.) loads
 [`AGENTS.md`](AGENTS.md) automatically when you open this directory — that
-file points it at the rest of the docs, so your prompt can just state what
-you want:
+file lists the rest of the docs, so your prompt can just state what you
+want. For example:
 
-**Bootstrap my first host:**
 > Ask me clarifying questions about my setup (the hosts I want, where my
 > SSH key lives, what OS I'm driving from), then walk me through the first
 > three onboarding steps, including the exact edits to `flake.nix`.
 
-**Learn more about how the flake is wired:**
-> Summarize how `mkSystemFlake` turns my inventory into flake outputs, and
-> call out arguments I'm not using yet that might be relevant for my fleet.
-
-**Add an agenix-encrypted secret:**
-> I want to add an agenix-encrypted `<name>` secret consumed by the
-> `<host>` host. Walk me through encrypting it, declaring `age.secrets.*`,
-> and reading it at runtime without leaking through the Nix store.
-
-**Diagnose system health and security posture:**
-> Run `ks doctor` and walk me through the output. Then audit my security
-> posture — LUKS unlock method (password / recovery key / TPM / hardware
-> key), Secure Boot enrollment, whether `ssh-agent` has my key loaded, and
-> whether fingerprint hardware is present but not enrolled. Call out which
-> of those `ks doctor` doesn't currently check so I know what's a real gap
-> vs. an unanswered question.
+More starter prompts (learning, secrets, ops, build + install) live in
+[`docs/keystone/system-agent-prompts.md`](docs/keystone/system-agent-prompts.md).
 
 ## Quick start
 
@@ -89,6 +74,9 @@ match.
   the installer ISO and write it to USB (Linux + macOS + Windows).
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
   an agenix-encrypted GitHub PAT to avoid rate-limit 403s.
+- [`docs/keystone/system-agent-prompts.md`](docs/keystone/system-agent-prompts.md)
+  — copy-pasteable prompts for asking an AI coding agent to help with
+  onboarding, learning, secrets, ops, and install workflows.
 - [`AGENTS.md`](AGENTS.md) — short orientation for AI coding agents (Claude
   Code, Codex, Gemini CLI, etc.). Repo shape, NixOS-vs-Home-Manager pitfalls,
   agenix conventions.

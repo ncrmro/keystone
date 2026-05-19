@@ -28,6 +28,9 @@ reasoning from scratch when a question falls in their scope:
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
   an agenix-encrypted GitHub PAT so the host doesn't hit the 60/hr anonymous
   rate-limit during `ks update`.
+- [`docs/keystone/system-agent-prompts.md`](docs/keystone/system-agent-prompts.md)
+  — the user-facing prompt library. When a user pastes one of these, the
+  intent and placeholders tell you which other doc to consult.
 - [`secrets/README.md`](secrets/README.md) — recipients model, encrypt/decrypt
   flow, naming conventions, and what *not* to commit to `secrets/`.
 
