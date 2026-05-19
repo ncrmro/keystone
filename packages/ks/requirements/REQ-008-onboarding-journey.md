@@ -15,7 +15,7 @@ The onboarding journey has seven stages across two machines:
 |-------|-------|---------|-------------|
 | 1 | Dev machine | Template | Generate NixOS config from user info |
 | 2 | Dev machine | Publish | Git init + push to GitHub |
-| 3 | Dev machine | Installer | Build ISO + burn to USB |
+| 3 | Dev machine | Installer | OS installer (build ISO + write to USB) |
 | 4 | Target machine | Install (ISO) | Disk setup + nixos-install + hardware capture + local commit |
 | 5 | Target machine | First Boot | Secure Boot + TPM enrollment |
 | 6 | Target machine | Security | SSH keys + push + secrets |
@@ -49,7 +49,7 @@ via `gh repo create` and push the initial commit.
 **REQ-008.7** The TUI MUST warn the user if `initialPassword` is present
 in plaintext before pushing.
 
-## Stage 3: Build + Burn ISO
+## Stage 3: OS Installer
 
 **REQ-008.8** The Installer sidebar section MUST allow the user to select
 a host and install profile (Desktop or Server).

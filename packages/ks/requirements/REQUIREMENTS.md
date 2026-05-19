@@ -17,6 +17,7 @@
   automated validation contract for generated configs and ISO artifacts.
   Establishes what the TUI must produce and how that output is validated.
 - **Phase 2**: Interactive TUI, CLI subcommands with JSON I/O, template
-  scaffolding, git/GitHub publishing, ISO build + burn. Builds on Phase 1.
+  scaffolding, git/GitHub publishing, OS installer (ISO build + USB
+  write). Builds on Phase 1.
 - **Phase 3**: Remote connection, mDNS discovery, nixos-anywhere deployment,
   first-boot security enrollment, secrets + services onboarding.
