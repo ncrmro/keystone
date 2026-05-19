@@ -59,6 +59,9 @@ grep -RIn "TODO:" flake.nix hosts/
   the installer ISO and write it to USB (Linux + macOS + Windows).
 - [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
   an agenix-encrypted GitHub PAT to avoid rate-limit 403s.
+- [`AGENTS.md`](AGENTS.md) — short orientation for AI coding agents (Claude
+  Code, Codex, Gemini CLI, etc.). Repo shape, NixOS-vs-Home-Manager pitfalls,
+  agenix conventions.
 
 ## Where to investigate Keystone itself
 
