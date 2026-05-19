@@ -298,7 +298,7 @@ archetypes:
 #    - colocated_roles: Role definition files copied into the skill folder
 
 skills:
-  engineer:
+  ks.engineer:
     description: "Engineering — implementation, code review, architecture, and CI"
     template: engineer-skill.template.md
     colocated_conventions:
@@ -320,7 +320,7 @@ skills:
       - code-reviewer
       - architect
 
-  product:
+  ks.product:
     description: "Product — planning, milestones, stakeholder communication"
     template: product-skill.template.md
     colocated_conventions:
@@ -335,7 +335,7 @@ skills:
       - business-analyst
       - project-lead
 
-  project-manager:
+  ks.project-manager:
     description: "Project management — task decomposition, tracking, and boards"
     template: pm-skill.template.md
     colocated_conventions:
@@ -351,7 +351,7 @@ skills:
       - project-lead
       - task-decomposer
 
-  executive-assistant:
+  ks.ea:
     description: "Executive assistant — calendar, inbox, events, portfolio reviews"
     template: ks-executive-assistant.template.md
     colocated_conventions:
@@ -360,3 +360,31 @@ skills:
       - tool.stalwart
     colocated_roles:
       - executive-assistant
+
+  deepwork:
+    description: "Start or continue DeepWork workflows using MCP tools"
+    template: deepwork-skill.template.md
+
+  deepplan:
+    description: "Start structured planning — explores, designs, and produces an executable plan"
+    template: deepplan-skill.template.md
+
+  deepreviews:
+    description: "Reference documentation for DeepWork Reviews — automated code review rules using .deepreview configs and DeepSchema-generated rules"
+    template: deepreviews-skill.template.md
+
+  deepschema:
+    description: "Create and manage DeepSchemas — rich file-level schemas with automatic validation and review generation"
+    template: deepschema-skill.template.md
+
+  review:
+    description: "Run DeepWork Reviews on the current branch — review changed files using .deepreview rules"
+    template: review-skill.template.md
+
+  configure_reviews:
+    description: "Set up DeepWork Reviews — automated code review rules using .deepreview config files"
+    template: configure-reviews-skill.template.md
+
+  wrap-up:
+    description: "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human"
+    template: wrap-up-skill.template.md
