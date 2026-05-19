@@ -9,6 +9,28 @@ If you've just landed here, read [`docs/keystone/onboarding.md`](docs/keystone/o
 first. It is the canonical walkthrough; everything below is the short version
 for orientation.
 
+## Docs in this repo
+
+These docs are owned by this repo, safe to edit, and worth reading **before**
+reasoning from scratch when a question falls in their scope:
+
+- [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
+  walkthrough from `nix flake new` to a fully secured first host. Numbered
+  steps, each with Goal → Edit → Run → Verify → If-it-fails.
+- [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
+  `keystone.lib.mkSystemFlake`: every argument it accepts (`admin`,
+  `defaults`, `hostsRoot`, `shared.*`, `keystoneServices`, `hosts`) and every
+  output it produces (`nixosConfigurations`, `homeConfigurations`,
+  `packages.<system>.iso`, …).
+- [`docs/keystone/build-and-burn.md`](docs/keystone/build-and-burn.md) — build
+  the installer ISO and write it to USB. Cross-platform notes for Linux,
+  macOS, and Windows drivers.
+- [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
+  an agenix-encrypted GitHub PAT so the host doesn't hit the 60/hr anonymous
+  rate-limit during `ks update`.
+- [`secrets/README.md`](secrets/README.md) — recipients model, encrypt/decrypt
+  flow, naming conventions, and what *not* to commit to `secrets/`.
+
 ## What lives where
 
 - `flake.nix` — the only file most changes touch. A single call to

@@ -22,26 +22,24 @@ ks update HOST1,HOST2
 
 ## Ask an AI assistant
 
-This repo ships an [`AGENTS.md`](AGENTS.md) that any AI coding agent (Claude
-Code, Codex, Gemini CLI, opencode, etc.) reads automatically when you open
-the directory. Try one of these prompts:
+Any AI coding agent (Claude Code, Codex, Gemini CLI, opencode, etc.) loads
+[`AGENTS.md`](AGENTS.md) automatically when you open this directory — that
+file points it at the rest of the docs, so your prompt can just state what
+you want:
 
-**Bootstrap a new host:**
-> Read `AGENTS.md` and `docs/keystone/onboarding.md`. Ask me a few
-> clarifying questions about my setup (the hosts I want, where my SSH key
-> lives, what OS I'm driving from), then walk me through the first three
-> steps, including the exact edits to `flake.nix`.
+**Bootstrap my first host:**
+> Ask me clarifying questions about my setup (the hosts I want, where my
+> SSH key lives, what OS I'm driving from), then walk me through the first
+> three onboarding steps, including the exact edits to `flake.nix`.
 
 **Learn more about how the flake is wired:**
-> Read `AGENTS.md` and `docs/keystone/flake.md`. Summarize how
-> `mkSystemFlake` turns my inventory into flake outputs, and call out
-> arguments I'm not using yet that might be relevant for my fleet.
+> Summarize how `mkSystemFlake` turns my inventory into flake outputs, and
+> call out arguments I'm not using yet that might be relevant for my fleet.
 
 **Add an agenix-encrypted secret:**
-> Read `AGENTS.md` and `docs/keystone/github-token.md`. I want to add an
-> agenix-encrypted `<name>` secret consumed by the `<host>` host. Walk me
-> through encrypting it, declaring `age.secrets.*`, and reading it at
-> runtime without leaking through the Nix store.
+> I want to add an agenix-encrypted `<name>` secret consumed by the
+> `<host>` host. Walk me through encrypting it, declaring `age.secrets.*`,
+> and reading it at runtime without leaking through the Nix store.
 
 ## Quick start
 
