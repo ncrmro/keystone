@@ -17,8 +17,15 @@ profile manifest. Skill content is written into the consumer flake at
 Home-manager activation symlinks each ~/.<tool>/<subdir> at the corresponding
 consumer-flake path.
 
-Instruction files (CLAUDE.md, GEMINI.md, AGENTS.md) still write to $HOME for
-now — migration to the same consumer-flake pattern is future work.
+The canonical instruction file is written once to
+<consumer-flake>/agents/_shared/AGENTS.md and each per-tool instruction
+filename (CLAUDE.md, GEMINI.md, codex AGENTS.md) is a symlink pointing at
+it. Consumer flakes commit _shared/AGENTS.md and gitignore the per-tool
+dirs (which contain only the symlink plus the rendered skills tree).
+
+The merged skill map is built from conventions/archetypes.yaml.skills
+(keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
+(user overrides, wholesale-replace on key conflict).
 EOF
 }
 
@@ -58,12 +65,17 @@ if [[ -z "$consumer_flake_root" ]]; then
 fi
 
 CONSUMER_FLAKE_AGENTS="$consumer_flake_root/agents"
+CONSUMER_FLAKE_SHARED="$CONSUMER_FLAKE_AGENTS/_shared"
 CLAUDE_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/claude/skills"
 GEMINI_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/gemini/skills"
 CODEX_SKILLS_DEST="$CONSUMER_FLAKE_AGENTS/codex/skills"
 # OpenCode skills stay on the home dir for now — opencode is not yet wired into
 # the symlink activation. Future scope: parameterize when opencode joins.
 OPENCODE_SKILLS_DEST="$HOME/.config/opencode/skills"
+# Optional user-authored override for the skill map. Same flat schema as
+# archetypes.yaml.skills. Wholesale-replace merge: user keys win on conflict;
+# user-only keys are emitted as new skills. Absent file is fine.
+USER_SKILLS_YAML="$CONSUMER_FLAKE_SHARED/skills.yaml"
 
 json_get() {
   local filter="$1"
@@ -212,10 +224,10 @@ command_argument_hint() {
 }
 
 command_template_name() {
-  local skill_key
-  skill_key="$(command_skill_key "$1")"
-  if [[ -n "$skill_key" ]]; then
-    yq -r ".skills.\"$skill_key\".template" "$archetypes_file"
+  local template
+  template="$(jq -r --arg k "$1" '.[$k].template // empty' <<< "$merged_skills_json")"
+  if [[ -n "$template" ]]; then
+    printf '%s' "$template"
     return
   fi
   case "$1" in
@@ -229,15 +241,15 @@ command_template_name() {
 }
 
 command_description() {
-  local skill_key
-  skill_key="$(command_skill_key "$1")"
-  if [[ -n "$skill_key" ]]; then
-    yq -r ".skills.\"$skill_key\".description" "$archetypes_file"
+  local desc
+  desc="$(jq -r --arg k "$1" '.[$k].description // empty' <<< "$merged_skills_json")"
+  if [[ -n "$desc" ]]; then
+    printf '%s' "$desc"
     return
   fi
   case "$1" in
     ks.system)
-      local desc="Keystone system — may start keystone_system/issue or keystone_system/doctor"
+      desc="Keystone system — may start keystone_system/issue or keystone_system/doctor"
       if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'executive-assistant'; then
         desc+=", or executive_assistant workflows"
       fi
@@ -251,18 +263,20 @@ command_description() {
   esac
 }
 
-# Map command ID to archetypes.yaml skill key (empty string if not a skill command)
-command_skill_key() {
-  case "$1" in
-    ks.engineer) printf '%s' "engineer" ;;
-    ks.product) printf '%s' "product" ;;
-    ks.project-manager) printf '%s' "project-manager" ;;
-    ks.ea) printf '%s' "executive-assistant" ;;
-    *) printf '' ;;
-  esac
+# Derive a codex display name from the skill key. Falls back to title-casing
+# the key after splitting on `.`, `_`, and `-` when no explicit mapping exists.
+skill_display_name() {
+  local key="$1"
+  local dn
+  if dn="$(command_display_name "$key" 2>/dev/null)"; then
+    printf '%s' "$dn"
+    return
+  fi
+  printf '%s' "$key" | tr '._-' '   ' | sed -E 's/(^|[[:space:]])([a-z])/\1\U\2/g'
 }
 
-# Copy colocated conventions and roles into a skill directory
+# Copy colocated conventions and roles into a skill directory. Reads from the
+# merged skill map (keystone defaults + optional consumer-flake overrides).
 colocate_skill_conventions() {
   local skill_key="$1"
   local target_dir="$2"
@@ -272,13 +286,13 @@ colocate_skill_conventions() {
     [[ -z "$conv_name" ]] && continue
     src_file="$conventions_dir/${conv_name}.md"
     [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
-  done < <(yq -r ".skills.\"$skill_key\".colocated_conventions[]?" "$archetypes_file")
+  done < <(jq -r --arg k "$skill_key" '.[$k].colocated_conventions[]? // empty' <<< "$merged_skills_json")
 
   while IFS= read -r conv_name; do
     [[ -z "$conv_name" ]] && continue
     src_file="$conventions_dir/roles/${conv_name}.md"
     [[ -f "$src_file" ]] && write_file "${target_dir}/${conv_name}.md" "$(cat "$src_file")"
-  done < <(yq -r ".skills.\"$skill_key\".colocated_roles[]?" "$archetypes_file")
+  done < <(jq -r --arg k "$skill_key" '.[$k].colocated_roles[]? // empty' <<< "$merged_skills_json")
 }
 
 ks_allowed_routes_lines=(
@@ -355,6 +369,17 @@ if [[ ! -f "$archetypes_file" ]]; then
   exit 1
 fi
 
+# Build the effective skill map: keystone defaults + optional consumer-flake
+# overrides. User keys win wholesale (jq's `+` on objects replaces by key, no
+# deep merge — KISS over field-level inheritance).
+keystone_skills_json="$(yq -o json '.skills // {}' "$archetypes_file")"
+if [[ -f "$USER_SKILLS_YAML" ]]; then
+  user_skills_json="$(yq -o json '.skills // {}' "$USER_SKILLS_YAML")"
+else
+  user_skills_json='{}'
+fi
+merged_skills_json="$(jq -n --argjson a "$keystone_skills_json" --argjson b "$user_skills_json" '$a + $b')"
+
 capabilities_display="_none_"
 if [[ ${#resolved_capabilities[@]} -gt 0 ]]; then
   capabilities_display="$(printf '%s, ' "${resolved_capabilities[@]}")"
@@ -396,12 +421,16 @@ global_agents_content="$(cat "$global_agents_tmp")"
 rm -f "$global_agents_tmp"
 
 write_file "$HOME/.keystone/AGENTS.md" "$global_agents_content"
-# Per-tool instruction files land in the consumer flake, symlinked from $HOME
-# by the home-manager activation `keystoneAgentAssetSymlinks`. Convention
-# rule 19 in tool.cli-coding-agents.md.
-write_file "$CONSUMER_FLAKE_AGENTS/claude/CLAUDE.md" "$global_agents_content"
-write_file "$CONSUMER_FLAKE_AGENTS/gemini/GEMINI.md" "$global_agents_content"
-write_file "$CONSUMER_FLAKE_AGENTS/codex/AGENTS.md" "$global_agents_content"
+# Canonical instruction file lives in the consumer flake at _shared/AGENTS.md.
+# Per-tool instruction filenames are symlinks pointing at it, so the three
+# tools always read the same bytes. Consumer flakes commit _shared/AGENTS.md
+# and gitignore the per-tool dirs (which contain only the symlink plus the
+# rendered skills tree).
+write_file "$CONSUMER_FLAKE_SHARED/AGENTS.md" "$global_agents_content"
+mkdir -p "$CONSUMER_FLAKE_AGENTS/claude" "$CONSUMER_FLAKE_AGENTS/gemini" "$CONSUMER_FLAKE_AGENTS/codex"
+ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/claude/CLAUDE.md"
+ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/gemini/GEMINI.md"
+ln -snf ../_shared/AGENTS.md "$CONSUMER_FLAKE_AGENTS/codex/AGENTS.md"
 # OpenCode stays on the home dir for now (not yet wired into the symlink
 # activation; future scope).
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
@@ -477,139 +506,6 @@ rm -rf "$OPENCODE_SKILLS_DEST/ks"
 rm -rf "$OPENCODE_SKILLS_DEST/ks-pm"
 rm -rf "$OPENCODE_SKILLS_DEST/ks-assistant"
 
-for command_id in "${published_commands[@]}"; do
-  description="$(command_description "$command_id")"
-  display_name="$(command_display_name "$command_id")"
-  template_name="$(command_template_name "$command_id")"
-  command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$command_id"
-  legacy_skill_name="$(printf '%s' "$command_id" | tr '.' '-')"
-
-  # Clean up legacy dash-named skill directories
-  if [[ "$skill_name" != "$legacy_skill_name" ]]; then
-    rm -rf "$CLAUDE_SKILLS_DEST/${legacy_skill_name}"
-    rm -rf "$GEMINI_SKILLS_DEST/${legacy_skill_name}"
-    rm -rf "$OPENCODE_SKILLS_DEST/${legacy_skill_name}"
-  fi
-
-  # Skills are the canonical format — all CLIs with skill support get them
-  ks_skill_md="$(render_skill_md "$skill_name" "$description" "$command_body")"
-  write_file "$CLAUDE_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
-  write_file "$GEMINI_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
-  write_file "$OPENCODE_SKILLS_DEST/${skill_name}/SKILL.md" "$ks_skill_md"
-
-  # Colocate conventions for skill commands
-  skill_key="$(command_skill_key "$command_id")"
-  if [[ -n "$skill_key" ]]; then
-    colocate_skill_conventions "$skill_key" "$CLAUDE_SKILLS_DEST/${skill_name}"
-    colocate_skill_conventions "$skill_key" "$GEMINI_SKILLS_DEST/${skill_name}"
-    colocate_skill_conventions "$skill_key" "$OPENCODE_SKILLS_DEST/${skill_name}"
-  fi
-done
-
-deepwork_body="$(cat "$templates_dir/deepwork-skill.template.md")"
-deepwork_skill_md="$(render_skill_md "deepwork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_body")"
-write_shared_skill "deepwork" "$deepwork_skill_md"
-
-write_codex_skill "deepwork" "DeepWork" "Start or continue DeepWork workflows using MCP tools" "$deepwork_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-deepplan_body="$(cat <<'EOF'
-# DeepPlan
-
-Structured planning workflow that explores the codebase, generates competing
-designs, and produces an executable DeepWork job definition.
-
-## How to Use
-
-1. Call `EnterPlanMode` if not already in plan mode
-2. Call `start_workflow` with:
-   - `job_name`: `"deepplan"`
-   - `workflow_name`: `"create_deep_plan"`
-   - `goal`: the user's planning request
-3. Follow the step instructions returned by the MCP tools — they supersede
-   the default planning phases
-
-## Intent Parsing
-
-When the user invokes `/deepplan`, parse their intent:
-- **With goal**: `/deepplan <goal>` → enter plan mode and start the workflow
-  with `<goal>`
-- **No context**: `/deepplan` alone → enter plan mode and start the workflow
-  using conversation context as the goal; if no context, ask the user what
-  they want to plan
-EOF
-)"
-deepplan_skill_md="$(render_skill_md "deepplan" "Start structured planning — explores, designs, and produces an executable plan" "$deepplan_body")"
-write_shared_skill "deepplan" "$deepplan_skill_md"
-
-write_codex_skill "deepplan" "DeepPlan" "Start structured planning — explores, designs, and produces an executable plan" "$deepplan_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-deepreviews_body="$(cat "$templates_dir/deepreviews-skill.template.md")"
-deepreviews_skill_md="$(render_skill_md "deepreviews" "Reference documentation for DeepWork Reviews — automated code review rules using .deepreview configs and DeepSchema-generated rules" "$deepreviews_body")"
-write_shared_skill "deepreviews" "$deepreviews_skill_md"
-
-write_codex_skill "deepreviews" "DeepWork Reviews" "Reference documentation for DeepWork Reviews" "$deepreviews_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-deepschema_body="$(cat "$templates_dir/deepschema-skill.template.md")"
-deepschema_skill_md="$(render_skill_md "deepschema" "Create and manage DeepSchemas — rich file-level schemas with automatic validation and review generation" "$deepschema_body")"
-write_shared_skill "deepschema" "$deepschema_skill_md"
-
-write_codex_skill "deepschema" "DeepSchema" "Create and manage DeepSchemas" "$deepschema_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-review_body="$(cat "$templates_dir/review-skill.template.md")"
-review_skill_md="$(render_skill_md "review" "Run DeepWork Reviews on the current branch — review changed files using .deepreview rules" "$review_body")"
-write_shared_skill "review" "$review_skill_md"
-
-write_codex_skill "review" "Review" "Run DeepWork Reviews on the current branch" "$review_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-configure_reviews_body="$(cat "$templates_dir/configure-reviews-skill.template.md")"
-configure_reviews_skill_md="$(render_skill_md "configure_reviews" "Set up DeepWork Reviews — automated code review rules using .deepreview config files" "$configure_reviews_body")"
-write_shared_skill "configure_reviews" "$configure_reviews_skill_md"
-
-write_codex_skill "configure_reviews" "Configure Reviews" "Set up DeepWork Reviews" "$configure_reviews_skill_md" '
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "deepwork"
-      description: "DeepWork MCP server"
-'
-
-wrapup_body="$(cat "$templates_dir/wrap-up-skill.template.md")"
-wrapup_skill_md="$(render_skill_md "wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_body")"
-write_shared_skill "wrap-up" "$wrapup_skill_md"
-
-write_codex_skill "wrap-up" "Wrap-up" "Checkpoint the session: create a configured notes-dir report, comment on issues/PRs, and leave a handoff for the next agent or human" "$wrapup_skill_md"
-
 legacy_codex_skill_names=(
   agent-bootstrap agent-doctor agent-issue agent-onboard daily_status-send
   deepwork-review engineer ks-convention ks-develop ks-doctor ks-issue
@@ -624,16 +520,62 @@ for skill_name in "${legacy_codex_skill_names[@]}"; do
   rm -rf "$CODEX_SKILLS_DEST/$skill_name"
 done
 
+# Build the set of skills to render: the union of (manifest-published ks.*
+# commands) and (always-on yaml keys). Always-on keys are anything in the
+# merged skill map that doesn't start with `ks.` — deepwork-family entries
+# and any user-authored additions in _shared/skills.yaml. ks.* keys are
+# emitted only when published by the user's manifest.
+skills_to_emit=()
+declare -A seen_skills=()
+while IFS= read -r yaml_key; do
+  [[ -z "$yaml_key" ]] && continue
+  if [[ "$yaml_key" != ks.* ]] && [[ -z "${seen_skills[$yaml_key]:-}" ]]; then
+    skills_to_emit+=("$yaml_key")
+    seen_skills[$yaml_key]=1
+  fi
+done < <(jq -r 'keys[]' <<< "$merged_skills_json")
 for command_id in "${published_commands[@]}"; do
-  description="$(command_description "$command_id")"
-  display_name="$(command_display_name "$command_id")"
-  template_name="$(command_template_name "$command_id")"
-  command_body="$(render_template "$templates_dir/$template_name")"
-  skill_name="$(codex_skill_name "$command_id")"
-  skill_body="$(render_codex_skill_body "$command_body" "$skill_name")"
-  skill_md="$(render_skill_md "$skill_name" "$description" "$skill_body")"
+  [[ -z "$command_id" ]] && continue
+  if [[ -z "${seen_skills[$command_id]:-}" ]]; then
+    skills_to_emit+=("$command_id")
+    seen_skills[$command_id]=1
+  fi
+done
 
-  write_codex_skill "$skill_name" "$display_name" "$description" "$skill_md" '
+for skill_key in "${skills_to_emit[@]}"; do
+  description="$(command_description "$skill_key" || printf '%s' "")"
+  display_name="$(skill_display_name "$skill_key" || printf '%s' "$skill_key")"
+  if ! template_name="$(command_template_name "$skill_key" 2>/dev/null)"; then
+    template_name=""
+  fi
+  if [[ -z "$template_name" ]]; then
+    template_name="${skill_key//./-}-skill.template.md"
+  fi
+  template_path="$templates_dir/$template_name"
+  if [[ ! -f "$template_path" ]]; then
+    echo "Warning: skill '$skill_key' references missing template '$template_path'; skipping" >&2
+    continue
+  fi
+
+  command_body="$(render_template "$template_path")"
+  codex_name="$(codex_skill_name "$skill_key")"
+
+  # Clean up legacy dash-named claude/gemini/opencode skill dirs that predate
+  # the dotted-key naming.
+  if [[ "$skill_key" != "$codex_name" ]]; then
+    rm -rf "$CLAUDE_SKILLS_DEST/${codex_name}"
+    rm -rf "$GEMINI_SKILLS_DEST/${codex_name}"
+    rm -rf "$OPENCODE_SKILLS_DEST/${codex_name}"
+  fi
+
+  shared_skill_md="$(render_skill_md "$skill_key" "$description" "$command_body")"
+  write_file "$CLAUDE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
+  write_file "$GEMINI_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
+  write_file "$OPENCODE_SKILLS_DEST/${skill_key}/SKILL.md" "$shared_skill_md"
+
+  codex_body="$(render_codex_skill_body "$command_body" "$codex_name")"
+  codex_skill_md="$(render_skill_md "$codex_name" "$description" "$codex_body")"
+  write_codex_skill "$codex_name" "$display_name" "$description" "$codex_skill_md" '
 dependencies:
   tools:
     - type: "mcp"
@@ -641,9 +583,8 @@ dependencies:
       description: "DeepWork MCP server"
 '
 
-  # Colocate conventions for skill commands in Codex
-  skill_key="$(command_skill_key "$command_id")"
-  if [[ -n "$skill_key" ]]; then
-    colocate_skill_conventions "$skill_key" "$CODEX_SKILLS_DEST/${skill_name}"
-  fi
+  colocate_skill_conventions "$skill_key" "$CLAUDE_SKILLS_DEST/${skill_key}"
+  colocate_skill_conventions "$skill_key" "$GEMINI_SKILLS_DEST/${skill_key}"
+  colocate_skill_conventions "$skill_key" "$OPENCODE_SKILLS_DEST/${skill_key}"
+  colocate_skill_conventions "$skill_key" "$CODEX_SKILLS_DEST/${codex_name}"
 done
