@@ -18,13 +18,11 @@ agents/
   mail-client.nix    -- himalaya + mail assertions
   tailscale.nix      -- per-agent Tailscale (currently disabled)
   ssh.nix            -- ssh-agent + assertions
-  notes.nix          -- notes-sync, task-loop, scheduler services + timers
   home-manager.nix   -- home-manager terminal integration
   scripts/
     agent-svc.sh     -- per-agent service helper
-    task-loop.sh     -- task loop script
-    scheduler.sh     -- scheduler script
     agentctl.sh      -- agentctl CLI
+    project-index.sh -- zk-backed project index helper (used by agentctl)
 ```
 
 ## How `lib.nix` Works
@@ -107,18 +105,6 @@ keystone.os.agents.drago = {
       onCalendar = "*:0/30";
       useOllama = false;
     };
-  };
-  notes = {
-    syncOnCalendar = "*:0/5";
-    taskLoop = {
-      onCalendar = "*:0/5";
-      maxTasks = 5;
-      defaults = { provider = "claude"; profile = "medium"; };
-      ingest.profile = "fast";
-      prioritize.profile = "fast";
-      execute.profile = "medium";
-    };
-    scheduler.onCalendar = "*-*-* 05:00:00";
   };
 };
 ```

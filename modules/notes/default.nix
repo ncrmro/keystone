@@ -3,9 +3,8 @@
 # EXPERIMENTAL: This module is not part of the stable v1 surface.
 # It may change significantly or be restructured in future releases.
 #
-# Syncs a git-backed notes repository on a timer using repo-sync.
-# Optionally initializes a zk Zettelkasten notebook structure.
-# Used by both human users and agents.
+# Declares the canonical notes path and optionally initializes a zk
+# Zettelkasten notebook structure. Used by both human users and agents.
 #
 # See conventions/tool.zk.md
 # See conventions/process.knowledge-management.md
@@ -15,7 +14,6 @@
 # Usage:
 #   keystone.notes = {
 #     enable = true;
-#     repo = "git@github.com:user/notes.git";
 #     zk.enable = true;
 #   };
 #
@@ -27,18 +25,6 @@
 }:
 let
   cfg = config.keystone.notes;
-  sshAuthSock =
-    if
-      lib.hasAttrByPath [
-        "keystone"
-        "terminal"
-        "ssh"
-        "authSock"
-      ] config
-    then
-      config.keystone.terminal.ssh.authSock
-    else
-      "%t/ssh-agent";
 
   # Canonical .zk/config.toml content for the Zettelkasten notebook.
   # This is written to the notes repo (not /nix/store) so it travels with git.
@@ -284,14 +270,7 @@ in
     enable = lib.mkOption {
       type = lib.types.bool;
       default = config.keystone.experimental;
-      description = "Enable Keystone notes sync (EXPERIMENTAL). Auto-enabled when keystone.experimental = true.";
-    };
-
-    repo = lib.mkOption {
-      type = lib.types.str;
-      default = "";
-      description = "Git repository URL for the notes repo. Empty disables sync.";
-      example = "git@github.com:user/notes.git";
+      description = "Enable Keystone notes module (EXPERIMENTAL). Auto-enabled when keystone.experimental = true.";
     };
 
     path = lib.mkOption {
@@ -300,68 +279,12 @@ in
       description = "Local checkout path for the notes repo.";
     };
 
-    syncInterval = lib.mkOption {
-      type = lib.types.str;
-      default = "*:0/5";
-      description = "Systemd calendar spec for the sync timer. Default: every 5 minutes.";
-    };
-
-    commitPrefix = lib.mkOption {
-      type = lib.types.str;
-      default = "vault sync";
-      description = "Commit message prefix used by repo-sync.";
-    };
-
-    sync = {
-      enable = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Enable the systemd sync service and timer. Disable when another mechanism handles sync (e.g. NixOS-level agent sync).";
-      };
-    };
-
     zk = {
       enable = lib.mkEnableOption "zk Zettelkasten notebook initialization";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
-      Unit = {
-        Description = "Sync notes repo via repo-sync";
-      };
-
-      Service = {
-        Type = "oneshot";
-        Environment = [
-          "SSH_AUTH_SOCK=${sshAuthSock}"
-        ];
-        ExecStart = builtins.concatStringsSep " " [
-          "${pkgs.keystone.repo-sync}/bin/repo-sync"
-          "--repo ${lib.escapeShellArg cfg.repo}"
-          "--path ${lib.escapeShellArg cfg.path}"
-          "--commit-prefix ${lib.escapeShellArg cfg.commitPrefix}"
-          "--log-dir ${config.home.homeDirectory}/.local/state/notes-sync/logs"
-        ];
-        ExecStartPost = "${pkgs.bash}/bin/bash -lc 'if command -v pz >/dev/null 2>&1; then pz export-menu-cache --write-state >/dev/null 2>&1 || true; fi'";
-      };
-    };
-
-    systemd.user.timers.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
-      Unit = {
-        Description = "Timer for notes repo sync";
-      };
-
-      Timer = {
-        OnCalendar = cfg.syncInterval;
-        Persistent = true;
-      };
-
-      Install = {
-        WantedBy = [ "timers.target" ];
-      };
-    };
-
     # Scaffold zk notebook structure on activation (if enabled and not already present)
     home.activation.zkScaffold = lib.mkIf cfg.zk.enable (
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''

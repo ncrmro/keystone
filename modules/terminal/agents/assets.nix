@@ -39,7 +39,7 @@ let
   );
   agentsWithMcp = mapAttrs (name: agentCfg: {
     inherit (agentCfg) host archetype;
-    notesPath = agentCfg.notes.path;
+    notesPath = "/home/agent-${name}";
     mcpServers = {
       deepwork = {
         command = "${pkgs.keystone.deepwork}/bin/deepwork";

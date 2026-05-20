@@ -279,14 +279,6 @@ let
           echo "  Actual Luce capabilities: ${luceCapabilitiesJson}"
           exit 1
         fi
-        if echo '${dragoCapabilitiesJson}' | grep -q '"notes"' && echo '${luceCapabilitiesJson}' | grep -q '"notes"'; then
-          echo "  ✓ Both agents keep notes capability"
-        else
-          echo "  ✗ Missing notes capability on one or both agents"
-          echo "  Drago: ${dragoCapabilitiesJson}"
-          echo "  Luce: ${luceCapabilitiesJson}"
-          exit 1
-        fi
       fi
 
       if [ "${name}" = "user-screenshot-sync" ]; then
@@ -421,19 +413,15 @@ let
             archetype = "engineer";
             capabilities = [
               "engineer"
-              "notes"
             ];
-            notes.repo = "git@example.com:drago/notes.git";
           };
           agents.luce = {
             fullName = "Luce";
             email = "luce@example.com";
             archetype = "product";
             capabilities = [
-              "notes"
               "executive-assistant"
             ];
-            notes.repo = "git@example.com:luce/notes.git";
           };
         };
         fileSystems."/" = {
@@ -455,13 +443,11 @@ let
             fullName = "Drago";
             email = "drago@example.com";
             host = "test-host";
-            notes.repo = "git@example.com:drago/notes.git";
           };
           agents.luce = {
             fullName = "Luce";
             email = "luce@example.com";
             host = "ocean";
-            notes.repo = "git@example.com:luce/notes.git";
           };
         };
         fileSystems."/" = {
@@ -488,7 +474,6 @@ let
           agents.researcher = {
             fullName = "Research Agent";
             email = "researcher@ks.systems";
-            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -516,12 +501,10 @@ let
             researcher = {
               fullName = "Research Agent";
               email = "researcher@ks.systems";
-              notes.repo = "git@example.com:researcher/notes.git";
             };
             coder = {
               fullName = "Coding Agent";
               email = "coder@ks.systems";
-              notes.repo = "git@example.com:coder/notes.git";
             };
           };
         };
@@ -550,7 +533,6 @@ let
           agents.researcher = {
             uid = 4050;
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -576,11 +558,9 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
             fullName = "Coding Agent";
-            notes.repo = "git@example.com:coder/notes.git";
           };
         };
         fileSystems."/" = {
@@ -606,7 +586,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
             desktop = {
               enable = true;
               resolution = "2560x1440";
@@ -637,7 +616,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
           };
         };
         fileSystems."/" = {
@@ -663,165 +641,9 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
             chrome = {
               enable = true;
               debugPort = 9300;
-            };
-          };
-        };
-        fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
-          fsType = lib.mkForce "ext4";
-        };
-      }
-    ];
-
-    # Agent with notes.repo configured (sync user service)
-    agent-notes = eval "agent-notes" [
-      {
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "ext4";
-            devices = [ "/dev/vda" ];
-          };
-          users.testuser = {
-            fullName = "Test User";
-            initialPassword = "testpass";
-            admin = true;
-          };
-          agents.drago = {
-            fullName = "Drago";
-            notes.repo = "git@git.ncrmro.com:drago/notes.git";
-          };
-        };
-        fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
-          fsType = lib.mkForce "ext4";
-        };
-      }
-    ];
-
-    # Agent with notes and SSH
-    agent-notes-ssh = eval "agent-notes-ssh" [
-      {
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "ext4";
-            devices = [ "/dev/vda" ];
-          };
-          users.testuser = {
-            fullName = "Test User";
-            initialPassword = "testpass";
-            admin = true;
-          };
-          agents.drago = {
-            fullName = "Drago";
-            notes.repo = "git@git.ncrmro.com:drago/notes.git";
-            # SSH public key now set via keystone.keys."agent-drago"
-          };
-        };
-        fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
-          fsType = lib.mkForce "ext4";
-        };
-      }
-    ];
-
-    # Agent with custom sync interval
-    agent-notes-sync = eval "agent-notes-sync" [
-      {
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "ext4";
-            devices = [ "/dev/vda" ];
-          };
-          agents.tester = {
-            fullName = "Test Agent";
-            # SSH public key now set via keystone.keys."agent-tester"
-            notes.repo = "git@example.com:test/notes.git";
-            notes.syncOnCalendar = "*:0/15";
-          };
-        };
-        fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
-          fsType = lib.mkForce "ext4";
-        };
-      }
-    ];
-
-    # Agent with task loop and scheduler
-    agent-notes-task-loop = eval "agent-notes-task-loop" [
-      {
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "ext4";
-            devices = [ "/dev/vda" ];
-          };
-          agents.drago = {
-            fullName = "Drago";
-            # SSH public key now set via keystone.keys."agent-drago"
-            notes.repo = "git@git.example.com:drago/notes.git";
-          };
-        };
-        fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
-          fsType = lib.mkForce "ext4";
-        };
-      }
-    ];
-
-    # Agent with custom task loop and scheduler schedules
-    agent-notes-task-loop-custom = eval "agent-notes-task-loop-custom" [
-      {
-        keystone.os = {
-          enable = true;
-          storage = {
-            type = "ext4";
-            devices = [ "/dev/vda" ];
-          };
-          agents.tester = {
-            fullName = "Test Agent";
-            # SSH public key now set via keystone.keys."agent-tester"
-            notes.repo = "git@example.com:test/notes.git";
-            notes.taskLoop = {
-              defaults = {
-                provider = "claude";
-                profile = "medium";
-                fallbackModel = "opus";
-                effort = "medium";
-              };
-              profiles = {
-                max = {
-                  claude = {
-                    model = "opus";
-                    effort = "max";
-                  };
-                  gemini.model = "auto-gemini-3";
-                };
-              };
-              ingest = {
-                profile = "fast";
-                provider = "gemini";
-              };
-              onCalendar = "*:0/15";
-              maxTasks = 3;
-              prioritize = {
-                profile = "fast";
-                model = "gemini-3-flash-preview";
-              };
-              execute = {
-                profile = "max";
-                provider = "claude";
-                fallbackModel = "sonnet";
-              };
-            };
-            notes.scheduler = {
-              onCalendar = "*-*-* 06:00:00";
             };
           };
         };
@@ -848,11 +670,9 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
             fullName = "Coding Agent";
-            notes.repo = "git@example.com:coder/notes.git";
           };
         };
         fileSystems."/" = {
@@ -880,7 +700,6 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
-            notes.repo = "git@example.com:researcher/notes.git";
             chrome = {
               enable = true;
               mcp.enable = true;
@@ -907,19 +726,16 @@ let
           # Both set: github explicit, forgejo defaults to "luce"
           agents.luce = {
             fullName = "Luce";
-            notes.repo = "git@example.com:luce/notes.git";
             github.username = "luce-gh";
           };
           # GitHub set, forgejo defaults to "solo"
           agents.solo = {
             fullName = "Solo";
-            notes.repo = "git@example.com:solo/notes.git";
             github.username = "solo-gh";
           };
           # No github username (null), forgejo defaults to "quiet"
           agents.quiet = {
             fullName = "Quiet";
-            notes.repo = "git@example.com:quiet/notes.git";
           };
         };
         fileSystems."/" = {
@@ -940,7 +756,6 @@ let
           };
           agents.planner = {
             fullName = "Planning Agent";
-            notes.repo = "git@example.com:planner/notes.git";
             calendar.teamEvents = [
               {
                 summary = "Weekly Retrospective";
@@ -974,7 +789,6 @@ let
           };
           agents.vision = {
             fullName = "Vision Agent";
-            notes.repo = "git@example.com:vision/notes.git";
             perception = {
               enable = true;
               voice.model = "small";
@@ -1046,7 +860,6 @@ let
             };
             agents.vision = {
               fullName = "Vision Agent";
-              notes.repo = "git@example.com:vision/notes.git";
               host = "test-host";
               desktop.enable = true;
               perception.enable = true;

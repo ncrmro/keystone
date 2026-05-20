@@ -131,7 +131,6 @@ let
               "ks"
               "ks-dev"
               "assistant"
-              "notes"
               "project"
               "engineer"
               "product"
@@ -146,7 +145,6 @@ let
             determine what the generated `/ks` and `/ks-dev` commands may do.
           '';
           example = [
-            "notes"
             "executive-assistant"
           ];
         };

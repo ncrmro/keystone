@@ -522,18 +522,6 @@
               home-manager
               ;
           };
-          agentTaskLoopHashRegression = import ./tests/module/agent-task-loop-hash-regression.nix {
-            inherit pkgs lib;
-          };
-          agentTaskLoopPingPong = import ./tests/module/agent-task-loop-ping-pong.nix {
-            inherit pkgs lib;
-          };
-          agentRuntimeCoherence = import ./tests/module/agent-runtime-coherence.nix {
-            inherit pkgs lib;
-          };
-          agentQueueMigration = import ./tests/module/agent-queue-migration.nix {
-            inherit pkgs lib;
-          };
         in
         {
           # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
@@ -570,10 +558,6 @@
           agentctl-regression = agentctlRegression;
           binary-cache-client-merge = binaryCacheClientMerge;
           zellij-tab-prompt = zellijTabPrompt;
-          agent-task-loop-hash-regression = agentTaskLoopHashRegression;
-          agent-task-loop-ping-pong = agentTaskLoopPingPong;
-          agent-runtime-coherence = agentRuntimeCoherence;
-          agent-queue-migration = agentQueueMigration;
 
           # --- CI groups — parallel matrix jobs via nix-github-actions ---
 
@@ -631,10 +615,6 @@
           # Agent runtime and miscellaneous module tests
           check-agents = pkgs.runCommand "check-agents" { } ''
             mkdir -p "$out"
-            ln -s ${agentTaskLoopHashRegression} "$out/agent-task-loop-hash-regression"
-            ln -s ${agentTaskLoopPingPong} "$out/agent-task-loop-ping-pong"
-            ln -s ${agentRuntimeCoherence} "$out/agent-runtime-coherence"
-            ln -s ${agentQueueMigration} "$out/agent-queue-migration"
             ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
             ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
           '';
