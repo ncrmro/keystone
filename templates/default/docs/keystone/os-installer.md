@@ -55,6 +55,55 @@ is usable but slow; remote builder is the saner path.
 
 No special setup. The build runs locally.
 
+## Validate the ISO in a VM (optional)
+
+Before burning to a USB stick, you can boot the freshly-built ISO inside a
+local QEMU VM to confirm it actually reaches the installer login prompt. This
+catches boot-chain regressions that manifest as "the kernel boots and DHCPs
+but the console never comes back" — symptoms that are easy to miss until
+you're standing in front of the real hardware.
+
+The template ships a self-contained launcher at
+[`bin/preview-iso`](../../bin/preview-iso). It uses `nix shell` to pull
+QEMU + OVMF (UEFI firmware) on demand, so it works on any Linux driver
+without libvirt or a system-installed QEMU.
+
+```bash
+./bin/preview-iso              # graphical window + serial mirrored on stdio
+./bin/preview-iso --headless   # serial only, no window (good for SSH'd shells)
+./bin/preview-iso --clean      # wipe the scratch disk + NVRAM and start fresh
+```
+
+What you should see:
+
+1. OVMF firmware splash, then the GRUB menu picks `Keystone Installer`.
+2. Kernel boot messages on the serial console.
+3. NetworkManager (or `dhcpcd`) acquiring a DHCP lease — this is the point
+   the user mentioned as a common stopping point.
+4. `Reached target Multi-User System.` on serial.
+5. Either a `keystone login:` prompt on tty1 (graphical window) **or**, if
+   you've set `keystone.installer.tui.enable = true`, the Keystone installer
+   TUI taking over tty1.
+
+If step 5 never happens in `--headless` mode, that's expected: tty1 is a
+*graphical* console, and `--headless` only attaches the serial port. Re-run
+without `--headless` to actually see the login takeover. Conversely, if the
+graphical window shows nothing past DHCP but serial scrolls fine, the kernel
+parameters likely point the primary console at `ttyS0` only — check
+`modules/iso-installer.nix` in your pinned keystone for the `console=` line.
+
+You can SSH into the running installer (port-forwarded to `localhost:12222`)
+*if* you set `keystone.installer.sshKeys` in `flake.nix`:
+
+```bash
+ssh -p 12222 -o StrictHostKeyChecking=no root@localhost
+```
+
+Exit the VM with **Ctrl+A then X** (when focused on the serial console) or
+just close the QEMU window. The scratch install disk lives at
+`/tmp/keystone-preview-iso-disk.qcow2` and is reused across runs — pass
+`--clean` to start from a blank disk if you want to dry-run `ks install`.
+
 ## Write the ISO to USB
 
 ⚠️ **`dd` destroys all data on the target device.** Verify the device path

@@ -59,8 +59,13 @@ reasoning from scratch when a question falls in their scope:
   Step 8 of onboarding onward.
 - `docs/keystone/` — the onboarding spine, the OS-installer reference, the
   GitHub-PAT setup. Owned by this repo; edit freely.
-- `bin/` — repo-local scripts. The shipped `bin/test-iso` is keystone's
-  installer-ISO smoke test.
+- `bin/` — repo-local scripts:
+  - `bin/preview-iso` — boot the freshly-built `result/iso/*.iso` in a local
+    QEMU VM to validate it reaches the installer login prompt before burning
+    to USB. Self-contained (uses `nix shell` for qemu + OVMF). See
+    `docs/keystone/os-installer.md` § "Validate the ISO in a VM".
+  - `bin/test-iso` — keystone's heavier installer + e2e smoke test. Requires
+    a path-locked keystone input (dev mode).
 
 ## Commands that matter
 

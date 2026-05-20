@@ -177,6 +177,16 @@ ls -lh result/iso/
 
 A `.iso` file should be present and at least several hundred MB.
 
+**Optional — preview the ISO in a VM before burning:**
+
+```bash
+./bin/preview-iso   # opens a QEMU window, mirrors serial to your terminal
+```
+
+Confirms the ISO boots cleanly to a login prompt (or installer TUI) without
+spending a USB write cycle. See [`os-installer.md`](os-installer.md) §
+"Validate the ISO in a VM" for what to watch for.
+
 **If it fails:** If the build wants to compile something huge from source
 (GHC, Chromium, etc.), your Nix instance is missing the keystone cache. Add
 `ks-systems.cachix.org` to `nix.settings.substituters` on your driver, or

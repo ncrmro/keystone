@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# preview-iso — boot the installer ISO in a local QEMU VM for validation
+#
+# Boots the ISO produced by `nix build .#iso` in a UEFI VM so you can confirm
+# the installer reaches a login prompt (or the TUI, if enabled) before writing
+# the image to a USB stick. Catches boot-chain regressions that only show up
+# after the kernel hands off — the classic "got to DHCP but never reached the
+# console" failure mode.
+#
+# Self-contained: pulls qemu and OVMF from nixpkgs at run time. No libvirt,
+# no system-installed QEMU, no KEYSTONE_LOCKED_PATH required.
+#
+# Usage:
+#   ./bin/preview-iso              # graphical window + serial mirrored on stdio
+#   ./bin/preview-iso --headless   # serial on stdio only (no window)
+#   ./bin/preview-iso --iso PATH   # override the default result/iso/*.iso lookup
+#   ./bin/preview-iso --disk PATH  # override the scratch install disk path
+#   ./bin/preview-iso --memory MB  # RAM in MB (default: 4096)
+#   ./bin/preview-iso --cpus N     # vCPU count (default: 2)
+#   ./bin/preview-iso --clean      # remove the scratch disk + NVRAM before booting
+#
+# Exit the VM with Ctrl+A then X (serial console), or close the QEMU window.
+
+set -euo pipefail
+
+ISO_PATH=""
+HEADLESS=false
+DISK="/tmp/keystone-preview-iso-disk.qcow2"
+DISK_SIZE="32G"
+VARS_COPY="/tmp/keystone-preview-iso-vars.fd"
+MEMORY=4096
+VCPUS=2
+CLEAN=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --headless) HEADLESS=true; shift ;;
+        --iso)      ISO_PATH="$2"; shift 2 ;;
+        --disk)     DISK="$2"; shift 2 ;;
+        --memory)   MEMORY="$2"; shift 2 ;;
+        --cpus)     VCPUS="$2"; shift 2 ;;
+        --clean)    CLEAN=true; shift ;;
+        -h|--help)
+            sed -n '/^# preview-iso/,/^set -euo/{/^set -euo/!p;}' "$0" \
+                | sed -e 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if [[ "$CLEAN" == "true" ]]; then
+    rm -f "$DISK" "$VARS_COPY"
+fi
+
+if [[ -z "$ISO_PATH" ]]; then
+    ISO_PATH="$(find result/iso -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
+fi
+if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
+    echo "ERROR: No ISO found at result/iso/*.iso." >&2
+    echo "       Run 'nix build .#iso' first, or pass --iso PATH." >&2
+    exit 1
+fi
+
+QEMU_BINARY="qemu-system-x86_64"
+ACCEL="kvm"
+if [[ ! -r /dev/kvm ]]; then
+    echo "WARN: /dev/kvm not accessible — falling back to TCG (slow)." >&2
+    ACCEL="tcg"
+fi
+
+# OVMF firmware (UEFI). The installer is EFI-only.
+echo "Resolving OVMF firmware…" >&2
+OVMF_PATH="$(nix build --no-link --print-out-paths nixpkgs#OVMF.fd 2>/dev/null)"
+OVMF_CODE="${OVMF_PATH}/FV/OVMF_CODE.fd"
+OVMF_VARS_TEMPLATE="${OVMF_PATH}/FV/OVMF_VARS.fd"
+
+# Per-run VARS copy so writes don't try to mutate the read-only nix-store template.
+if [[ ! -f "$VARS_COPY" ]]; then
+    install -m 0644 "$OVMF_VARS_TEMPLATE" "$VARS_COPY"
+fi
+
+# Scratch disk so a curious user can actually run `ks install` from inside the VM.
+if [[ ! -f "$DISK" ]]; then
+    echo "Creating scratch install disk ($DISK, $DISK_SIZE)…" >&2
+    nix shell --quiet nixpkgs#qemu --command qemu-img create -f qcow2 "$DISK" "$DISK_SIZE" >/dev/null
+fi
+
+QEMU_ARGS=(
+    -machine "type=q35,accel=${ACCEL}"
+    -smp "$VCPUS"
+    -m "$MEMORY"
+    -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+    -drive "if=pflash,format=raw,file=${VARS_COPY}"
+    -drive "file=${DISK},if=virtio,format=qcow2"
+    -cdrom "$ISO_PATH"
+    -nic "user,model=virtio-net-pci,hostfwd=tcp::12222-:22"
+    -boot "order=d,menu=off"
+)
+if [[ "$ACCEL" == "kvm" ]]; then
+    QEMU_ARGS+=(-cpu host)
+fi
+
+if [[ "$HEADLESS" == "true" ]]; then
+    # No graphical console — TUI installer (if enabled) and login prompt only
+    # appear on tty1, which you cannot see in this mode. Useful for scripted
+    # checks: serial messages, sshd start, network bring-up.
+    QEMU_ARGS+=(-nographic -serial mon:stdio)
+else
+    QEMU_ARGS+=(-display gtk,grab-on-hover=on -serial mon:stdio)
+fi
+
+cat >&2 <<EOF
+Booting:  $ISO_PATH
+Disk:     $DISK
+Memory:   ${MEMORY}M   vCPUs: $VCPUS   Accel: $ACCEL
+SSH:      ssh -p 12222 -o StrictHostKeyChecking=no root@localhost
+          (only works if you set keystone.installer.sshKeys in flake.nix)
+
+Watch for: 'Reached target Multi-User System' → login prompt on tty1
+           (or the Keystone installer TUI if keystone.installer.tui.enable = true).
+Exit:      Ctrl+A then X (serial), or close the QEMU window.
+
+EOF
+
+exec nix shell --quiet nixpkgs#qemu --command "$QEMU_BINARY" "${QEMU_ARGS[@]}"
