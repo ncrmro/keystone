@@ -53,6 +53,7 @@ in
     ./secrets.nix
     ./ssh-auto-load.nix
     ./forgejo.nix
+    ./github.nix
     ./grafana.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
