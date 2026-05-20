@@ -198,14 +198,23 @@ build on a host that already has it (e.g. another keystone machine).
 
 **Goal:** Write `result/iso/*.iso` to a USB stick.
 
-See [`os-installer.md`](os-installer.md) for the full commands. Summary:
+**Run** (Linux + macOS):
 
-- **Linux:** `lsblk` → identify the USB device → `sudo dd if=result/iso/*.iso of=/dev/sdX bs=4M status=progress conv=fsync && sync`
-- **macOS:** `diskutil list` → `diskutil unmountDisk /dev/diskN` → `sudo dd if=result/iso/*.iso of=/dev/rdiskN bs=4m status=progress && sync`
+```bash
+./bin/iso-burn-usb
+```
 
-> **Warning:** `dd` destroys all data on the target device. Verify with
-> `lsblk` / `diskutil list` *immediately before* running `dd` that the device
-> path is the USB stick, not your driver's disk.
+The script lists only USB devices (internal disks are filtered out), shows
+the picked device's model and partition layout, and requires you to type
+`BURN` (uppercase) before any writes happen. See
+[`os-installer.md`](os-installer.md) § "Write the ISO to USB" for what each
+prompt means and for the manual `dd` fallback (required on Windows; use
+Rufus in DD Image mode).
+
+> **Warning:** Burning a USB stick destroys all data on the target. The
+> script's USB-only filter prevents picking your driver disk, but if you
+> drop down to raw `dd`, the entire safety is on you to verify the path
+> immediately before running.
 
 **Verify:** Plug the USB into the target host. Power on. Select the USB from
 the UEFI boot menu. The Keystone installer banner appears on the screen.

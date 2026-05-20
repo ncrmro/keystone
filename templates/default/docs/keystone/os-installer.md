@@ -106,9 +106,39 @@ just close the QEMU window. The scratch install disk lives at
 
 ## Write the ISO to USB
 
-⚠️ **`dd` destroys all data on the target device.** Verify the device path
-twice before running the command. If you write to the wrong disk you can
-unrecover-ably lose your driver's filesystem.
+⚠️ **Writing to a USB stick destroys all data on the target device.**
+The template ships a guided script that minimizes the chance of overwriting
+the wrong disk; raw `dd` is the manual fallback for users who prefer it or
+are on Windows.
+
+### Recommended: `./bin/iso-burn-usb` (Linux + macOS)
+
+```bash
+./bin/iso-burn-usb
+```
+
+What it does:
+
+1. Locates `result/iso/*.iso` automatically (override with `--iso PATH`).
+2. Lists **only removable USB devices** — internal NVMe/SATA drives are
+   filtered out at detection, so a typo can't target your driver disk.
+3. Shows the picked device's model, size, and current partition layout
+   before doing anything destructive.
+4. Requires you to type the literal word `BURN` (uppercase) to proceed.
+   `y`/Enter/anything else aborts.
+5. Unmounts any auto-mounted partitions on the target.
+6. Calls `dd` with `bs=4M` (Linux) or `bs=4m` on the raw character device
+   `/dev/rdiskN` (macOS, dramatically faster than the buffered device).
+7. Runs `sync` at the end.
+
+If multiple USB sticks are plugged in, it presents a numbered picker. If
+none are detected, it errors with a clear message instead of falling through
+to internal disks.
+
+### Manual fallback: raw `dd`
+
+Use this if you want full manual control, are on Windows (Rufus), or are
+intentionally writing to a non-USB device the safety script won't pick.
 
 ### Linux
 

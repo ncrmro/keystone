@@ -64,6 +64,11 @@ reasoning from scratch when a question falls in their scope:
     QEMU VM to validate it reaches the installer login prompt before burning
     to USB. Self-contained (uses `nix shell` for qemu + OVMF). See
     `docs/keystone/os-installer.md` § "Validate the ISO in a VM".
+  - `bin/iso-burn-usb` — guided dd alternative: filters block devices to
+    USB-only (no chance of overwriting an internal NVMe), shows the picked
+    device's model + size + partition layout, requires the literal word
+    `BURN` to be typed, unmounts auto-mounted partitions before writing.
+    Linux + macOS. See `docs/keystone/os-installer.md` § "Write the ISO to USB".
   - `bin/test-iso` — keystone's heavier installer + e2e smoke test. Requires
     a path-locked keystone input (dev mode).
 
