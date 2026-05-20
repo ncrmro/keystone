@@ -69,10 +69,13 @@ QEMU + OVMF (UEFI firmware) on demand, so it works on any Linux driver
 without libvirt or a system-installed QEMU.
 
 ```bash
-./bin/preview-iso              # graphical window + serial mirrored on stdio
-./bin/preview-iso --headless   # serial only, no window (good for SSH'd shells)
-./bin/preview-iso --clean      # wipe the scratch disk + NVRAM and start fresh
+nix develop -c preview-iso              # graphical window + serial mirrored on stdio
+nix develop -c preview-iso --headless   # serial only, no window (good for SSH'd shells)
+nix develop -c preview-iso --clean      # wipe the scratch disk + NVRAM and start fresh
 ```
+
+(Or just `preview-iso ...` from an activated dev shell / direnv-loaded
+shell. `./bin/preview-iso` also works after `chmod +x bin/*`.)
 
 What you should see:
 
@@ -111,11 +114,24 @@ The template ships a guided script that minimizes the chance of overwriting
 the wrong disk; raw `dd` is the manual fallback for users who prefer it or
 are on Windows.
 
-### Recommended: `./bin/iso-burn-usb` (Linux + macOS)
+### Recommended: `iso-burn-usb` via the dev shell (Linux + macOS)
+
+The script ships in `bin/iso-burn-usb` and is exposed as a dev-shell
+package, so the canonical invocation is either:
 
 ```bash
-./bin/iso-burn-usb
+# direnv users: cd into the repo and direnv auto-loads the shell, then:
+iso-burn-usb
+
+# Otherwise:
+nix develop -c iso-burn-usb
 ```
+
+(Running `./bin/iso-burn-usb` directly also works *after* you `chmod +x
+bin/*` — `nix flake new -t` strips executable bits during scaffolding,
+which is why the dev-shell form is the documented one. Inside the dev
+shell, the script is wrapped via a Nix derivation that preserves the
+exec bit and lives on PATH.)
 
 What it does:
 

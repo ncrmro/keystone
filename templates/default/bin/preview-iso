@@ -10,24 +10,37 @@
 # Self-contained: pulls qemu and OVMF from nixpkgs at run time. No libvirt,
 # no system-installed QEMU, no KEYSTONE_LOCKED_PATH required.
 #
-# Usage:
-#   ./bin/preview-iso              # graphical window + serial mirrored on stdio
-#   ./bin/preview-iso --headless   # serial on stdio only (no window)
-#   ./bin/preview-iso --iso PATH   # override the default result/iso/*.iso lookup
-#   ./bin/preview-iso --disk PATH  # override the scratch install disk path
-#   ./bin/preview-iso --memory MB  # RAM in MB (default: 4096)
-#   ./bin/preview-iso --cpus N     # vCPU count (default: 2)
-#   ./bin/preview-iso --clean      # remove the scratch disk + NVRAM before booting
+# Usage (from the keystone-config dev shell or via `nix develop -c`):
+#   preview-iso              # graphical window + serial mirrored on stdio
+#   preview-iso --headless   # serial on stdio only (no window)
+#   preview-iso --iso PATH   # override the default result/iso/*.iso lookup
+#   preview-iso --disk PATH  # override the scratch install disk path
+#   preview-iso --memory MB  # RAM in MB (default: 4096)
+#   preview-iso --cpus N     # vCPU count (default: 2)
+#   preview-iso --clean      # remove the scratch disk + NVRAM before booting
+#
+# `./bin/preview-iso` also works after `chmod +x bin/*`; the dev-shell form
+# is canonical because `nix flake new -t` strips executable bits on scaffold.
 #
 # Exit the VM with Ctrl+A then X (serial console), or close the QEMU window.
 
 set -euo pipefail
 
-# Anchor the ISO lookup at the keystone-config root that owns this script
-# (the parent of bin/), not at CWD. Means the script can be invoked from
-# anywhere and still find `result/iso/*.iso` relative to the scaffold.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-CONFIG_ROOT="$(dirname "$SCRIPT_DIR")"
+# Locate the keystone-config root by walking up from CWD looking for a
+# `flake.nix`. Covers both `./bin/preview-iso` (PWD is the root) and
+# `nix develop -c preview-iso` from anywhere inside the scaffold (the
+# script lives in /nix/store under that invocation, so its own path is
+# not informative). Override via `--iso PATH`.
+find_config_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    [[ -f "$dir/flake.nix" ]] && { printf '%s\n' "$dir"; return 0; }
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+CONFIG_ROOT="$(find_config_root 2>/dev/null)" || true
 
 ISO_PATH=""
 HEADLESS=false
@@ -58,13 +71,18 @@ if [[ "$CLEAN" == "true" ]]; then
     rm -f "$DISK" "$VARS_COPY"
 fi
 
-if [[ -z "$ISO_PATH" ]]; then
+if [[ -z "$ISO_PATH" && -n "$CONFIG_ROOT" ]]; then
     ISO_PATH="$(find "$CONFIG_ROOT/result/iso" -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
 fi
 if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
-    echo "ERROR: No ISO found at $CONFIG_ROOT/result/iso/*.iso." >&2
-    echo "       Run 'nix build .#iso' from $CONFIG_ROOT first," >&2
-    echo "       or pass --iso PATH to point at an existing build." >&2
+    if [[ -z "$CONFIG_ROOT" ]]; then
+        echo "ERROR: No keystone-config detected — no flake.nix found in $PWD or any parent." >&2
+        echo "       cd into your scaffolded keystone-config first, or pass --iso PATH." >&2
+    else
+        echo "ERROR: No ISO found at $CONFIG_ROOT/result/iso/*.iso." >&2
+        echo "       Run 'nix build .#iso' from $CONFIG_ROOT first," >&2
+        echo "       or pass --iso PATH to point at an existing build." >&2
+    fi
     exit 1
 fi
 

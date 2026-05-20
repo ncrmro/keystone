@@ -147,14 +147,39 @@
         };
       };
     }
-    // {
-      devShells.x86_64-linux.default = keystone.inputs.nixpkgs.legacyPackages.x86_64-linux.mkShell {
-        packages = with keystone.inputs.nixpkgs.legacyPackages.x86_64-linux; [
-          nixfmt
-          nil
-          imagemagick # PPM→PNG conversion for e2e screenshots
-          nix-serve # local binary cache for e2e VM installs
-        ];
-      };
-    };
+    // (
+      let
+        pkgs = keystone.inputs.nixpkgs.legacyPackages.x86_64-linux;
+        # `nix flake new -t` does not preserve executable bits when copying
+        # the template, so `./bin/<script>` from a freshly-scaffolded repo
+        # comes out 644 and fails with "permission denied" until the user
+        # remembers to `chmod +x bin/*`. Wrap each script as a Nix
+        # derivation so its executable bit is set in /nix/store, and
+        # surface it on the dev shell's PATH — `nix develop -c iso-burn-usb`
+        # works immediately, with zero setup beyond entering the shell.
+        scriptBin = name: pkgs.writeShellScriptBin name (builtins.readFile (./bin + "/${name}"));
+        isoBurnUsb = scriptBin "iso-burn-usb";
+        previewIso = scriptBin "preview-iso";
+      in
+      {
+        devShells.x86_64-linux.default = pkgs.mkShell {
+          packages = [
+            pkgs.nixfmt
+            pkgs.nil
+            pkgs.imagemagick # PPM→PNG conversion for e2e screenshots
+            pkgs.nix-serve # local binary cache for e2e VM installs
+            isoBurnUsb
+            previewIso
+          ];
+          shellHook = ''
+            cat <<'BANNER'
+            Keystone dev shell — helper scripts on PATH:
+              iso-burn-usb    write result/iso/*.iso to a USB stick (guided)
+              preview-iso     boot result/iso/*.iso in a local QEMU VM
+            Run `iso-burn-usb --help` or `preview-iso --help` for options.
+            BANNER
+          '';
+        };
+      }
+    );
 }

@@ -180,7 +180,7 @@ A `.iso` file should be present and at least several hundred MB.
 **Optional — preview the ISO in a VM before burning:**
 
 ```bash
-./bin/preview-iso   # opens a QEMU window, mirrors serial to your terminal
+nix develop -c preview-iso   # opens a QEMU window, mirrors serial to your terminal
 ```
 
 Confirms the ISO boots cleanly to a login prompt (or installer TUI) without
@@ -201,8 +201,10 @@ build on a host that already has it (e.g. another keystone machine).
 **Run** (Linux + macOS):
 
 ```bash
-./bin/iso-burn-usb
+nix develop -c iso-burn-usb
 ```
+
+(Or just `iso-burn-usb` from an activated dev shell / direnv-loaded shell.)
 
 The script lists only USB devices (internal disks are filtered out), shows
 the picked device's model and partition layout, and requires you to type

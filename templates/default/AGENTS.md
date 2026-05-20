@@ -59,16 +59,21 @@ reasoning from scratch when a question falls in their scope:
   Step 8 of onboarding onward.
 - `docs/keystone/` — the onboarding spine, the OS-installer reference, the
   GitHub-PAT setup. Owned by this repo; edit freely.
-- `bin/` — repo-local scripts:
-  - `bin/preview-iso` — boot the freshly-built `result/iso/*.iso` in a local
-    QEMU VM to validate it reaches the installer login prompt before burning
-    to USB. Self-contained (uses `nix shell` for qemu + OVMF). See
-    `docs/keystone/os-installer.md` § "Validate the ISO in a VM".
-  - `bin/iso-burn-usb` — guided dd alternative: filters block devices to
+- `bin/` — repo-local scripts. Invoke via the dev shell (`nix develop -c
+  <name>`, or directly by name from an activated `nix develop` or
+  direnv-loaded shell) — `nix flake new -t` strips the executable bit
+  during scaffolding, so `./bin/<name>` from a fresh scaffold fails with
+  permission-denied until you `chmod +x bin/*`. The dev-shell path
+  bypasses that entirely and is the documented form.
+  - `iso-burn-usb` — guided dd alternative: filters block devices to
     USB-only (no chance of overwriting an internal NVMe), shows the picked
     device's model + size + partition layout, requires the literal word
     `BURN` to be typed, unmounts auto-mounted partitions before writing.
     Linux + macOS. See `docs/keystone/os-installer.md` § "Write the ISO to USB".
+  - `preview-iso` — boot the freshly-built `result/iso/*.iso` in a local
+    QEMU VM to validate it reaches the installer login prompt before burning
+    to USB. Self-contained (uses `nix shell` for qemu + OVMF). See
+    `docs/keystone/os-installer.md` § "Validate the ISO in a VM".
   - `bin/test-iso` — keystone's heavier installer + e2e smoke test. Requires
     a path-locked keystone input (dev mode).
 

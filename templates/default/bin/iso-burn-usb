@@ -9,25 +9,36 @@
 # the target are unmounted before dd so the write doesn't race against a
 # file manager.
 #
-# Usage:
-#   ./bin/iso-burn-usb                  # auto-find result/iso/*.iso, guided pick
-#   ./bin/iso-burn-usb --iso PATH       # override the ISO source
-#   ./bin/iso-burn-usb --device /dev/sdb   # skip the picker, still confirm
-#   ./bin/iso-burn-usb --no-sync        # skip final `sync` (faster but unsafe)
+# Usage (from the keystone-config dev shell or via `nix develop -c`):
+#   iso-burn-usb                        # auto-find result/iso/*.iso, guided pick
+#   iso-burn-usb --iso PATH             # override the ISO source
+#   iso-burn-usb --device /dev/sdb      # skip the picker, still confirm
+#   iso-burn-usb --no-sync              # skip final `sync` (faster but unsafe)
+#
+# `./bin/iso-burn-usb` also works after `chmod +x bin/*`; the dev-shell form
+# is canonical because `nix flake new -t` strips executable bits on scaffold.
 #
 # Supports Linux (lsblk + dd) and macOS (diskutil + dd on the raw device).
 # Windows users: this script does not run; use Rufus in "DD Image" mode.
 
 set -euo pipefail
 
-# Anchor the ISO lookup at the keystone-config root that owns this script,
-# not at CWD. The script ships at <keystone-config>/bin/iso-burn-usb so the
-# scaffolded user can invoke it from anywhere — `~/repos/foo/bin/iso-burn-usb`
-# from `$HOME` should still find the ISO that `nix build .#iso` created at
-# `~/repos/foo/result/iso/`. Falls back gracefully if `nix build` was run from
-# some other directory (override via `--iso PATH`).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-CONFIG_ROOT="$(dirname "$SCRIPT_DIR")"
+# Locate the keystone-config root by walking up from CWD looking for a
+# `flake.nix`. Covers both invocation paths:
+#   - `./bin/iso-burn-usb` from the scaffold root (PWD is the root)
+#   - `nix develop -c iso-burn-usb` from anywhere inside the scaffold
+#     (BASH_SOURCE resolves to /nix/store, not useful; PWD is)
+# Override via `--iso PATH` if your ISO lives elsewhere.
+find_config_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    [[ -f "$dir/flake.nix" ]] && { printf '%s\n' "$dir"; return 0; }
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+CONFIG_ROOT="$(find_config_root 2>/dev/null)" || true
 
 ISO_PATH=""
 DEVICE_OVERRIDE=""
@@ -49,13 +60,18 @@ OS="$(uname -s)"
 
 # ── locate the ISO ───────────────────────────────────────────────────────────
 
-if [[ -z "$ISO_PATH" ]]; then
+if [[ -z "$ISO_PATH" && -n "$CONFIG_ROOT" ]]; then
   ISO_PATH="$(find "$CONFIG_ROOT/result/iso" -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
 fi
 if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
-  echo "ERROR: No ISO found at $CONFIG_ROOT/result/iso/*.iso." >&2
-  echo "       Run 'nix build .#iso' from $CONFIG_ROOT first," >&2
-  echo "       or pass --iso PATH to point at an existing build." >&2
+  if [[ -z "$CONFIG_ROOT" ]]; then
+    echo "ERROR: No keystone-config detected — no flake.nix found in $PWD or any parent." >&2
+    echo "       cd into your scaffolded keystone-config first, or pass --iso PATH." >&2
+  else
+    echo "ERROR: No ISO found at $CONFIG_ROOT/result/iso/*.iso." >&2
+    echo "       Run 'nix build .#iso' from $CONFIG_ROOT first," >&2
+    echo "       or pass --iso PATH to point at an existing build." >&2
+  fi
   exit 1
 fi
 
