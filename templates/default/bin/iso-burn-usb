@@ -176,6 +176,28 @@ if [[ "$confirm" != "BURN" ]]; then
   exit 0
 fi
 
+# ── acquire sudo credentials before destructive ops ──────────────────────────
+# Done AFTER the BURN check so an aborted run never prompts for a password,
+# and BEFORE unmount + dd so the user is not interrupted mid-write by a
+# credential refresh. A single `sudo -v` covers both steps below.
+
+echo
+echo "The unmount + dd steps need elevated privileges."
+if ! sudo -v; then
+  echo "ERROR: Could not acquire sudo credentials. Burn aborted." >&2
+  exit 1
+fi
+
+# Refresh the cached sudo timestamp every 60s while the script is alive.
+# USB2 + a 2 GB ISO can run 15+ minutes — past sudo's default
+# `timestamp_timeout` of 15 — and a mid-write expiration would interrupt dd.
+# The loop exits on its own once the timestamp can no longer be refreshed
+# (e.g. the trap killed sudo's parent), so no special cleanup beyond the
+# EXIT trap below is needed.
+( while sudo -n true 2>/dev/null; do sleep 60; done ) &
+SUDO_KEEPER_PID=$!
+trap 'kill "$SUDO_KEEPER_PID" 2>/dev/null || true' EXIT
+
 # ── unmount any auto-mounted partitions on the target ────────────────────────
 
 echo
