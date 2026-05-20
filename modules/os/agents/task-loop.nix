@@ -55,8 +55,10 @@ in
               XDG_CACHE_HOME = "/home/${username}/.cache";
               # CRITICAL: bare CLI names must resolve via the agent's
               # home-manager profile so version/tooling tracks the agent,
-              # not the system rebuild cadence.
-              PATH = "/etc/profiles/per-user/${username}/bin:/run/current-system/sw/bin";
+              # not the system rebuild cadence. mkForce because NixOS
+              # supplies a default PATH for user services that we need
+              # to override rather than merge with.
+              PATH = mkForce "/etc/profiles/per-user/${username}/bin:/run/current-system/sw/bin";
             };
             serviceConfig = {
               Type = "oneshot";
