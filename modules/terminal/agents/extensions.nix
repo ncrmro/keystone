@@ -4,7 +4,7 @@
 #   - `resolvedCapabilities` — capability set after merging base/archetype/explicit
 #   - `publishedCommands`    — list of slash-command ids for this host
 #
-# Both are surfaced as internal options that `generated-agent-assets.nix`
+# Both are surfaced as internal options that `modules/terminal/agents/assets.nix`
 # reads when writing `~/.config/keystone/agent-assets.json`. The actual
 # rendering of skill content, instruction files, and Claude subagents is
 # done by `modules/terminal/agents/keystone-sync-agent-assets.sh`, which
@@ -95,7 +95,7 @@ in
       type = types.listOf capabilityType;
       default = [ ];
       internal = true;
-      description = "Resolved capability set used to generate `/ks` and `/ks-dev`.";
+      description = "Resolved capability set used to generate hyphenated slash commands like `/ks-system`, `/ks-engineer`, and (in dev mode) `/ks-dev`.";
     };
 
     publishedCommands = mkOption {
