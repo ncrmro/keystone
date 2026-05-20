@@ -38,10 +38,18 @@
 22. Built-in project workflows (Item closed → Done, PR merged → Done) handle Done transitions automatically — agents MUST NOT duplicate these.
 23. See `process.project-board` for full board lifecycle and CLI reference.
 
+## Personal Access Tokens
+
+For PATs (interactive user tokens and agent tokens — including the
+`GITHUB_TOKEN` env var, ghcr.io login, and the keystone two-PAT model), see
+`tool.github-pats`. Device-flow auth above is the bootstrap path; PATs cover
+the steady state.
+
 ## See Also
 
 - For internal Forgejo repos (git.ncrmro.com), use `tool.forgejo` instead of this convention.
 - `gh` is used only for public GitHub repos.
+- `tool.github-pats` for personal access token standards.
 
 ## Issue Comments
 
