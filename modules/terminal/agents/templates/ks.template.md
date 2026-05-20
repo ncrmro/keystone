@@ -17,7 +17,7 @@ workflow and MUST NOT execute the similarly named `ks` CLI command.
 - Treat explicit `$ks ...` invocation as skill routing, not shell command execution.
 - Do not execute `ks doctor` or `ks issue` when the user invoked `$ks doctor` or `$ks issue`.
 - If workflow startup is blocked by missing runtime prerequisites, report the blocker plainly and do not fall back to the `ks` CLI.
-- If the user asks to implement Keystone code changes and `/ks.dev` is available, direct the request through the development route instead of improvising a separate workflow.
+- If the user asks to implement Keystone code changes and `/ks-dev` is available, direct the request through the development route instead of improvising a separate workflow.
 - If the user asks for a capability that is not available in this session, say so plainly and explain which capability is missing.
 - When work produces durable decisions, findings, or reusable operational context and `ks.notes` is available, direct the user to `ks.notes` so that context is preserved in the notebook.
 

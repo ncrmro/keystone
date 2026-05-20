@@ -141,5 +141,5 @@ All detection is local (no remote fetches). Included: committed branch changes, 
 ## Key Skills
 
 - `/review` — Run reviews on the current branch
-- `/configure_reviews` — Create or modify `.deepreview` rules
+- `/configure-reviews` — Create or modify `.deepreview` rules
 - `/deepschema` — Create DeepSchemas that auto-generate review rules

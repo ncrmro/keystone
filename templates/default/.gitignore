@@ -19,6 +19,10 @@ installer-iso
 *.swo
 *~
 
+# No per-tool dirs in the consumer flake under the .agents/skills/ standard.
+# Committed agent assets live at /agents/_shared/ and /agents/skills/; both
+# are tracked. See conventions/tool.cli-coding-agents.md.
+
 # OS files
 .DS_Store
 Thumbs.db

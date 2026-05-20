@@ -278,7 +278,7 @@ Launch an AI coding agent with Keystone conventions and host context.
 `ks agent` launches `claude` by default. Its static base prompt comes from the
 generated `~/.keystone/AGENTS.md`, then `ks` appends live host and fleet context.
 The generated command surface inside the session is curated to `/ks`, optional
-`/ks.dev` in development mode, and `/deepwork`.
+`/ks-dev` in development mode, and `/deepwork`.
 
 - `--local [MODEL]`: Use the local Ollama-backed model, or the configured default model.
 - Remaining args are passed through to the underlying `claude` invocation.

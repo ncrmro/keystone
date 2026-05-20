@@ -57,14 +57,15 @@ needs orchestration that platform-native skills cannot express.
 ## The consumer flake as audit log
 
 Keystone-generated skill content is materialized into the consumer flake at
-`<consumer-flake>/agents/<tool>/`, never directly into the user's home dir.
-Home-manager activation symlinks each tool's home-dir subdirectory at the
-corresponding consumer-flake path. Every skill upgrade keystone ships becomes
-a reviewable commit in the user's `keystone-config` repo:
-`git log -p agents/claude/skills/ks.notes/` shows the entire upgrade history
-of a single skill. Rollback is `git revert`; user override is just editing the
-file and committing — keystone's regen will overwrite on next run, the user's
-`git checkout` restores their version.
+`<consumer-flake>/agents/skills/<name>/` (the canonical, spec-compliant
+location), with colocated conventions and roles symlinked into each skill
+from `agents/_shared/conventions/`. Home-manager activation symlinks
+`~/.agents/skills/` and `~/.claude/skills/` to that canonical path. Every
+skill upgrade keystone ships becomes a reviewable commit in the user's
+`keystone-config` repo: `git log -p agents/skills/ks-notes/` shows the
+entire upgrade history of a single skill. Rollback is `git revert`; user
+override is just editing the file and committing — keystone's regen will
+overwrite on next run, the user's `git checkout` restores their version.
 
 The regen is **manual** (`ks sync-agent-assets`). Home-manager activation
 never silently rewrites the user's git tree.

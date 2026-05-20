@@ -31,7 +31,7 @@ SSH signing is on by default (`gpg.format = "ssh"`, signing key `~/.ssh/id_ed255
 
 Required options: `keystone.terminal.git.userName` and `keystone.terminal.git.userEmail`.
 
-## AI Tools (`ai.nix`)
+## AI Tools (`agents/ai.nix`)
 
 Four tools: Claude Code (NPM), Gemini CLI, Codex, OpenCode (last three from llm-agents flake).
 All available when `keystone.terminal.enable = true` — agents get the identical environment.
@@ -55,9 +55,9 @@ keystone.inputs.llm-agents.follows = "llm-agents";
 ```
 
 The user-facing AI surface is curated. Keystone publishes `/ks`, optional
-`/ks.dev` in development mode, and `/deepwork` instead of exposing every
+`/ks-dev` in development mode, and `/deepwork` instead of exposing every
 workflow as a top-level command. Capability-aware routing happens in
-`modules/terminal/ai-extensions.nix`.
+`modules/terminal/agents/extensions.nix`.
 
 ## Mail (`mail.nix`)
 
