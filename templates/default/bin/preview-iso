@@ -23,6 +23,12 @@
 
 set -euo pipefail
 
+# Anchor the ISO lookup at the keystone-config root that owns this script
+# (the parent of bin/), not at CWD. Means the script can be invoked from
+# anywhere and still find `result/iso/*.iso` relative to the scaffold.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+CONFIG_ROOT="$(dirname "$SCRIPT_DIR")"
+
 ISO_PATH=""
 HEADLESS=false
 DISK="/tmp/keystone-preview-iso-disk.qcow2"
@@ -53,11 +59,12 @@ if [[ "$CLEAN" == "true" ]]; then
 fi
 
 if [[ -z "$ISO_PATH" ]]; then
-    ISO_PATH="$(find result/iso -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
+    ISO_PATH="$(find "$CONFIG_ROOT/result/iso" -maxdepth 1 -name '*.iso' -print -quit 2>/dev/null || true)"
 fi
 if [[ -z "$ISO_PATH" || ! -f "$ISO_PATH" ]]; then
-    echo "ERROR: No ISO found at result/iso/*.iso." >&2
-    echo "       Run 'nix build .#iso' first, or pass --iso PATH." >&2
+    echo "ERROR: No ISO found at $CONFIG_ROOT/result/iso/*.iso." >&2
+    echo "       Run 'nix build .#iso' from $CONFIG_ROOT first," >&2
+    echo "       or pass --iso PATH to point at an existing build." >&2
     exit 1
 fi
 
