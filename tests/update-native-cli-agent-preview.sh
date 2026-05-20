@@ -27,7 +27,7 @@ rm -rf "$output_root"
 mkdir -p "$output_root"
 
 HOME="$output_root" KEYSTONE_AGENT_ASSETS_MANIFEST="$manifest_path" \
-  bash "$repo_root/modules/terminal/scripts/keystone-sync-agent-assets.sh"
+  bash "$repo_root/modules/terminal/agents/keystone-sync-agent-assets.sh"
 
 # Restore the gitignore after the sync script wipes output_root.
 # Excludes colocated convention/role files — SKILL.md (uppercase) is kept.

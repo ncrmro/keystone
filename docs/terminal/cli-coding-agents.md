@@ -33,9 +33,9 @@ routing so all relevant context arrives together.
 
 | Module | Responsibility |
 |--------|---------------|
-| `ai.nix` | Installs CLI packages and the DeepWork binary |
-| `cli-coding-agent-configs.nix` | Generates MCP server configs at each tool's expected path |
-| `ai-extensions.nix` | Defines capabilities, published commands, and skill metadata |
+| `agents/ai.nix` | Installs CLI packages and the DeepWork binary |
+| `agents/mcp-configs.nix` | Generates MCP server configs at each tool's expected path |
+| `agents/extensions.nix` | Defines capabilities, published commands, and skill metadata |
 | `keystone-sync-agent-assets.sh` | Generates skills, instruction files, and colocated conventions |
 
 ## Skill composition
@@ -138,7 +138,7 @@ The set of published skills depends on resolved capabilities:
 | `executive-assistant` (explicit) | `/ks-ea` |
 | `ks-dev` (dev mode only) | `/ks-dev` |
 
-Defaults come from `baseCapabilities` in `modules/terminal/ai-extensions.nix`
+Defaults come from `baseCapabilities` in `modules/terminal/agents/extensions.nix`
 (currently `[ "ks" "assistant" "project" ]`); the `"ks"` tag is internal
 plumbing and doesn't add a slash command directly. `notes` is explicit per
 host — declare it in `keystone.terminal.aiExtensions.capabilities` or pull
@@ -177,7 +177,7 @@ When `keystone.development = true`:
 ## DeepWork integration
 
 The DeepWork MCP server binary (`pkgs.keystone.deepwork`) is installed by
-`ai.nix`. The server discovers jobs from up to three roots via
+`agents/ai.nix`. The server discovers jobs from up to three roots via
 `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`:
 
 1. **Shared library jobs** — from the `Unsupervisedcom/deepwork` repo's

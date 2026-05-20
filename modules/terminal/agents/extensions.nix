@@ -7,9 +7,9 @@
 # Both are surfaced as internal options that `generated-agent-assets.nix`
 # reads when writing `~/.config/keystone/agent-assets.json`. The actual
 # rendering of skill content, instruction files, and Claude subagents is
-# done by `modules/terminal/scripts/keystone-sync-agent-assets.sh`, which
+# done by `modules/terminal/agents/keystone-sync-agent-assets.sh`, which
 # reads the manifest plus the source templates under
-# `modules/terminal/agent-assets/` and `conventions/`.
+# `modules/terminal/agents/templates/` and `conventions/`.
 #
 # See conventions/tool.cli-coding-agents.md
 # See docs/research/agent-skills.md
@@ -107,7 +107,7 @@ in
   };
 
   imports = [
-    ../shared/experimental.nix
+    ../../shared/experimental.nix
     (mkAliasOptionModule
       [ "keystone" "terminal" "claudeCodeCommands" "enable" ]
       [ "keystone" "terminal" "aiExtensions" "enable" ]

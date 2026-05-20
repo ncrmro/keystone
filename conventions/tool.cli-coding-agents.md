@@ -382,7 +382,7 @@ before re-running activation.
 3. MUST derive the tool-native user-level files from the same generated content
 4. MUST symlink `~/.config/keystone/conventions/` to the conventions store path for on-demand reading
 
-### `modules/terminal/ai-extensions.nix`
+### `modules/terminal/agents/extensions.nix`
 
 1. MUST generate only the curated Keystone command surface by default: `/ks`, optional `/ks-dev`, and `/deepwork`
 2. MUST gate `/ks-dev` on `keystone.development = true`
@@ -395,7 +395,7 @@ before re-running activation.
 9. Skill directory names and SKILL.md frontmatter `name:` fields MUST be lowercase with hyphens per the [`.agents/skills/` spec][agent-skills-doc] (e.g., `ks-system`, `ks-dev`, `configure-reviews`). The same name is used by every tool — no per-tool transform.
 10. Generated instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) MUST NOT duplicate the list of available skills. CLI coding agents inject the skill catalog into the system prompt automatically; repeating it in instruction files wastes context tokens.
 
-### `modules/terminal/cli-coding-agent-configs.nix`
+### `modules/terminal/agents/mcp-configs.nix`
 
 1. MUST generate MCP server configs at each tool's expected path
 2. MUST NOT embed secrets (API keys, tokens) — these are world-readable in the Nix store
@@ -433,10 +433,10 @@ When an agent runs inside a Podman container via `podman-agent`:
 
 ## Rules for Adding New Tools
 
-1. Add the tool's package to `modules/terminal/ai.nix`
-2. Add MCP config generation to `modules/terminal/cli-coding-agent-configs.nix`
+1. Add the tool's package to `modules/terminal/agents/ai.nix`
+2. Add MCP config generation to `modules/terminal/agents/mcp-configs.nix`
 3. Add instruction file generation to `modules/terminal/conventions.nix` at the tool's expected user-level path
-4. Add slash-command or skill generation to `modules/terminal/ai-extensions.nix`, depending on the tool's native workflow surface
+4. Add slash-command or skill generation to `modules/terminal/agents/extensions.nix`, depending on the tool's native workflow surface
 5. Add the tool's config directory mount to `packages/podman-agent/podman-agent.sh`
 6. Add the tool's prompt injection mechanism to `modules/os/agents/scripts/agentctl.sh`
 7. Add a pre-resolved store path env var to `modules/terminal/sandbox.nix`

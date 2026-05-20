@@ -39,7 +39,7 @@ in
     ../shared/update.nix
     ./shell.nix
     ./editor.nix
-    ./ai.nix
+    ./agents
     ./deepwork.nix
     ./age-yubikey.nix
     ./devtools.nix
@@ -55,10 +55,7 @@ in
     ./forgejo.nix
     ./grafana.nix
     ./projects.nix
-    ./cli-coding-agent-configs.nix
     ./conventions.nix
-    ./ai-extensions.nix
-    ./generated-agent-assets.nix
   ];
 
   options.keystone.terminal = {

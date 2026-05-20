@@ -311,7 +311,7 @@ in
       home.file.".config/opencode/AGENTS.md".text = agentsMdContent;
       # ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md, ~/.codex/AGENTS.md are
       # owned by the consumer-flake symlink activation in
-      # modules/terminal/generated-agent-assets.nix per
+      # modules/terminal/agents/assets.nix per
       # conventions/tool.cli-coding-agents.md rule 19. They MUST NOT be
       # written here — doing so would conflict with the symlinks.
     };

@@ -10,13 +10,13 @@ let
   terminalCfg = config.keystone.terminal;
   isDev = config.keystone.development;
   isAgent = lib.hasPrefix "agent-" config.home.username;
-  devScripts = import ../shared/dev-script-link.nix { inherit lib; };
+  devScripts = import ../../shared/dev-script-link.nix { inherit lib; };
   repoCheckout = if isAgent then null else devScripts.resolveRepoCheckout config "keystone";
   # agentsLib reads `config.keystone.os.*`, so it must be constructed with the
   # NixOS config (osConfig), not the home-manager config tree.
   agentsLib =
     if osConfig != null then
-      import ../os/agents/lib.nix {
+      import ../../os/agents/lib.nix {
         inherit lib pkgs;
         config = osConfig;
       }
@@ -33,9 +33,9 @@ let
     else
       { };
   manifestRelPath = ".config/keystone/agent-assets.json";
-  scriptRelPath = "modules/terminal/scripts/keystone-sync-agent-assets.sh";
+  scriptRelPath = "modules/terminal/agents/keystone-sync-agent-assets.sh";
   scriptPackage = pkgs.writeShellScriptBin "keystone-sync-agent-assets" (
-    builtins.readFile ./scripts/keystone-sync-agent-assets.sh
+    builtins.readFile ./keystone-sync-agent-assets.sh
   );
   agentsWithMcp = mapAttrs (name: agentCfg: {
     inherit (agentCfg) host archetype;
@@ -76,8 +76,8 @@ let
   manifestContent = builtins.toJSON {
     developmentMode = isDev;
     repoCheckout = repoCheckout;
-    fallbackConventionsDir = ../../conventions;
-    fallbackTemplatesDir = ./agent-assets;
+    fallbackConventionsDir = ../../../conventions;
+    fallbackTemplatesDir = ./templates;
     archetype = terminalCfg.conventions.archetype;
     resolvedCapabilities = config.keystone.terminal.aiExtensions.resolvedCapabilities or [ ];
     publishedCommands = config.keystone.terminal.aiExtensions.publishedCommands or [ ];

@@ -303,7 +303,7 @@ if [[ ! -d "$repo_checkout" ]]; then
 fi
 
 conventions_dir="$repo_checkout/conventions"
-templates_dir="$repo_checkout/modules/terminal/agent-assets"
+templates_dir="$repo_checkout/modules/terminal/agents/templates"
 archetypes_file="$conventions_dir/archetypes.yaml"
 
 if [[ ! -f "$archetypes_file" ]]; then
@@ -498,7 +498,7 @@ declare -A canonical_conventions_used=()
 # Claude reads it via `~/.claude/skills` → consumer-flake/agents/skills/
 # symlink; Codex/Gemini/Copilot/Cursor/Kiro/OpenCode/Augment read it via
 # `~/.agents/skills/` → same target. Both symlinks are created by
-# home-manager activation in modules/terminal/generated-agent-assets.nix.
+# home-manager activation in modules/terminal/agents/assets.nix.
 for skill_key in "${skills_to_emit[@]}"; do
   description="$(command_description "$skill_key" || printf '%s' "")"
   if ! template_name="$(command_template_name "$skill_key" 2>/dev/null)"; then
