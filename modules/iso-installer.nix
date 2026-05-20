@@ -127,8 +127,19 @@ in
     networking.networkmanager.enable = lib.mkForce installerCfg.tui.enable;
     networking.useDHCP = lib.mkIf (!installerCfg.tui.enable) (lib.mkForce true);
 
-    # Disable getty on tty1 so the TUI installer can take over the console.
-    systemd.services."getty@tty1".enable = lib.mkIf installerCfg.tui.enable false;
+    # tty1 wiring:
+    # - In TUI mode, keystone-installer.service takes over tty1; suppress both
+    #   the static getty and the on-demand autovt so nothing fights for it.
+    # - In non-TUI mode the installer relies on the standard agetty + autologin
+    #   flow. The unit is materialized by the getty module, but
+    #   `installation-cd-base` upstream does not pull it into multi-user.target,
+    #   leaving it "linked but inactive" — boot reaches multi-user with no
+    #   process attached to tty1, so the framebuffer keeps whatever was last
+    #   drawn and the keyboard registers nothing. Explicitly want it.
+    systemd.services."getty@tty1" = {
+      enable = lib.mkIf installerCfg.tui.enable false;
+      wantedBy = lib.mkIf (!installerCfg.tui.enable) [ "multi-user.target" ];
+    };
     systemd.services."autovt@tty1".enable = lib.mkIf installerCfg.tui.enable false;
 
     # ks installer service - auto-starts on boot
