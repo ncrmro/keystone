@@ -5,15 +5,99 @@ description: Non-interactive NixOS user accounts for autonomous LLM-driven opera
 
 # OS Agents (`keystone.os.agents`)
 
-> **Note (2026-05):** the autonomous task-loop, scheduler, notes-sync, and
-> `.agents`-submodule scaffolding have been removed. The replacement layout
-> (per-agent state symlinks into the consumer flake plus a portable
-> `task-loop` skill) is being introduced in a follow-up PR; see the layout
-> plan referenced by the PR that removed this content for the new model.
-> Sections below describe the surviving surface: user provisioning,
-> mail/calendar/contacts, SSH, browser, MCP, and debugging.
-
 OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. Each agent gets an isolated home directory, SSH keys, mail, and browser.
+
+## New layout (2026-05)
+
+The legacy notes subsystem (notes-sync timer, scheduler timer, multi-phase
+task-loop with state files, `.agents` submodule scaffolding, forgejo
+`<agent>/notes.git`) has been removed. The replacement model splits agent
+context between **operator-curated** files committed to the consumer flake
+and **agent-writable** runtime state that lives only on the deployed host.
+A single skill-driven systemd timer drives autonomous behavior.
+
+### Target layout in the consumer flake (e.g. `nixos-config`)
+
+```
+nixos-config/agents/
+├── _shared/                    # operating rules, conventions shared by all agents
+├── skills/                     # canonical skills tree
+│   └── task-loop/SKILL.md      # cross-tool loop skill (claude/codex/gemini all read it)
+├── TEAM.md                     # shared roster
+├── HUMAN.md                    # operator profile
+├── PROJECTS.yaml               # shared portfolio
+├── drago/
+│   ├── SOUL.md                 # identity / voice          (operator-curated)
+│   ├── ROLE.md                 # scope / responsibilities  (operator-curated)
+│   ├── AGENTS.md               # operating rules, composes the above
+│   ├── TASKS.yaml              # GITIGNORED — agent-writable runtime state
+│   ├── SCHEDULES.yaml          # GITIGNORED
+│   └── ISSUES.yaml             # GITIGNORED
+└── luce/                       # same shape as drago/
+```
+
+`agents/*/{TASKS,SCHEDULES,ISSUES}.yaml` go in the flake's `.gitignore`.
+The symlinks still resolve into the working tree, but git stays quiet
+about mutations.
+
+### Target agent home (example: luce)
+
+```
+/home/agent-luce/
+├── .agents/skills/    → <flake>/agents/skills/
+├── .claude/skills/    → <flake>/agents/skills/
+├── .claude/CLAUDE.md  → <flake>/agents/_shared/AGENTS.md
+├── .gemini/GEMINI.md  → <flake>/agents/_shared/AGENTS.md
+├── .codex/AGENTS.md   → <flake>/agents/_shared/AGENTS.md
+├── TEAM.md            → <flake>/agents/TEAM.md
+├── HUMAN.md           → <flake>/agents/HUMAN.md
+├── PROJECTS.yaml      → <flake>/agents/PROJECTS.yaml
+├── SOUL.md            → <flake>/agents/luce/SOUL.md
+├── ROLE.md            → <flake>/agents/luce/ROLE.md
+├── AGENTS.md          → <flake>/agents/luce/AGENTS.md
+├── TASKS.yaml         → <flake>/agents/luce/TASKS.yaml             # gitignored, writable
+├── SCHEDULES.yaml     → <flake>/agents/luce/SCHEDULES.yaml         # gitignored
+└── ISSUES.yaml        → <flake>/agents/luce/ISSUES.yaml            # gitignored
+```
+
+Symlinks are created by the consumer flake's home-manager profile, not by
+this module. This module only provisions the OS user, home directory,
+and (when enabled) the task-loop timer.
+
+### `@`-mention composition
+
+Per-agent `AGENTS.md` files use `@`-mention includes (Claude/Codex/Gemini
+all honor these) to compose identity from the curated files:
+
+```markdown
+You are luce. Read @SOUL.md for identity, @ROLE.md for scope, @TEAM.md
+for who you work with. Operating rules follow @../_shared/AGENTS.md.
+```
+
+### Enabling the task-loop
+
+Set `taskLoop.enable = true` on an agent. The module creates one
+`agent-<name>-task-loop` systemd user timer + service per agent.
+
+```nix
+keystone.os.agents.luce = {
+  fullName = "Luce";
+  email = "luce@example.com";
+  taskLoop = {
+    enable = true;
+    tool = "claude";       # one of: claude, codex, gemini
+    interval = "*:0/15";   # systemd OnCalendar
+    skill = "task-loop";   # name of skill under ~/.agents/skills/<skill>/
+  };
+};
+```
+
+The service is intentionally minimal: it execs
+`<tool> --print 'Run the <skill> skill.'` (or the tool's equivalent
+non-interactive form) and exits. There is no pre-fetch, no
+prioritization phase, no state-file mutation done by the module — the
+skill itself drives all of that.
+
 
 ## Quick Start
 
@@ -44,6 +128,7 @@ Each agent is provisioned by a focused set of sub-modules under
 | `dbus.nix`        | D-Bus socket activation race fix                       |
 | `perception.nix`  | Document/voice/screenshot perception layer             |
 | `tailscale.nix`   | Per-agent tailscaled (currently disabled)              |
+| `task-loop.nix`   | Per-agent skill-driven systemd timer + service         |
 
 ## Two-Agent Coordination
 

@@ -1,34 +1,34 @@
 ## Task Tracking
 
+**Status:** SHOULD follow (RFC 2119)
+
 ## TASKS.yaml
 
-1. All tasks MUST be tracked in `TASKS.yaml` at the agent-space root.
-2. `TASKS.yaml` MUST be checked for current and historical task context before starting work. See `process.vcs-context-continuity` for standards on public state tracking on Issues/PRs.
-3. Task status MUST be updated to `completed` when done.
-4. Task names MUST be descriptive slugs (e.g., `daily-priorities-2026-03-12`).
-5. Tasks MUST include `source` and `source_ref` to trace where they came from.
+Each agent's runtime state lives in three YAML files in its home
+directory: `TASKS.yaml`, `SCHEDULES.yaml`, `ISSUES.yaml`. They are
+**symlinks** into the consumer flake (e.g. `nixos-config/agents/<name>/`)
+and the source files there are gitignored. Mutations made by a running
+agent persist on the deployed host but never travel back into the
+operator's repository.
 
-## Schema
+The schema below is what the `task-loop` skill is expected to read and
+write. Skill implementations MAY add fields, but the listed ones are the
+shared minimum.
 
 ```yaml
 tasks:
   - name: "slug-style-task-name"
     description: "What the task involves"
     status: pending | completed
-    source: email | schedule # where the task originated
-    source_ref: "email-23-..." # reference to the source
-    workflow: "job/workflow" # deepwork workflow used (if any)
-    project: "project-name" # which project this relates to
-    profile: fast | medium | max # semantic model profile override
-    provider: claude | gemini | codex
-    model: "provider-specific-model"
-    fallback_model: "provider-specific-model"
-    effort: low | medium | high | max
-    needs: ["other-task-name"] # task dependencies (if any)
+    source: email | schedule | issue # where the task originated
+    source_ref: "email-23-..."       # reference to the source
+    project: "project-name"          # which project this relates to
+    needs: ["other-task-name"]       # task dependencies (if any)
 ```
 
-When these fields are omitted, the task loop MUST fall back to the stage-level
-settings (`ingest`, `prioritize`, or `execute`), then to
-`keystone.os.agents.<name>.notes.taskLoop.defaults`, then to the built-in stage
-and profile defaults. `fallback_model` and `effort` currently affect Claude
-only.
+## See also
+
+- [docs/agents/os-agents.md](../docs/agents/os-agents.md) — agent home
+  layout and how the YAML files are symlinked in.
+- `process.agent-cronjobs` — the single timer that drives task-loop
+  execution.
