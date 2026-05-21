@@ -29,7 +29,7 @@ let
       prompt = "Run the ${skill} skill.";
     in
     {
-      claude = "claude --print ${escapeShellArg prompt}";
+      claude = "unset CLAUDECODE; claude --print -p ${escapeShellArg prompt}";
       codex = "codex exec ${escapeShellArg prompt}";
       gemini = "gemini --prompt ${escapeShellArg prompt}";
     }

@@ -92,11 +92,17 @@ keystone.os.agents.luce = {
 };
 ```
 
-The service is intentionally minimal: it execs
-`<tool> --print 'Run the <skill> skill.'` (or the tool's equivalent
-non-interactive form) and exits. There is no pre-fetch, no
-prioritization phase, no state-file mutation done by the module — the
-skill itself drives all of that.
+The service is intentionally minimal: it invokes the agent's tool with
+a fixed prompt and exits. The exact per-tool invocation is:
+
+| Tool     | Command                                                        |
+| -------- | -------------------------------------------------------------- |
+| `claude` | `unset CLAUDECODE; claude --print -p 'Run the <skill> skill.'` |
+| `codex`  | `codex exec 'Run the <skill> skill.'`                          |
+| `gemini` | `gemini --prompt 'Run the <skill> skill.'`                     |
+
+There is no pre-fetch, no prioritization phase, no state-file mutation
+done by the module — the skill itself drives all of that.
 
 
 ## Quick Start
