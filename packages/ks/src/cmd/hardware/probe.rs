@@ -353,7 +353,7 @@ fn parse_token_line(line: &str) -> Option<String> {
 /// the default-password slot. Pure / testable.
 pub fn slotmap_from_dump(dump: &ParsedLuksDump, password_is_default: bool) -> SlotMap {
     let has_pw_slot = dump.slots.contains(&0);
-    let has_recovery_slot = dump.slots.iter().any(|&s| s == 1);
+    let has_recovery_slot = dump.slots.contains(&1);
     let has_tpm = dump.tokens.iter().any(|t| t == "systemd-tpm2");
     let has_fido = dump.tokens.iter().any(|t| t == "systemd-fido2");
 
