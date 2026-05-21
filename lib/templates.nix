@@ -1107,7 +1107,7 @@ rec {
             };
         in
         if nix-darwin == null then
-          throw "Darwin system host '${name}' requires nix-darwin to be passed into lib/templates.nix."
+          throw "Darwin system host '${name}' requires the nix-darwin input. Ensure flake.nix passes nix-darwin into lib/templates.nix."
         else
           (mkSharedMacosSystem { }) builderArgs;
 

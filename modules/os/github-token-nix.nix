@@ -24,8 +24,10 @@
 let
   cfg = config.keystone.os.githubTokenNix;
   basename = baseNameOf cfg.tokenFile;
-  # Detect the nix-darwin option tree without forcing pkgs during early module
-  # evaluation; using pkgs here recurses in the NixOS eval tests.
+  # Detect whether this module is being evaluated under nix-darwin by checking
+  # for launchd options in the host module tree. This avoids forcing `pkgs`
+  # while the NixOS eval tests are still constructing module arguments, which
+  # would recurse.
   hasLaunchdOptions = options ? launchd;
   targetGroup = if hasLaunchdOptions then "wheel" else "root";
   includeDir = builtins.dirOf cfg.includePath;
@@ -136,7 +138,7 @@ in
     }
     // lib.optionalAttrs hasLaunchdOptions {
       launchd.daemons.nix-github-access-token = {
-        programArguments = [ materializeScript ];
+        program = materializeScript;
         serviceConfig = {
           KeepAlive = false;
           RunAtLoad = true;
