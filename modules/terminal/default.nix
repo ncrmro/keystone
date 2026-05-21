@@ -1,12 +1,21 @@
 # Keystone Terminal — core terminal module entry point.
 # Implements REQ-002 (Terminal Development Environment)
 # See specs/REQ-018-repo-management/ (development mode)
+#
+# terminalMinimal: when true, only shell.nix + editor.nix + conventions.nix
+# (and the local config block) are imported — the heavy submodules (ai,
+# mail, calendar, deepwork, forgejo, grafana, secrets, sandbox, etc.) are
+# skipped. Intended for live-installer environments where the visual +
+# workflow surface is wanted but the post-install machinery is not. Passed
+# via `_module.args.terminalMinimal` at the consumer site; defaults to
+# false so installed-system consumers see no change.
 {
   config,
   lib,
   pkgs,
   keystoneInputs ? { },
   osConfig ? null,
+  terminalMinimal ? false,
   ...
 }:
 with lib;
@@ -39,6 +48,9 @@ in
     ../shared/update.nix
     ./shell.nix
     ./editor.nix
+    ./conventions.nix
+  ]
+  ++ optionals (!terminalMinimal) [
     ./ai.nix
     ./deepwork.nix
     ./age-yubikey.nix
@@ -56,7 +68,6 @@ in
     ./grafana.nix
     ./projects.nix
     ./cli-coding-agent-configs.nix
-    ./conventions.nix
     ./ai-extensions.nix
     ./generated-agent-assets.nix
   ];

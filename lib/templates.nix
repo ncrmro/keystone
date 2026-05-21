@@ -296,6 +296,14 @@ let
       repoPath ? null,
       repoName ? "keystone-config",
       installerTargets ? { },
+      # When `offline = true`, every entry in `installerTargetToplevels`
+      # gets its full closure embedded in the ISO's squashfs nix-store via
+      # `isoImage.storeContents`. `ks install` then realizes the target
+      # system from the local store instead of fetching from
+      # cache.nixos.org / ks-systems.cachix.org — eliminating the network
+      # dependency at install time at the cost of a fatter ISO.
+      installerTargetToplevels ? [ ],
+      offline ? false,
       devMode ? false,
     }:
     (nixpkgs.lib.nixosSystem {
@@ -304,6 +312,12 @@ let
         "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         self.nixosModules.isoInstaller
         self.nixosModules.experimental
+        # Home Manager runs the keystone terminal module for the installer
+        # admin so the live ISO ships starship/zoxide/helix/git config that
+        # matches the installed-system experience. The terminal module's
+        # heavy submodules (AI agents, mail, calendar, deepwork, etc.) are
+        # gated off via `_module.args.terminalMinimal = true` below.
+        home-manager.nixosModules.home-manager
         (
           { pkgs, ... }:
           let
@@ -397,6 +411,14 @@ let
             # Force kernel 6.12 — must override minimal CD default
             boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
 
+            # Offline install bundle. When `offline = true`, the full
+            # closure of every Linux host toplevel is added to the
+            # installer's squashfs nix-store, so `nixos-install` realizes
+            # the target system from the local store without reaching out
+            # to substituters. The bundle is a cache, not a constraint —
+            # missing-delta paths still get fetched online if available.
+            isoImage.storeContents = lib.optionals offline installerTargetToplevels;
+
             # Admin user alongside the default "nixos" user from installation-device.nix
             users.users.${adminUsername} = {
               isNormalUser = true;
@@ -446,57 +468,55 @@ let
               }
             );
 
-            # Plain first-login bootstrap for the live installer user.
-            systemd.services.installer-admin-zshrc = {
-              description = "Create minimal zshrc for installer admin user";
-              wantedBy = [ "multi-user.target" ];
-              before = [ "getty@tty1.service" ];
-              after = [
-                "systemd-tmpfiles-setup.service"
-                "local-fs.target"
-              ];
-              serviceConfig = {
-                Type = "oneshot";
+            # Home Manager configuration for the installer admin user.
+            # The keystone terminal module is loaded in its `terminalMinimal`
+            # form — shell.nix, editor.nix, conventions.nix, and the local
+            # config block (programs.git, lazygit, ensurePaths, session
+            # vars) only. The heavy submodules (ai, mail, calendar, deepwork,
+            # forgejo, grafana, agenix, etc.) are skipped because they have
+            # post-install assumptions that don't hold in a live installer.
+            home-manager = {
+              useGlobalPkgs = true;
+              useUserPackages = true;
+              extraSpecialArgs = {
+                # Pass keystone's own outputs in so keystone._repoInputs
+                # can derive when applicable. The terminal module guards
+                # this with `mkIf (keystoneInputs ? self)`.
+                keystoneInputs = { inherit self; };
+                # `terminalMinimal` MUST be threaded via specialArgs (not
+                # `_module.args` inside config), because the terminal
+                # module gates `imports` on its value. Setting it via
+                # `_module.args` inside a `users.<name> = { … }` config
+                # block requires `config` to be fully resolved before
+                # imports, which is a cycle — Nix produces
+                # `infinite recursion encountered`. specialArgs are
+                # bound at module-call time, before imports evaluation.
+                terminalMinimal = true;
               };
-              script = ''
-                                homeDir="/home/${adminUsername}"
-                                zshrc="$homeDir/.zshrc"
-                                mkdir -p "$homeDir"
-                                chown ${adminUsername}:users "$homeDir"
-                                chmod 0700 "$homeDir"
-
-                                cat > "$zshrc" <<'EOF'
-                # Minimal Keystone installer bootstrap zshrc — colorized for
-                # readable file listings and a distinguishable prompt on
-                # TERM=linux (8-color framebuffer) and SSH sessions alike.
-
-                autoload -U colors && colors
-                alias ls='ls --color=auto'
-                alias ll='ls -lh --color=auto'
-                alias la='ls -lah --color=auto'
-                alias grep='grep --color=auto'
-                if command -v dircolors >/dev/null 2>&1; then
-                  eval "$(dircolors -b 2>/dev/null)" || true
-                fi
-
-                # Cyan user@host, yellow cwd. %F{name}/%f resolve to ANSI 8-color
-                # escapes on TERM=linux so the framebuffer console renders them
-                # too — not just SSH-attached 256-color terms.
-                PROMPT='%F{cyan}%n@%m%f:%F{yellow}%~%f %# '
-
-                tty_path="$(tty 2>/dev/null || true)"
-                if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
-                  ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
-                  clear >/dev/null 2>&1 || true
-                  echo 'Keystone installer live environment'
-                  echo 'Run `ks install` to choose a host from the embedded repo and install it.'
-                  echo 'SSH is available if keys were embedded in the ISO.'
-                  print
-                fi
-                EOF
-                                chown ${adminUsername}:users "$zshrc"
-                                chmod 0644 "$zshrc"
-              '';
+              users.${adminUsername} = {
+                imports = [ self.homeModules.terminal ];
+                home.stateVersion = "25.05";
+                keystone.terminal = {
+                  enable = true;
+                  git.userName = adminName;
+                  git.userEmail = adminEmail;
+                };
+                # Welcome banner on tty1. The keystone terminal module's
+                # starship + zsh config already handles colors, prompt,
+                # aliases, etc.; this just adds the install-time hint that
+                # used to live in the retired installer-admin-zshrc service.
+                programs.zsh.initExtra = ''
+                  tty_path="$(tty 2>/dev/null || true)"
+                  if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
+                    ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
+                    clear >/dev/null 2>&1 || true
+                    echo 'Keystone installer live environment'
+                    echo 'Run `ks install` to choose a host from the embedded repo and install it.'
+                    echo 'SSH is available if keys were embedded in the ISO.'
+                    print
+                  fi
+                '';
+              };
             };
             users.users.root.shell = pkgs.bashInteractive;
           }
@@ -746,6 +766,12 @@ rec {
       repoRoot ? null,
       keystoneServices ? { },
       hosts,
+      # Installer ISO knobs. Currently supports:
+      #   installer.offline = bool  — bundle every Linux host's toplevel
+      #     closure into the ISO so `ks install` runs without reaching out
+      #     to substituters. Default false to keep ISO size and build time
+      #     down for adopters who don't need offline installs.
+      installer ? { },
     }:
     let
       linuxKindDefaults = {
@@ -1069,6 +1095,16 @@ rec {
             # to a store-style `...-source` path, which would leak that hash
             # into the installed config handoff.
             inherit repoName;
+            # Offline-install plumbing. When `installer.offline = true` is
+            # set on mkSystemFlake, every Linux host's full closure is
+            # bundled into the squashfs nix-store so the live `ks install`
+            # realizes the target system without network fetches. Hosts on
+            # other architectures (not matching installerSystem) are
+            # already excluded via the vmImageHosts filter above.
+            installerTargetToplevels = map (h: h.config.system.build.toplevel) (
+              lib.attrValues linuxHostConfigurations
+            );
+            offline = installer.offline or false;
           };
         }
         // vmImagePackages;
