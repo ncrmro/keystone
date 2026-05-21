@@ -249,6 +249,7 @@ in
     ./secure-boot.nix
     ./tpm.nix
     ./zram.nix
+    ./github-token-nix.nix
     ./hardware-key.nix
     ./privileged-approval.nix
     ./uhk.nix
