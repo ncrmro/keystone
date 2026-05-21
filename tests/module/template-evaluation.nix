@@ -385,8 +385,10 @@ let
           lib.hasInfix "!include /etc/nix/access-tokens.conf" result.nix.extraOptions;
         identityPaths = result.age.identityPaths;
         expectIdentity = identityPaths == [ "/etc/ssh/ssh_host_ed25519_key" ];
+        allChecksPass =
+          hasDarwinConfig && !hasStandaloneHome && hasTokenDaemon && hasInclude && expectIdentity;
       in
-      if !(hasDarwinConfig && !hasStandaloneHome && hasTokenDaemon && hasInclude && expectIdentity) then
+      if !allChecksPass then
         throw ''
           macos-system-layer evaluation failed.
             darwinConfigurations.macbook present: ${builtins.toJSON hasDarwinConfig}

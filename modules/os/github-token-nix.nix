@@ -24,6 +24,8 @@
 let
   cfg = config.keystone.os.githubTokenNix;
   basename = baseNameOf cfg.tokenFile;
+  # Detect the nix-darwin option tree without forcing pkgs during early module
+  # evaluation; using pkgs here recurses in the NixOS eval tests.
   isDarwin = options ? launchd;
   targetGroup = if isDarwin then "wheel" else "root";
   includeDir = builtins.dirOf cfg.includePath;
