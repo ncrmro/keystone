@@ -136,7 +136,7 @@ in
     }
     // lib.optionalAttrs hasLaunchdOptions {
       launchd.daemons.nix-github-access-token = {
-        program = materializeScript;
+        command = "${materializeScript}";
         serviceConfig = {
           KeepAlive = false;
           RunAtLoad = true;
