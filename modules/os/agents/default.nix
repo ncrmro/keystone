@@ -87,6 +87,7 @@ in
     ./home-manager.nix
     ./observability.nix
     ./perception.nix
+    ./task-loop.nix
   ];
 
   options.keystone.os.agents = mkOption {

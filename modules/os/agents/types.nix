@@ -107,6 +107,32 @@ in
           };
         };
 
+        taskLoop = {
+          enable = mkEnableOption "Autonomous task-loop for this agent.";
+
+          tool = mkOption {
+            type = types.enum [
+              "claude"
+              "codex"
+              "gemini"
+            ];
+            default = "claude";
+            description = "Which CLI to invoke for each task-loop tick.";
+          };
+
+          interval = mkOption {
+            type = types.str;
+            default = "*:0/15";
+            description = "systemd OnCalendar expression for the task-loop timer.";
+          };
+
+          skill = mkOption {
+            type = types.str;
+            default = "task-loop";
+            description = "Skill name to load; must exist in ~/.agents/skills/<skill>/.";
+          };
+        };
+
         desktop = {
           enable = mkOption {
             type = types.bool;
