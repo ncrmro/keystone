@@ -55,10 +55,6 @@ in
         "systemctl --user start hyprpolkitagent"
         "wl-clip-persist --clipboard regular & uwsm app -- clipse -listen"
       ];
-
-      exec = [
-        "pkill -SIGUSR2 waybar || uwsm app -- waybar"
-      ];
     };
   };
 }

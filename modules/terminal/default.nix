@@ -1,6 +1,17 @@
 # Keystone Terminal — core terminal module entry point.
 # Implements REQ-002 (Terminal Development Environment)
 # See specs/REQ-018-repo-management/ (development mode)
+#
+# All submodules are imported unconditionally. Each guards its own
+# `home.packages`/`programs.*` with `config = mkIf cfg.enable {…}`, so a
+# disabled submodule contributes zero runtime closure — only Nix module
+# evaluation cost. A prior attempt gated the `imports` list on a
+# `terminalMinimal` module argument; that proved fundamentally fragile
+# because any sharedModules / agent-HM / nested-eval path that loaded the
+# module without specialArgs hit an `_module.args` → `config` →
+# `imports` → `_module.args` cycle. The right place to slim the live
+# installer's surface is per-host configuration (enable flags), not
+# import-list gating.
 {
   config,
   lib,
@@ -39,6 +50,7 @@ in
     ../shared/update.nix
     ./shell.nix
     ./editor.nix
+    ./conventions.nix
     ./agents
     ./deepwork.nix
     ./age-yubikey.nix
@@ -56,7 +68,6 @@ in
     ./github-token-nix.nix
     ./grafana.nix
     ./projects.nix
-    ./conventions.nix
   ];
 
   options.keystone.terminal = {

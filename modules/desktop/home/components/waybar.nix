@@ -16,6 +16,14 @@ in
   config = mkIf cfg.enable {
     programs.waybar = {
       enable = mkDefault true;
+      # home-manager's `programs.waybar.systemd.enable` is mkEnableOption and
+      # defaults to false. Without it, only the nixpkgs-shipped waybar.service
+      # unit lands in the user profile — no wants symlink is created, so the
+      # unit never auto-starts at graphical-session.target activation.
+      # Enabling here makes systemd the canonical start path under UWSM
+      # (which activates graphical-session.target on Hyprland session login).
+      systemd.enable = mkDefault true;
+      systemd.target = "graphical-session.target";
       settings = {
         mainBar = {
           layer = "top";

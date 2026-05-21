@@ -78,3 +78,11 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 The **keystone config repo** is `nixos-config` — the consumer flake that imports keystone
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
+
+## Pull request workflow
+
+PR mechanics — draft → Copilot review → merge queue, plus issue and
+milestone linkage — live in
+[`CONTRIBUTOR.md` § Pull request workflow](CONTRIBUTOR.md#pull-request-workflow).
+Agents follow that section for every PR; the canonical source is the
+`process.pr-shepherding` skill convention.
