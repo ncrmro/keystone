@@ -483,6 +483,10 @@
               ;
             self = self;
           };
+          darwinEvaluation = import ./tests/module/darwin-evaluation.nix {
+            inherit pkgs lib;
+            self = self;
+          };
           templateUpdateChannel = import ./tests/module/template-update-channel.nix {
             inherit pkgs lib;
             self = self;
@@ -579,6 +583,7 @@
           os-evaluation = osEvaluation;
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
+          darwin-evaluation = darwinEvaluation;
           template-update-channel = templateUpdateChannel;
           template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
@@ -622,6 +627,7 @@
             ln -s ${osEvaluation} "$out/os-evaluation"
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${darwinEvaluation} "$out/darwin-evaluation"
             ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${templateSpecialArgs} "$out/template-special-args"
             ln -s ${serverEvaluation} "$out/server-evaluation"
