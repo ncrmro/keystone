@@ -11,7 +11,14 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix-darwin.follows = "agenix/darwin";
+    # Pinned directly (was `follows = "agenix/darwin"`) — agenix's
+    # transitive pin lagged behind the nixpkgs `substituteAll` removal
+    # (2025-05-23), breaking real darwin closure builds. Bumping here
+    # decouples keystone's nix-darwin from agenix's release cadence.
+    nix-darwin = {
+      url = "github:LnL7/nix-darwin";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     omarchy = {
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
