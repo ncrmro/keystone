@@ -36,12 +36,15 @@ pub async fn execute(command: HardwareCommand, flake: Option<&Path>) -> Result<(
             non_interactive,
             allow_no_sb,
             new_passphrase,
-        } => setup::execute_cli(setup::SetupOptions {
-            dry_run,
-            non_interactive,
-            allow_no_sb,
-            new_passphrase,
-        }).await,
+        } => {
+            setup::execute_cli(setup::SetupOptions {
+                dry_run,
+                non_interactive,
+                allow_no_sb,
+                new_passphrase,
+            })
+            .await
+        }
         HardwareCommand::Disks { id: _, command: _ } => {
             anyhow::bail!("ks hardware disks: not yet implemented (v1.2 — see plan)")
         }

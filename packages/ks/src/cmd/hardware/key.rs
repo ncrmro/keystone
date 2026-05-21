@@ -1000,24 +1000,29 @@ pub fn render_secrets_todo(todo: &HardwareKeySecretsTodo) -> Result<()> {
 /// deprecated top-level `ks hardware-key` form).
 pub async fn execute(command: HardwareKeyCommand, flake: Option<&Path>) -> Result<()> {
     match command {
-        HardwareKeyCommand::Doctor { selector, json } => match execute_doctor(selector.as_deref(), flake).await {
-            Ok(report) => {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&JsonOutput::ok(report))?);
-                    Ok(())
-                } else {
-                    render_doctor(&report)
+        HardwareKeyCommand::Doctor { selector, json } => {
+            match execute_doctor(selector.as_deref(), flake).await {
+                Ok(report) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&JsonOutput::ok(report))?);
+                        Ok(())
+                    } else {
+                        render_doctor(&report)
+                    }
+                }
+                Err(e) => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&JsonError::new(e.to_string()))?
+                        );
+                        Ok(())
+                    } else {
+                        Err(e)
+                    }
                 }
             }
-            Err(e) => {
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&JsonError::new(e.to_string()))?);
-                    Ok(())
-                } else {
-                    Err(e)
-                }
-            }
-        },
+        }
         HardwareKeyCommand::Secrets { json } => match execute_secrets_todo(flake).await {
             Ok(todo) => {
                 if json {
@@ -1029,7 +1034,10 @@ pub async fn execute(command: HardwareKeyCommand, flake: Option<&Path>) -> Resul
             }
             Err(e) => {
                 if json {
-                    println!("{}", serde_json::to_string_pretty(&JsonError::new(e.to_string()))?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&JsonError::new(e.to_string()))?
+                    );
                     Ok(())
                 } else {
                     Err(e)

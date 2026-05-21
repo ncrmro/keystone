@@ -293,9 +293,7 @@ fn rewrite_remediation_for_context(rem: &str, ctx: Context_) -> String {
             // The pre-install live ISO can't run enrollment yet —
             // remediation text that says "run `ks hardware enroll`"
             // gets reworded to the install-time equivalent.
-            if rem.contains("ks hardware enroll")
-                || rem.contains("ks hardware setup")
-            {
+            if rem.contains("ks hardware enroll") || rem.contains("ks hardware setup") {
                 "After install, run `ks hardware setup` to enroll the encrypted root disk.".into()
             } else {
                 rem.to_string()
@@ -310,12 +308,12 @@ fn rewrite_remediation_for_context(rem: &str, ctx: Context_) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::probe::{
         BootStage, Fido2Device, FingerprintState, HardwareReport, LuksVolume, MachineState,
         SecureBootState, Severity, SlotMap, SlotState, TpmDeviceState, VolumeRole, Warning,
         WarningScope,
     };
+    use super::*;
     use std::path::PathBuf;
 
     fn sample_report() -> HardwareReport {
@@ -357,9 +355,7 @@ mod tests {
                     severity: Severity::Critical,
                     scope: WarningScope::Volume { id: "root".into() },
                     message: "Volume `root` still accepts the default installer password.".into(),
-                    remediation: Some(
-                        "Run `sudo ks hardware enroll password --disk=root`.".into(),
-                    ),
+                    remediation: Some("Run `sudo ks hardware enroll password --disk=root`.".into()),
                 },
             ],
         }

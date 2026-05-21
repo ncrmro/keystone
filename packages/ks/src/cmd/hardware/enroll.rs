@@ -159,7 +159,9 @@ mod tests {
 
     #[tokio::test]
     async fn enroll_on_non_root_volume_refuses_in_v1_1() {
-        let err = execute(Method::Tpm2, Some("tank".into())).await.unwrap_err();
+        let err = execute(Method::Tpm2, Some("tank".into()))
+            .await
+            .unwrap_err();
         let msg = format!("{}", err);
         assert!(msg.contains("non-root LUKS volumes"), "got: {}", msg);
         assert!(msg.contains("tank"));

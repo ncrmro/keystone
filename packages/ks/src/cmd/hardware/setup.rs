@@ -21,9 +21,7 @@
 use anyhow::{Context, Result};
 
 use super::enroll;
-use super::probe::{
-    self, HardwareReport, LuksVolume, SecureBootState, Severity, WarningScope,
-};
+use super::probe::{self, HardwareReport, LuksVolume, SecureBootState, Severity, WarningScope};
 
 /// CLI options that flow into [`plan`] and [`execute`].
 #[derive(Debug, Clone, Default)]
@@ -59,7 +57,10 @@ pub enum SetupStep {
         already_tpm2: bool,
     },
     /// Enroll the plugged-in FIDO2 device against this volume.
-    EnrollFido2 { volume_id: String, device_label: String },
+    EnrollFido2 {
+        volume_id: String,
+        device_label: String,
+    },
     /// Enroll the current user's fingerprint via fprintd.
     EnrollFingerprint,
     /// Hardware is present but enrollment is skipped (e.g., FIDO2 reader
@@ -77,7 +78,10 @@ impl SetupStep {
             Self::EnrollRecoveryAndTpm2 { volume_id, .. } => {
                 format!("Generate recovery key + enroll TPM2 on `{}`", volume_id)
             }
-            Self::EnrollFido2 { volume_id, device_label } => {
+            Self::EnrollFido2 {
+                volume_id,
+                device_label,
+            } => {
                 format!("Enroll FIDO2 ({}) on `{}`", device_label, volume_id)
             }
             Self::EnrollFingerprint => "Enroll fingerprint for sudo/login".into(),
@@ -95,12 +99,14 @@ impl SetupStep {
 /// (we only have a handful of concrete implementations).
 pub trait SetupPrompts: Send + Sync {
     /// Show the plan and ask "Continue? [y/N]". Returns true to proceed.
-    fn confirm_plan(&self, plan: &SetupPlan) -> impl std::future::Future<Output = Result<bool>> + Send;
+    fn confirm_plan(
+        &self,
+        plan: &SetupPlan,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
 
     /// Prompt for the new LUKS passphrase. Returned twice-typed +
     /// validated by the implementation.
-    fn request_new_passphrase(&self)
-        -> impl std::future::Future<Output = Result<String>> + Send;
+    fn request_new_passphrase(&self) -> impl std::future::Future<Output = Result<String>> + Send;
 
     /// Display the freshly generated recovery key and require the user
     /// to confirm they've recorded it. Returns true once acknowledged.
@@ -143,7 +149,11 @@ pub fn plan(report: &HardwareReport, opts: &SetupOptions) -> SetupPlan {
             // what setup fixes — so don't elevate it to a blocker.
             if !is_default_password_warning(w) {
                 if let WarningScope::Volume { id: _ } = &w.scope {
-                    blockers.push(format!("{}: {}", w.message, w.remediation.as_deref().unwrap_or("")));
+                    blockers.push(format!(
+                        "{}: {}",
+                        w.message,
+                        w.remediation.as_deref().unwrap_or("")
+                    ));
                 }
             }
         }
@@ -226,7 +236,9 @@ pub async fn execute<P: SetupPrompts>(
     }
 
     if opts.dry_run {
-        prompts.say("(dry run — would execute the following plan:)").await;
+        prompts
+            .say("(dry run — would execute the following plan:)")
+            .await;
         for s in &full_plan.steps {
             prompts.say(&format!("  • {}", s.label())).await;
         }
@@ -272,7 +284,9 @@ pub async fn execute<P: SetupPrompts>(
         }
     }
 
-    prompts.say("✓ Setup complete. Run `ks hardware report` to verify.").await;
+    prompts
+        .say("✓ Setup complete. Run `ks hardware report` to verify.")
+        .await;
     Ok(())
 }
 
@@ -337,11 +351,11 @@ pub async fn execute_cli(opts: SetupOptions) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::probe::{
         BootStage, HardwareReport, LuksVolume, MachineState, SecureBootState, SlotMap, SlotState,
         TpmDeviceState, VolumeRole,
     };
+    use super::*;
     use std::path::PathBuf;
 
     fn fresh_install_report() -> HardwareReport {

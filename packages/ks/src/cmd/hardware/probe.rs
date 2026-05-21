@@ -824,9 +824,11 @@ Tokens:
             warnings: vec![],
         };
         let w = warnings_from(&r);
-        assert!(w
-            .iter()
-            .any(|x| matches!(x.scope, WarningScope::Machine) && x.message.contains("Secure Boot")));
+        assert!(
+            w.iter()
+                .any(|x| matches!(x.scope, WarningScope::Machine)
+                    && x.message.contains("Secure Boot"))
+        );
     }
 
     #[test]

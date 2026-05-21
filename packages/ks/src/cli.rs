@@ -481,17 +481,11 @@ pub enum FdeCommand {
     },
 
     /// Enroll a single method on this volume.
-    Enroll {
-        method: String,
-    },
+    Enroll { method: String },
 
     /// Re-key an enrolled slot on this volume.
-    Rotate {
-        method: String,
-    },
+    Rotate { method: String },
 
     /// Drop an enrolled slot on this volume.
-    Remove {
-        method: String,
-    },
+    Remove { method: String },
 }
