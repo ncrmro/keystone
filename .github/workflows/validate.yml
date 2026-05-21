@@ -64,6 +64,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
     outputs:
       check_eval: ${{ steps.pr-policy.outputs.check_eval || steps.merge-policy.outputs.check_eval || steps.call-policy.outputs.check_eval || 'true' }}
