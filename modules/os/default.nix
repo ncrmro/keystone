@@ -248,6 +248,7 @@ in
     ./storage.nix
     ./secure-boot.nix
     ./tpm.nix
+    ./zram.nix
     ./hardware-key.nix
     ./privileged-approval.nix
     ./uhk.nix
