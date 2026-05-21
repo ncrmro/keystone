@@ -2953,6 +2953,41 @@ async fn copy_config_to_target(
 /// `flake_host` is the selected host key from the installer config — used to locate
 /// the host directory under `hosts/`. This avoids depending on a `hostname` file
 /// which may not exist in all repo layouts.
+/// Try a direct `tokio::fs::metadata`; if that fails (PermissionDenied
+/// vs NotFound is indistinguishable across mount perms), fall back to
+/// `sudo test -f` so we don't conflate "not readable from this uid"
+/// with "absent". The live installer's admin runs at a different uid
+/// than the installed system's admin (e.g., live=1001, installed=1000)
+/// and `/mnt/home/<user>` is mode 700 — direct stat as the live
+/// installer's uid returns Err on a path that's correctly placed.
+async fn path_exists_for_validation(p: &Path) -> bool {
+    if tokio::fs::metadata(p).await.is_ok() {
+        return true;
+    }
+    run_command_quiet("test", &["-f", &p.display().to_string()], None, true)
+        .await
+        .is_ok()
+}
+
+async fn read_to_string_for_validation(p: &Path) -> Result<String, String> {
+    if let Ok(s) = tokio::fs::read_to_string(p).await {
+        return Ok(s);
+    }
+    let output = tokio::process::Command::new("sudo")
+        .args(["-n", "cat", &p.display().to_string()])
+        .output()
+        .await
+        .map_err(|e| format!("Cannot read {}: {}", p.display(), e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Cannot read {}: sudo cat exited with status {}",
+            p.display(),
+            output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 async fn validate_installed_hardware(
     mounted_repo_dir: &Path,
     flake_host: &str,
@@ -2966,8 +3001,8 @@ async fn validate_installed_hardware(
     let generated_hw = host_dir.join(GENERATED_HARDWARE_FILENAME);
     let flat_generated_hw = mounted_repo_dir.join(GENERATED_HARDWARE_FILENAME);
 
-    if tokio::fs::metadata(&generated_hw).await.is_err()
-        && tokio::fs::metadata(&flat_generated_hw).await.is_err()
+    if !path_exists_for_validation(&generated_hw).await
+        && !path_exists_for_validation(&flat_generated_hw).await
     {
         return Err(format!(
             "Installed repo is missing {}: a rebuild from this repo may produce \
@@ -2983,9 +3018,9 @@ async fn validate_installed_hardware(
     let hardware_nix = host_dir.join("hardware.nix");
     let flat_hardware_nix = mounted_repo_dir.join("hardware.nix");
 
-    let hardware_nix_path = if tokio::fs::metadata(&hardware_nix).await.is_ok() {
+    let hardware_nix_path = if path_exists_for_validation(&hardware_nix).await {
         hardware_nix
-    } else if tokio::fs::metadata(&flat_hardware_nix).await.is_ok() {
+    } else if path_exists_for_validation(&flat_hardware_nix).await {
         flat_hardware_nix
     } else {
         return Err(format!(
@@ -2997,9 +3032,7 @@ async fn validate_installed_hardware(
         ));
     };
 
-    let hw_content = tokio::fs::read_to_string(&hardware_nix_path)
-        .await
-        .map_err(|e| format!("Cannot read {}: {}", hardware_nix_path.display(), e))?;
+    let hw_content = read_to_string_for_validation(&hardware_nix_path).await?;
 
     if !hw_content.contains(GENERATED_HARDWARE_FILENAME) {
         return Err(format!(
