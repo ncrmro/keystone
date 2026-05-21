@@ -2,6 +2,7 @@
   self,
   nixpkgs,
   home-manager,
+  nix-darwin ? null,
   lib,
 }:
 let
@@ -12,6 +13,60 @@ let
     lib.recursiveUpdate {
       desktop.enable = true;
     } userCfg;
+
+  mkSharedMacosHomeModules =
+    defaults:
+    {
+      username ? defaults.username or "admin",
+      fullName ? defaults.fullName,
+      email ? defaults.email,
+      timeZone ? defaults.timeZone or "UTC",
+      updateChannel ? defaults.updateChannel or "stable",
+      keystoneServices ? defaults.keystoneServices or { },
+      modules ? [ ],
+      ...
+    }@args:
+    let
+      # Mac homeConfigurations are standalone — they do not share a NixOS
+      # evaluation with the fleet, so the `modules/services.nix` defaults
+      # never fire here. Read keystoneServices.vaultwarden.{host,domain}
+      # directly; only enable rbw when both are explicit (otherwise rbw
+      # would silently target the official Bitwarden service).
+      vaultwarden = keystoneServices.vaultwarden or { };
+      vwBaseUrl = if (vaultwarden.domain or null) != null then "https://${vaultwarden.domain}" else "";
+      enableVwSecrets =
+        (vaultwarden.host or null) != null && (vaultwarden.domain or null) != null && email != null;
+    in
+    [
+      self.homeModules.terminal
+      {
+        nixpkgs.overlays = [ self.overlays.default ];
+        home.username = username;
+        home.homeDirectory = "/Users/${username}";
+        home.stateVersion = args.stateVersion or "25.05";
+        home.sessionVariables.TZ = timeZone;
+
+        keystone.update.channel = lib.mkDefault updateChannel;
+        keystone.projects.enable = false;
+        keystone.terminal = {
+          enable = true;
+          ai.enable = false;
+          sandbox.enable = false;
+          git = {
+            userName = fullName;
+            userEmail = email;
+          };
+          secrets = {
+            enable = lib.mkDefault enableVwSecrets;
+            email = lib.mkDefault (if email != null then email else "");
+            baseUrl = lib.mkDefault vwBaseUrl;
+          };
+        };
+      }
+      (args.config or { })
+    ]
+    ++ (defaults.modules or [ ])
+    ++ modules;
 
   mkHostModule =
     {
@@ -173,58 +228,71 @@ let
     defaults:
     {
       system ? defaults.system or "aarch64-darwin",
+      ...
+    }@args:
+    home-manager.lib.homeManagerConfiguration {
+      pkgs = nixpkgs.legacyPackages.${system};
+      modules = mkSharedMacosHomeModules defaults args;
+    };
+
+  mkSharedMacosSystemHelper =
+    defaults:
+    {
+      system ? defaults.system or "aarch64-darwin",
       username ? defaults.username or "admin",
-      fullName ? defaults.fullName,
-      email ? defaults.email,
-      timeZone ? defaults.timeZone or "UTC",
+      hostname ? defaults.hostname or username,
       updateChannel ? defaults.updateChannel or "stable",
-      keystoneServices ? defaults.keystoneServices or { },
-      modules ? [ ],
+      darwinStateVersion ? defaults.darwinStateVersion or 6,
+      ageIdentityPaths ?
+        defaults.ageIdentityPaths or [
+          "/etc/ssh/ssh_host_ed25519_key"
+        ],
+      darwinModules ? [ ],
+      specialArgs ? { },
       ...
     }@args:
     let
-      # Mac homeConfigurations are standalone — they do not share a NixOS
-      # evaluation with the fleet, so the `modules/services.nix` defaults
-      # never fire here. Read keystoneServices.vaultwarden.{host,domain}
-      # directly; only enable rbw when both are explicit (otherwise rbw
-      # would silently target the official Bitwarden service).
-      vaultwarden = keystoneServices.vaultwarden or { };
-      vwBaseUrl = if (vaultwarden.domain or null) != null then "https://${vaultwarden.domain}" else "";
-      enableVwSecrets =
-        (vaultwarden.host or null) != null && (vaultwarden.domain or null) != null && email != null;
+      homeModules = mkSharedMacosHomeModules defaults args;
     in
-    home-manager.lib.homeManagerConfiguration {
-      pkgs = nixpkgs.legacyPackages.${system};
+    nix-darwin.lib.darwinSystem {
+      inherit system;
+      inherit specialArgs;
       modules = [
-        self.homeModules.terminal
+        self.darwinModules.operating-system
+        home-manager.darwinModules.home-manager
         {
           nixpkgs.overlays = [ self.overlays.default ];
-          home.username = username;
-          home.homeDirectory = "/Users/${username}";
-          home.stateVersion = args.stateVersion or "25.05";
-          home.sessionVariables.TZ = timeZone;
+          networking.hostName = hostname;
+          # `system.primaryUser` is NOT set here: the option does not exist
+          # in the agenix-pinned nix-darwin rev (43975d78, Apr 2025). When
+          # nix-darwin is bumped past that window, reintroduce as
+          # `system.primaryUser = config.keystone.os.adminUsername;` — the
+          # shared option (modules/os/shared.nix) is the single source of
+          # truth, not the helper-local `username` arg.
+          system.stateVersion = darwinStateVersion;
+          users.users.${username}.home = "/Users/${username}";
 
-          keystone.update.channel = lib.mkDefault updateChannel;
-          keystone.projects.enable = false;
-          keystone.terminal = {
+          keystone.os = {
             enable = true;
-            ai.enable = false;
-            sandbox.enable = false;
-            git = {
-              userName = fullName;
-              userEmail = email;
-            };
-            secrets = {
-              enable = lib.mkDefault enableVwSecrets;
-              email = lib.mkDefault (if email != null then email else "");
-              baseUrl = lib.mkDefault vwBaseUrl;
-            };
+            adminUsername = username;
+          };
+          keystone.services = args.keystoneServices or defaults.keystoneServices or { };
+          keystone.update.channel = lib.mkDefault updateChannel;
+          age.identityPaths = lib.mkDefault ageIdentityPaths;
+
+          home-manager.useGlobalPkgs = true;
+          home-manager.useUserPackages = true;
+          home-manager.sharedModules = [
+            {
+              keystone.update.channel = lib.mkDefault updateChannel;
+            }
+          ];
+          home-manager.users.${username} = {
+            imports = homeModules;
           };
         }
-        (args.config or { })
       ]
-      ++ (defaults.modules or [ ])
-      ++ modules;
+      ++ darwinModules;
     };
 
   mkZfsDataPoolModule =
@@ -552,6 +620,7 @@ rec {
   mkHost = mkLinuxHost;
   mkSharedLinuxHost = mkSharedLinuxHostHelper;
   mkSharedMacosHome = mkSharedMacosHomeHelper;
+  mkSharedMacosSystem = mkSharedMacosSystemHelper;
   inherit mkInstallerIsoForFlake;
 
   # Build a bootable qcow2 disk image directly from a NixOS host configuration.
@@ -1014,14 +1083,19 @@ rec {
         in
         kindDefaults.builder builderArgs;
 
-      mkDarwinInventoryHost =
+      darwinHostDefaultsFor =
+        hostCfg:
+        if builtins.hasAttr hostCfg.kind darwinKindDefaults then
+          darwinKindDefaults.${hostCfg.kind}
+        else
+          throw "Unsupported Keystone macOS host kind `${hostCfg.kind}`.";
+
+      darwinUsesSystem = hostCfg: (hostCfg.darwin or { }).enable or false;
+
+      mkDarwinInventoryHomeHost =
         name: hostCfg:
         let
-          kindDefaults =
-            if builtins.hasAttr hostCfg.kind darwinKindDefaults then
-              darwinKindDefaults.${hostCfg.kind}
-            else
-              throw "Unsupported Keystone macOS host kind `${hostCfg.kind}`.";
+          kindDefaults = darwinHostDefaultsFor hostCfg;
           configurationPath =
             if hostCfg ? configuration then hostCfg.configuration else hostFilePath name "configuration.nix";
           modules =
@@ -1033,6 +1107,8 @@ rec {
               "configuration"
               "modules"
               "updateChannel"
+              "darwin"
+              "specialArgs"
             ])
             // {
               system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
@@ -1051,8 +1127,60 @@ rec {
         in
         (mkSharedMacosHome { }) builderArgs;
 
+      mkDarwinInventorySystemHost =
+        name: hostCfg:
+        let
+          kindDefaults = darwinHostDefaultsFor hostCfg;
+          darwinCfg = hostCfg.darwin or { };
+          homeConfigurationPath =
+            if hostCfg ? configuration then hostCfg.configuration else hostFilePath name "configuration.nix";
+          darwinConfigurationPath =
+            if darwinCfg ? configuration then darwinCfg.configuration else hostFilePath name "darwin.nix";
+          homeModules =
+            (lib.optional (homeConfigurationPath != null) (normalizeModuleSpec homeConfigurationPath))
+            ++ (hostCfg.modules or [ ]);
+          darwinModules =
+            (lib.optional (darwinConfigurationPath != null) (normalizeModuleSpec darwinConfigurationPath))
+            ++ (darwinCfg.modules or [ ]);
+          hostUpdateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
+          builderArgs =
+            (builtins.removeAttrs hostCfg [
+              "kind"
+              "configuration"
+              "modules"
+              "updateChannel"
+              "darwin"
+              "specialArgs"
+            ])
+            // {
+              hostname = hostCfg.hostname or name;
+              system = if hostCfg ? system then hostCfg.system else kindDefaults.system;
+              username = if hostCfg ? username then hostCfg.username else adminUsername;
+              fullName = if hostCfg ? fullName then hostCfg.fullName else sharedAdmin.fullName;
+              email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
+              timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
+              updateChannel = hostUpdateChannel;
+              keystoneServices =
+                if hostCfg ? keystoneServices then hostCfg.keystoneServices else keystoneServices;
+              modules = sharedUserModules ++ homeModules;
+              darwinModules = sharedSystemModules ++ darwinModules;
+              darwinStateVersion = darwinCfg.stateVersion or 6;
+              ageIdentityPaths =
+                (darwinCfg.age or { }).identityPaths or [
+                  "/etc/ssh/ssh_host_ed25519_key"
+                ];
+              specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { }) // (darwinCfg.specialArgs or { });
+            };
+        in
+        if nix-darwin == null then
+          throw "Darwin system host '${name}' requires the nix-darwin input. Ensure flake.nix passes nix-darwin into lib/templates.nix."
+        else
+          (mkSharedMacosSystem { }) builderArgs;
+
       linuxHosts = lib.filterAttrs (_: hostCfg: builtins.hasAttr hostCfg.kind linuxKindDefaults) hosts;
       darwinHosts = lib.filterAttrs (_: hostCfg: builtins.hasAttr hostCfg.kind darwinKindDefaults) hosts;
+      darwinHomeHosts = lib.filterAttrs (_: hostCfg: !darwinUsesSystem hostCfg) darwinHosts;
+      darwinSystemHosts = lib.filterAttrs (_: hostCfg: darwinUsesSystem hostCfg) darwinHosts;
       linuxHostSystems = lib.unique (lib.mapAttrsToList linuxHostSystemFor linuxHosts);
       installerSystem =
         if linuxHostSystems == [ ] then
@@ -1079,7 +1207,8 @@ rec {
     in
     {
       nixosConfigurations = lib.mapAttrs mkLinuxInventoryHost linuxHosts;
-      homeConfigurations = lib.mapAttrs mkDarwinInventoryHost darwinHosts;
+      homeConfigurations = lib.mapAttrs mkDarwinInventoryHomeHost darwinHomeHosts;
+      darwinConfigurations = lib.mapAttrs mkDarwinInventorySystemHost darwinSystemHosts;
       inherit installerTargets;
       # Expose admin identity so tooling (e.g. bin/test-iso) can read it without
       # parsing flake.nix directly.

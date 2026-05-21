@@ -197,7 +197,6 @@
     "darwin": {
       "inputs": {
         "nixpkgs": [
-          "keystone",
           "agenix",
           "nixpkgs"
         ]
@@ -1036,6 +1035,10 @@
         "lanzaboote": "lanzaboote",
         "llm-agents": "llm-agents",
         "nix-flatpak": "nix-flatpak",
+        "nix-darwin": [
+          "agenix",
+          "darwin"
+        ],
         "nix-index-database": "nix-index-database",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_3",
