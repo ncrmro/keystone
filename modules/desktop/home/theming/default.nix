@@ -274,8 +274,12 @@ let
     # Restart hyprpaper to pick up new background
     ${pkgs.systemd}/bin/systemctl --user restart hyprpaper.service 2>/dev/null || true
 
-    # Reload components
-    ${pkgs.systemd}/bin/systemctl --user restart waybar.service 2>/dev/null || true
+    # Reload components.
+    # waybar.service is the canonical start path (programs.waybar.systemd.enable
+    # in components/waybar.nix). The unit's ExecReload sends SIGUSR2 to the
+    # MAINPID, reloading config + CSS in place with no process restart and no
+    # second-instance spawn risk.
+    ${pkgs.systemd}/bin/systemctl --user reload waybar.service 2>/dev/null || true
     ${pkgs.procps}/bin/pkill -SIGUSR2 ghostty 2>/dev/null || true
     ${pkgs.systemd}/bin/systemctl --user restart mako.service 2>/dev/null || true
     ${pkgs.systemd}/bin/systemctl --user restart walker.service 2>/dev/null || true
