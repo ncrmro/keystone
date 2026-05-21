@@ -101,6 +101,34 @@ expected.
 
 Do NOT undraft while CI is failing or in progress.
 
+### Issue and milestone linkage
+
+Every PR MUST link to its originating issue and, when one exists for
+the current work stream, be assigned to the milestone — milestones
+are the unit of stakeholder-visible progress and an unassigned PR is
+invisible on the project board.
+
+```bash
+# Issue linkage lives in the PR body. Use a closing keyword
+# (Closes / Fixes / Resolves) ONLY if this PR fully resolves the issue;
+# the forge auto-closes the issue on merge. For partial work or PRs
+# under a tracking issue / epic, use a plain reference instead so the
+# issue stays open after merge:
+gh pr edit <PR> --body "...Closes #N..."         # full resolution
+gh pr edit <PR> --body "...Part of #N..."        # partial / epic
+
+# Milestone assignment is a separate field — no closing keyword in
+# the body. Set it on both the PR and its originating issue:
+gh pr edit <PR> --milestone "<milestone name>"
+gh issue edit <ISSUE> --milestone "<milestone name>"
+```
+
+Cross-repo references MUST use `owner/repo#N`; bare `#N` is ambiguous.
+If no milestone fits, check with the product agent before creating one
+— milestones are a product artifact, not an engineering convenience.
+Merging a PR does not close its milestone; the forge closes a milestone
+only when every contained issue is closed.
+
 ### Stage 2 — Ready for review + Copilot
 
 ```bash
