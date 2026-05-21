@@ -466,10 +466,25 @@ let
                                 chmod 0700 "$homeDir"
 
                                 cat > "$zshrc" <<'EOF'
-                # Minimal Keystone installer bootstrap zshrc.
+                # Minimal Keystone installer bootstrap zshrc — colorized for
+                # readable file listings and a distinguishable prompt on
+                # TERM=linux (8-color framebuffer) and SSH sessions alike.
+
+                autoload -U colors && colors
+                alias ls='ls --color=auto'
+                alias ll='ls -lh --color=auto'
+                alias la='ls -lah --color=auto'
+                alias grep='grep --color=auto'
+                if command -v dircolors >/dev/null 2>&1; then
+                  eval "$(dircolors -b 2>/dev/null)" || true
+                fi
+
+                # Cyan user@host, yellow cwd. %F{name}/%f resolve to ANSI 8-color
+                # escapes on TERM=linux so the framebuffer console renders them
+                # too — not just SSH-attached 256-color terms.
+                PROMPT='%F{cyan}%n@%m%f:%F{yellow}%~%f %# '
 
                 tty_path="$(tty 2>/dev/null || true)"
-
                 if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
                   ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
                   clear >/dev/null 2>&1 || true
@@ -477,9 +492,6 @@ let
                   echo 'Run `ks install` to choose a host from the embedded repo and install it.'
                   echo 'SSH is available if keys were embedded in the ISO.'
                   print
-                  PROMPT='%n@%m:%~ %# '
-                else
-                  PROMPT='%n@%m:%~ %# '
                 fi
                 EOF
                                 chown ${adminUsername}:users "$zshrc"
