@@ -391,27 +391,18 @@ pub enum HardwareCommand {
     /// One-shot enrollment: detect hardware, replace default password,
     /// generate recovery key, enroll TPM/FIDO2/fingerprint where present.
     ///
-    /// Run with no flags for the interactive chain. `--dry-run` shows the
-    /// plan without executing. `--non-interactive` requires
-    /// `--new-passphrase=env|file` and skips confirmation prompts.
+    /// Run with no flags for the interactive chain. `--dry-run` shows
+    /// the plan without executing.
+    ///
+    /// Non-interactive mode and `--allow-no-sb` are tracked as v1.2
+    /// follow-ups — the underlying `keystone-enroll-*` shell scripts
+    /// prompt interactively and treat Secure Boot disabled as a hard
+    /// error, so plumbing those overrides end-to-end requires the
+    /// full Rust port of the enrollment primitives.
     Setup {
         /// Compute and print the plan, then exit without changing state.
         #[arg(long)]
         dry_run: bool,
-
-        /// Suppress interactive prompts; requires `--new-passphrase` source.
-        #[arg(long)]
-        non_interactive: bool,
-
-        /// Proceed even when Secure Boot is disabled (a warning is still printed).
-        #[arg(long)]
-        allow_no_sb: bool,
-
-        /// Source of the new LUKS passphrase: `env:VAR_NAME` reads from an
-        /// environment variable; `file:/path` reads from a file. Required
-        /// with `--non-interactive`.
-        #[arg(long, value_name = "SRC")]
-        new_passphrase: Option<String>,
     },
 
     /// List or focus LUKS volumes. With no `<id>`, lists. With an `<id>`,

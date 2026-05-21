@@ -35,6 +35,7 @@ let
   # Recovery key enrollment script
   enrollRecoveryScript = makeExecutableScript "enroll-recovery.sh" ./scripts/enroll-recovery.sh {
     systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
+    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
     bootctl = "${pkgs.systemd}/bin/bootctl";
     credstoreDevice = credstoreDevice;
     tpmPCRs = tpmPCRString;

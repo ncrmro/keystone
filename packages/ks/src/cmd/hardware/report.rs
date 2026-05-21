@@ -48,15 +48,22 @@ pub async fn execute(
         detect_context()
     };
 
-    let mut report = probe::probe().await;
-    if let Some(ref id) = disk_filter {
-        report.volumes.retain(|v| &v.id == id);
-    }
+    let unfiltered = probe::probe().await;
 
+    // Status-file writing always uses the *unfiltered* report so the
+    // systemd consumer (`components/security/tpm.rs::DiskUnlockStatus`)
+    // sees the root volume's true enrollment state regardless of
+    // whether the caller is currently focused on a different disk.
+    // Filtering applies only to the human/JSON output below.
     if let Some(path) = write_status_file.as_ref() {
-        write_status(&report, path)
+        write_status(&unfiltered, path)
             .await
             .with_context(|| format!("writing status file to {}", path.display()))?;
+    }
+
+    let mut report = unfiltered;
+    if let Some(ref id) = disk_filter {
+        report.volumes.retain(|v| &v.id == id);
     }
 
     if json {
@@ -105,7 +112,9 @@ struct LegacyStatus<'a> {
 
 async fn write_status(report: &HardwareReport, path: &std::path::Path) -> Result<()> {
     if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("creating parent directory {}", parent.display()))?;
     }
     let root = report.volumes.iter().find(|v| v.id == "root");
     let device = root

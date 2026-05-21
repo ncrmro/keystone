@@ -27,9 +27,6 @@ use super::probe::{self, HardwareReport, LuksVolume, SecureBootState, Severity, 
 #[derive(Debug, Clone, Default)]
 pub struct SetupOptions {
     pub dry_run: bool,
-    pub non_interactive: bool,
-    pub allow_no_sb: bool,
-    pub new_passphrase: Option<String>,
 }
 
 /// What `ks hardware setup` will do, computed from the probe. Render
@@ -122,22 +119,22 @@ pub trait SetupPrompts: Send + Sync {
 
 /// Compute the plan for a given probed report. Pure — no IO, no
 /// process spawning. Unit-testable.
-pub fn plan(report: &HardwareReport, opts: &SetupOptions) -> SetupPlan {
+pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
     let mut steps = Vec::new();
     let mut blockers = Vec::new();
 
     // Machine-wide blockers
-    if matches!(report.machine.secure_boot, SecureBootState::Disabled) && !opts.allow_no_sb {
+    if matches!(report.machine.secure_boot, SecureBootState::Disabled) {
         blockers.push(
             "Secure Boot is DISABLED. TPM PCR-7 binding provides no integrity guarantee. \
-             Enable Secure Boot in firmware (or pass --allow-no-sb to proceed anyway)."
+             Enable Secure Boot in firmware before running `ks hardware setup`."
                 .into(),
         );
     }
 
-    // Per-volume steps
+    // Per-volume steps (password rotation, recovery+TPM2, FIDO2 if plugged in)
     for v in &report.volumes {
-        steps.extend(plan_volume(v));
+        steps.extend(plan_volume(v, &report.machine.fido2_devices));
     }
 
     // Surface critical warnings as blockers if they would leave the
@@ -178,7 +175,7 @@ fn is_default_password_warning(w: &probe::Warning) -> bool {
     w.message.contains("default installer password")
 }
 
-fn plan_volume(v: &LuksVolume) -> Vec<SetupStep> {
+fn plan_volume(v: &LuksVolume, fido2_devices: &[probe::Fido2Device]) -> Vec<SetupStep> {
     let mut steps = Vec::new();
     if v.slots.password.is_default {
         steps.push(SetupStep::RotateDefaultPassword {
@@ -192,12 +189,18 @@ fn plan_volume(v: &LuksVolume) -> Vec<SetupStep> {
             already_tpm2: v.slots.tpm2.enrolled,
         });
     }
-    // FIDO2 enrollment is opportunistic: we don't know which device the
-    // user wants paired without re-probing during execute(). Insert a
-    // placeholder if any device is plugged in; execute() picks the
-    // first one.
-    // (The probe already attached device labels at the machine level;
-    // we cross-reference at execute time.)
+    // Opportunistic FIDO2 enrollment: if a device is plugged in *now*
+    // and this volume doesn't already have a FIDO2 token, pair the
+    // first detected device. Re-running setup later with the device
+    // unplugged will skip this step automatically.
+    if !v.slots.fido2.enrolled {
+        if let Some(dev) = fido2_devices.first() {
+            steps.push(SetupStep::EnrollFido2 {
+                volume_id: v.id.clone(),
+                device_label: dev.label.clone(),
+            });
+        }
+    }
     steps
 }
 
@@ -217,28 +220,13 @@ pub async fn execute<P: SetupPrompts>(
     opts: SetupOptions,
     prompts: &P,
 ) -> Result<()> {
-    let mut full_plan = plan(report, &opts);
-
-    // Append FIDO2 steps now that we have the device list from probe.
-    for v in &report.volumes {
-        if let Some(dev) = report.machine.fido2_devices.first() {
-            if !v.slots.fido2.enrolled {
-                full_plan.steps.insert(
-                    full_plan.steps.len().saturating_sub(1),
-                    SetupStep::EnrollFido2 {
-                        volume_id: v.id.clone(),
-                        device_label: dev.label.clone(),
-                    },
-                );
-            }
-        }
-    }
+    let full_plan = plan(report, &opts);
 
     if !full_plan.blockers.is_empty() {
         for b in &full_plan.blockers {
             prompts.say(&format!("Blocker: {}", b)).await;
         }
-        anyhow::bail!("Setup blocked. Resolve blockers above or pass override flags.");
+        anyhow::bail!("Setup blocked. Resolve blockers above and re-run.");
     }
 
     if opts.dry_run {
@@ -251,12 +239,10 @@ pub async fn execute<P: SetupPrompts>(
         return Ok(());
     }
 
-    if !opts.non_interactive {
-        let ok = prompts.confirm_plan(&full_plan).await?;
-        if !ok {
-            prompts.say("Cancelled.").await;
-            return Ok(());
-        }
+    let ok = prompts.confirm_plan(&full_plan).await?;
+    if !ok {
+        prompts.say("Cancelled.").await;
+        return Ok(());
     }
 
     for step in &full_plan.steps {
@@ -434,23 +420,11 @@ mod tests {
     }
 
     #[test]
-    fn plan_blocks_when_secure_boot_disabled_without_override() {
+    fn plan_blocks_when_secure_boot_disabled() {
         let mut r = fresh_install_report();
         r.machine.secure_boot = SecureBootState::Disabled;
         let p = plan(&r, &SetupOptions::default());
         assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
-    }
-
-    #[test]
-    fn plan_allows_proceed_with_allow_no_sb_override() {
-        let mut r = fresh_install_report();
-        r.machine.secure_boot = SecureBootState::Disabled;
-        let opts = SetupOptions {
-            allow_no_sb: true,
-            ..Default::default()
-        };
-        let p = plan(&r, &opts);
-        assert!(p.blockers.is_empty(), "got blockers: {:?}", p.blockers);
     }
 
     #[test]

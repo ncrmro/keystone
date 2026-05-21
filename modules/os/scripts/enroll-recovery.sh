@@ -124,17 +124,39 @@ fi
 echo "[Auto-Execution Mode]"
 echo ""
 
+# Discover the current slot-0 passphrase. On first-install the default
+# "keystone" string still unlocks; after `ks hardware setup` has run
+# the password-rotation step, slot 0 holds a user-chosen passphrase
+# and we must prompt for it interactively.
+TEMP_UNLOCK=$(mktemp)
+trap 'rm -f "$TEMP_UNLOCK" "${TEMP_RECOVERY:-}"' EXIT
+printf 'keystone' > "$TEMP_UNLOCK"
+
+if @cryptsetup@ open --test-passphrase "$CREDSTORE_DEVICE" --key-file="$TEMP_UNLOCK" >/dev/null 2>&1; then
+  echo "[INFO] Default installer password still unlocks — using it as the unlock key."
+else
+  echo "[INFO] Default installer password no longer unlocks slot 0."
+  echo "       Enter your current LUKS passphrase to authorize recovery-key generation:"
+  IFS= read -rs CURRENT_PW
+  echo
+  printf '%s' "$CURRENT_PW" > "$TEMP_UNLOCK"
+  unset CURRENT_PW
+  if ! @cryptsetup@ open --test-passphrase "$CREDSTORE_DEVICE" --key-file="$TEMP_UNLOCK" >/dev/null 2>&1; then
+    echo "[ERROR] That passphrase does not unlock slot 0. Aborting."
+    exit 4
+  fi
+fi
+
 # Execute commands with progress output
 echo "[Step 1/4] Generating recovery key..."
-echo "$ systemd-cryptenroll --recovery-key --unlock-key-file=<(echo -n \"keystone\")"
+echo "$ systemd-cryptenroll --recovery-key --unlock-key-file=<current-passphrase>"
 
 TEMP_RECOVERY=$(mktemp)
-trap "rm -f $TEMP_RECOVERY" EXIT
 
 if ! @systemd_cryptenroll@ \
   "$CREDSTORE_DEVICE" \
   --recovery-key \
-  --unlock-key-file=<(echo -n "keystone") \
+  --unlock-key-file="$TEMP_UNLOCK" \
   2>&1 | tee "$TEMP_RECOVERY"; then
   echo "[ERROR] Failed to generate recovery key"
   exit 4

@@ -996,8 +996,7 @@ pub fn render_secrets_todo(todo: &HardwareKeySecretsTodo) -> Result<()> {
     render_markdown(&todo.markdown)
 }
 
-/// Dispatch `ks hardware key <subcommand>` (also reached via the
-/// deprecated top-level `ks hardware-key` form).
+/// Dispatch `ks hardware key <subcommand>`.
 pub async fn execute(command: HardwareKeyCommand, flake: Option<&Path>) -> Result<()> {
     match command {
         HardwareKeyCommand::Doctor { selector, json } => {
