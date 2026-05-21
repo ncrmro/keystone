@@ -243,9 +243,10 @@ let
       hostname ? defaults.hostname or username,
       updateChannel ? defaults.updateChannel or "stable",
       darwinStateVersion ? defaults.darwinStateVersion or 6,
-      ageIdentityPaths ? defaults.ageIdentityPaths or [
-        "/etc/ssh/ssh_host_ed25519_key"
-      ],
+      ageIdentityPaths ?
+        defaults.ageIdentityPaths or [
+          "/etc/ssh/ssh_host_ed25519_key"
+        ],
       darwinModules ? [ ],
       specialArgs ? { },
       ...
@@ -262,7 +263,12 @@ let
         {
           nixpkgs.overlays = [ self.overlays.default ];
           networking.hostName = hostname;
-          system.primaryUser = username;
+          # `system.primaryUser` is NOT set here: the option does not exist
+          # in the agenix-pinned nix-darwin rev (43975d78, Apr 2025). When
+          # nix-darwin is bumped past that window, reintroduce as
+          # `system.primaryUser = config.keystone.os.adminUsername;` — the
+          # shared option (modules/os/shared.nix) is the single source of
+          # truth, not the helper-local `username` arg.
           system.stateVersion = darwinStateVersion;
           users.users.${username}.home = "/Users/${username}";
 
@@ -1097,13 +1103,11 @@ rec {
               modules = sharedUserModules ++ homeModules;
               darwinModules = sharedSystemModules ++ darwinModules;
               darwinStateVersion = darwinCfg.stateVersion or 6;
-              ageIdentityPaths = (darwinCfg.age or { }).identityPaths or [
-                "/etc/ssh/ssh_host_ed25519_key"
-              ];
-              specialArgs =
-                sharedSpecialArgs
-                // (hostCfg.specialArgs or { })
-                // (darwinCfg.specialArgs or { });
+              ageIdentityPaths =
+                (darwinCfg.age or { }).identityPaths or [
+                  "/etc/ssh/ssh_host_ed25519_key"
+                ];
+              specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { }) // (darwinCfg.specialArgs or { });
             };
         in
         if nix-darwin == null then

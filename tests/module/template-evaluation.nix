@@ -63,7 +63,7 @@ let
         "homeFileKeys": ${homeFileKeysJson}
        }
        ENDJSON
-     '';
+    '';
 
   evalDarwin =
     name: system:
@@ -72,7 +72,11 @@ let
       daemonKeysJson = builtins.toJSON (builtins.attrNames result.launchd.daemons);
       identityPathsJson = builtins.toJSON result.age.identityPaths;
       hostJson = builtins.toJSON result.networking.hostName;
-      primaryUserJson = builtins.toJSON result.system.primaryUser;
+      # `system.primaryUser` is not in the agenix-pinned nix-darwin rev
+      # (43975d78, Apr 2025) so we don't read it. The Darwin admin
+      # identity is asserted via the shared `keystone.os.adminUsername`
+      # below, which is what callers actually configure.
+      adminUsernameJson = builtins.toJSON result.keystone.os.adminUsername;
     in
     pkgs.runCommand "eval-template-${name}" { } ''
       mkdir -p $out
@@ -81,7 +85,7 @@ let
         "name": "${name}",
         "kind": "darwin",
         "hostname": ${hostJson},
-        "primaryUser": ${primaryUserJson},
+        "adminUsername": ${adminUsernameJson},
         "launchdDaemons": ${daemonKeysJson},
         "ageIdentityPaths": ${identityPathsJson}
       }
@@ -381,8 +385,7 @@ let
         hasDarwinConfig = builtins.hasAttr "macbook" fleet.darwinConfigurations;
         hasStandaloneHome = builtins.hasAttr "macbook" fleet.homeConfigurations;
         hasTokenDaemon = builtins.hasAttr "nix-github-access-token" result.launchd.daemons;
-        hasInclude =
-          lib.hasInfix "!include /etc/nix/access-tokens.conf" result.nix.extraOptions;
+        hasInclude = lib.hasInfix "!include /etc/nix/access-tokens.conf" result.nix.extraOptions;
         identityPaths = result.age.identityPaths;
         expectIdentity = identityPaths == [ "/etc/ssh/ssh_host_ed25519_key" ];
         allChecksPass =
