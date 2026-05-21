@@ -59,6 +59,24 @@ In development mode, also generates `~/.keystone/repos/AGENTS.md`.
 generated file format are actively evolving. Role definitions and convention
 assignment patterns may change.
 
+### `keystone.os.zram` — Compressed RAM swap
+
+| | |
+|---|---|
+| **Module** | `modules/os/zram.nix` |
+| **Flag** | `keystone.os.zram.enable` (defaults to `keystone.experimental`) |
+| **Milestone** | [v2 — Un-experimental](https://github.com/ncrmro/keystone/milestone/10) |
+
+Wraps nixpkgs `zramSwap` with keystone defaults: one zstd-compressed
+zram device sized at 50% of RAM and `vm.swappiness=150` so the kernel
+reaches for compressed swap before evicting clean page-cache.
+
+**Why experimental**: the right defaults differ between workstation,
+laptop, and server profiles, and we have not yet tuned per-archetype
+or validated the interaction with existing disk swap on every host.
+
+**Options**: `keystone.os.zram.enable`, `.memoryPercent`, `.swappiness`
+
 ## For module authors
 
 To mark a module as experimental:

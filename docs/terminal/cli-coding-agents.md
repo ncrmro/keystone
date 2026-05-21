@@ -20,11 +20,11 @@ rules (commit format, privileged ops, shared surfaces), and reference links.
 
 Domain knowledge loads on demand when a skill is activated:
 
-- `/ks.engineer` — implementation, code review, architecture, CI
-- `/ks.product` — press releases, milestones, stakeholder communication
-- `/ks.pm` — task decomposition, tracking, boards
-- `/ks.notes` — durable notebook capture and repair
-- `/ks.projects` — project lifecycle workflows
+- `/ks-engineer` — implementation, code review, architecture, CI
+- `/ks-product` — press releases, milestones, stakeholder communication
+- `/ks-project-manager` — task decomposition, tracking, boards
+- `/ks-notes` — durable notebook capture and repair
+- `/ks-projects` — project lifecycle workflows
 
 Each skill folder colocates its conventions, role definitions, and DeepWork
 routing so all relevant context arrives together.
@@ -33,9 +33,9 @@ routing so all relevant context arrives together.
 
 | Module | Responsibility |
 |--------|---------------|
-| `ai.nix` | Installs CLI packages and the DeepWork binary |
-| `cli-coding-agent-configs.nix` | Generates MCP server configs at each tool's expected path |
-| `ai-extensions.nix` | Defines capabilities, published commands, and skill metadata |
+| `agents/ai.nix` | Installs CLI packages and the DeepWork binary |
+| `agents/mcp-configs.nix` | Generates MCP server configs at each tool's expected path |
+| `agents/extensions.nix` | Defines capabilities, published commands, and skill metadata |
 | `keystone-sync-agent-assets.sh` | Generates skills, instruction files, and colocated conventions |
 
 ## Skill composition
@@ -61,7 +61,7 @@ skills:
 
 At generation time, the sync script reads these lists and copies convention
 files into each skill directory alongside `SKILL.md`. This means when
-`/ks.engineer` is activated, the LLM receives all engineering conventions
+`/ks-engineer` is activated, the LLM receives all engineering conventions
 without them being pre-loaded in the instruction file.
 
 ### All four CLIs use skills
@@ -128,14 +128,21 @@ The set of published skills depends on resolved capabilities:
 
 | Capability | Skills enabled |
 |-----------|---------------|
-| `ks` (always) | `/ks` |
-| `notes` (default) | `/ks.notes` |
-| `project` (default) | `/ks.projects` |
-| `engineer` (archetype) | `/ks.engineer` |
-| `product` (archetype) | `/ks.product` |
-| `project-manager` (explicit) | `/ks.pm` |
-| `executive-assistant` (explicit) | `/ks.ea` |
-| `ks-dev` (dev mode only) | `/ks.dev` |
+| (always — no capability gate) | `/ks-system` |
+| `assistant` (default) | `/ks-assistant` |
+| `project` (default) | `/ks-projects` |
+| `notes` (explicit) | `/ks-notes` |
+| `engineer` (archetype) | `/ks-engineer` |
+| `product` (archetype) | `/ks-product` |
+| `project-manager` (explicit) | `/ks-project-manager` |
+| `executive-assistant` (explicit) | `/ks-ea` |
+| `ks-dev` (dev mode only) | `/ks-dev` |
+
+Defaults come from `baseCapabilities` in `modules/terminal/agents/extensions.nix`
+(currently `[ "ks" "assistant" "project" ]`); the `"ks"` tag is internal
+plumbing and doesn't add a slash command directly. `notes` is explicit per
+host — declare it in `keystone.terminal.aiExtensions.capabilities` or pull
+it in via the OS-agent capability list to enable `/ks-notes`.
 
 Capabilities merge from base defaults, archetype defaults (e.g., `engineer`
 archetype auto-enables the `engineer` capability), explicit
@@ -170,7 +177,7 @@ When `keystone.development = true`:
 ## DeepWork integration
 
 The DeepWork MCP server binary (`pkgs.keystone.deepwork`) is installed by
-`ai.nix`. The server discovers jobs from up to three roots via
+`agents/ai.nix`. The server discovers jobs from up to three roots via
 `DEEPWORK_ADDITIONAL_JOBS_FOLDERS`:
 
 1. **Shared library jobs** — from the `Unsupervisedcom/deepwork` repo's

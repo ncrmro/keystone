@@ -60,8 +60,8 @@ Before starting implementation, review the relevant convention files
 - Infrastructure, cloud costs, migrations --> `platform_engineer/infrastructure_audit`, `platform_engineer/cloud_spend`, or `platform_engineer/infrastructure_migration`
 - Security, compliance --> `platform_engineer/vulnerability_scan` or `platform_engineer/soc_audit`
 - Filing a platform issue --> `platform_engineer/platform_issue`
-- Keystone module or convention changes --> use `/ks.system` instead
-- Filing general issues for discovered problems --> use `/ks.system` instead
+- Keystone module or convention changes --> use `/ks-system` instead
+- Filing general issues for discovered problems --> use `/ks-system` instead
 - If unclear, ask the user which workflow to run before starting
 
 ## How to start a workflow

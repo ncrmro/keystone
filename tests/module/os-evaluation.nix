@@ -278,6 +278,62 @@ let
       }
     ];
 
+    # Experimental zram module: defaults pin zstd/50%/swappiness=150.
+    zram-experimental =
+      let
+        result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+              keystone.os = {
+                enable = true;
+                storage = {
+                  type = "ext4";
+                  devices = [ "/dev/vda" ];
+                };
+                zram.enable = true;
+                users.testuser = {
+                  fullName = "Test User";
+                  initialPassword = "testpass";
+                  admin = true;
+                };
+              };
+              fileSystems."/" = {
+                device = lib.mkForce "/dev/vda2";
+                fsType = lib.mkForce "ext4";
+              };
+            }
+          ];
+        };
+        z = result.config.zramSwap;
+        swappiness = result.config.boot.kernel.sysctl."vm.swappiness";
+      in
+      pkgs.runCommand "zram-experimental" { } ''
+        fail=0
+        ${lib.optionalString (!z.enable) ''
+          echo "FAIL: zramSwap.enable expected true" >&2
+          fail=1
+        ''}
+        if [ "${z.algorithm}" != "zstd" ]; then
+          echo "FAIL: zramSwap.algorithm expected zstd, got ${z.algorithm}" >&2
+          fail=1
+        fi
+        if [ "${toString z.memoryPercent}" != "50" ]; then
+          echo "FAIL: zramSwap.memoryPercent expected 50, got ${toString z.memoryPercent}" >&2
+          fail=1
+        fi
+        if [ "${toString swappiness}" != "150" ]; then
+          echo "FAIL: vm.swappiness expected 150, got ${toString swappiness}" >&2
+          fail=1
+        fi
+        if [ "$fail" -ne 0 ]; then exit 1; fi
+        echo "OK: zram defaults pinned (zstd, 50%, swappiness=150)"
+        touch $out
+      '';
+
     journal-remote-server = eval "journal-remote-server" [
       {
         keystone = {
@@ -664,6 +720,7 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - full-zfs: Full ZFS with all options"
     echo "  - ext4-simple: Simple ext4 setup"
     echo "  - ext4-hibernate: ext4 with hibernation enabled"
+    echo "  - zram-experimental: experimental keystone.os.zram defaults"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
