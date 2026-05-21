@@ -26,8 +26,8 @@ let
   basename = baseNameOf cfg.tokenFile;
   # Detect the nix-darwin option tree without forcing pkgs during early module
   # evaluation; using pkgs here recurses in the NixOS eval tests.
-  isDarwin = options ? launchd;
-  targetGroup = if isDarwin then "wheel" else "root";
+  hasLaunchdOptions = options ? launchd;
+  targetGroup = if hasLaunchdOptions then "wheel" else "root";
   includeDir = builtins.dirOf cfg.includePath;
   materializeScript = pkgs.writeShellScript "keystone-nix-github-access-token" ''
     set -eu
@@ -112,7 +112,7 @@ in
         !include ${cfg.includePath}
       '';
     }
-    // lib.optionalAttrs (!isDarwin) {
+    // lib.optionalAttrs (!hasLaunchdOptions) {
       systemd.services.nix-github-access-token = {
         description = "Materialize ${cfg.includePath} from ${cfg.tokenFile}";
         wantedBy = [ "multi-user.target" ];
@@ -134,7 +134,7 @@ in
         script = builtins.readFile materializeScript;
       };
     }
-    // lib.optionalAttrs isDarwin {
+    // lib.optionalAttrs hasLaunchdOptions {
       launchd.daemons.nix-github-access-token = {
         programArguments = [ materializeScript ];
         serviceConfig = {
