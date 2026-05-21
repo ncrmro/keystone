@@ -1698,6 +1698,30 @@ impl InstallScreen {
 
             let flake_ref = format!("{}#{}", config_dir.display(), flake_host);
 
+            // The install-repo at config_dir was created and Phase-3-committed
+            // as the installing user (typically uid 1001). nixos-install runs
+            // under sudo as root, and Nix's libgit2 backend enforces
+            // CVE-2022-24765's "dubious ownership" check — it refuses to open
+            // a git repo not owned by the current user. Without this allowlist
+            // entry, eval dies in seconds before any nix-daemon traffic, with
+            // `error: opening Git repository ... is not owned by current user`.
+            // Writing to root's --global (~root/.gitconfig) works on the live
+            // installer; /etc/gitconfig is on the read-only squashfs.
+            let safe_dir = config_dir.to_string_lossy().to_string();
+            if let Err(e) = run_command_quiet(
+                "git",
+                &["config", "--global", "--add", "safe.directory", &safe_dir],
+                Some(&config_dir),
+                true,
+            )
+            .await
+            {
+                let _ = tx.send(InstallMessage::Output(format!(
+                    "warning: failed to set git safe.directory for root: {} (nixos-install may fail on flake eval)",
+                    e
+                )));
+            }
+
             let install_result = run_command(
                 "nixos-install",
                 &["--flake", &flake_ref, "--no-root-password"],
