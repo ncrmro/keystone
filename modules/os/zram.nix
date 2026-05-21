@@ -48,10 +48,12 @@ in
   };
 
   config = lib.mkIf (osCfg.enable && cfg.enable) {
+    # mkDefault so hosts can override individual zramSwap.* knobs (or
+    # disable zramSwap entirely) without needing mkForce.
     zramSwap = {
-      enable = true;
-      algorithm = "zstd";
-      memoryPercent = cfg.memoryPercent;
+      enable = lib.mkDefault true;
+      algorithm = lib.mkDefault "zstd";
+      memoryPercent = lib.mkDefault cfg.memoryPercent;
     };
 
     boot.kernel.sysctl."vm.swappiness" = lib.mkDefault cfg.swappiness;
