@@ -191,19 +191,32 @@ in
       };
     };
 
-    # Suppress boot messages so the TUI appears cleanly on tty1.
-    # console=tty1 keeps the display signal active (prevents "no signal" flash
-    # between GRUB and the TUI); quiet + loglevel=0 ensure nothing is printed.
-    # Serial still receives all boot logs for remote debugging.
+    # Suppress boot-status residue on the live installer console.
+    # - Plain-shell ISO uses `systemd.show_status=auto`: systemd shows the
+    #   normal `[ OK ] Started …` scroll DURING boot (so the user sees
+    #   progress and any [FAILED] units), then stops emitting once
+    #   multi-user.target is reached. Without this, late-starting services
+    #   keep printing to /dev/console after the autologin shell prompt has
+    #   already been drawn, leaving residue on tty1.
+    # - TUI ISO uses `systemd.show_status=false`: a curses UI cannot
+    #   tolerate ANY console output, so silence everything from boot start.
+    #   The TUI path also adds `quiet`/`loglevel=0`/console pins to silence
+    #   the underlying kernel scroll — appropriate behind a curses UI,
+    #   counter-productive for the plain-shell flavor where kernel
+    #   warnings should still surface.
+    # - Journal records everything regardless of these console flags.
+    # - Serial still receives all boot logs for remote debugging.
     boot.consoleLogLevel = lib.mkIf installerCfg.tui.enable 0;
     boot.initrd.verbose = lib.mkIf installerCfg.tui.enable false;
-    boot.kernelParams = lib.mkIf installerCfg.tui.enable [
+    boot.kernelParams = [
+      (if installerCfg.tui.enable then "systemd.show_status=false" else "systemd.show_status=auto")
+    ]
+    ++ lib.optionals installerCfg.tui.enable [
       "console=ttyS0,115200"
       "console=tty1"
       "quiet"
       "loglevel=0"
       "rd.udev.log_level=3"
-      "systemd.show_status=false"
       "vt.global_cursor_default=0"
     ];
 
