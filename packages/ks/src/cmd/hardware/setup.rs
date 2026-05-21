@@ -206,6 +206,12 @@ fn plan_volume(v: &LuksVolume) -> Vec<SetupStep> {
 /// each LUKS operation.
 ///
 /// On dry-run, returns immediately without executing.
+///
+/// The orchestrator's apparent complexity is sequential: it walks
+/// the [`SetupPlan`] one step at a time. Splitting each step into a
+/// separate function would just trade structural complexity for
+/// indirection without making the flow clearer.
+#[allow(clippy::cognitive_complexity)]
 pub async fn execute<P: SetupPrompts>(
     report: &HardwareReport,
     opts: SetupOptions,

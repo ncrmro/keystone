@@ -623,6 +623,10 @@ async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
     (md, checks)
 }
 
+/// Sequential gather of independent diagnostic sections. Cognitive
+/// complexity is inherent to the aggregator shape — splitting each
+/// section call into its own helper just adds indirection.
+#[allow(clippy::cognitive_complexity)]
 pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let hostname = hostname::get()
         .context("Failed to get hostname")?

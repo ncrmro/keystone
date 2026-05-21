@@ -98,7 +98,7 @@ pkgs.runCommand "ks-help-check"
     assert_status main-short 0
     assert_contains main-short "Usage: ks"
 
-    for command in template approve agents build update switch sync-agent-assets sync-host-keys agent doctor grafana docs photos screenshots print hardware-key; do
+    for command in template approve agents build update switch sync-agent-assets sync-host-keys agent doctor grafana docs photos screenshots print hardware; do
       run_capture "help-$command" help "$command"
       assert_status "help-$command" 0
       assert_contains "help-$command" "Usage: ks $command"
@@ -116,13 +116,21 @@ pkgs.runCommand "ks-help-check"
     assert_status grafana-dashboards-help 0
     assert_contains grafana-dashboards-help "Usage: ks grafana dashboards"
 
-    run_capture hardware-key-doctor-help hardware-key doctor --help
+    run_capture hardware-key-doctor-help hardware key doctor --help
     assert_status hardware-key-doctor-help 0
-    assert_contains hardware-key-doctor-help "Usage: ks hardware-key doctor"
+    assert_contains hardware-key-doctor-help "Usage: ks hardware key doctor"
 
-    run_capture hardware-key-secrets-help hardware-key secrets --help
+    run_capture hardware-key-secrets-help hardware key secrets --help
     assert_status hardware-key-secrets-help 0
-    assert_contains hardware-key-secrets-help "Usage: ks hardware-key secrets"
+    assert_contains hardware-key-secrets-help "Usage: ks hardware key secrets"
+
+    run_capture hardware-report-help hardware report --help
+    assert_status hardware-report-help 0
+    assert_contains hardware-report-help "Usage: ks hardware report"
+
+    run_capture hardware-setup-help hardware setup --help
+    assert_status hardware-setup-help 0
+    assert_contains hardware-setup-help "Usage: ks hardware setup"
 
     run_capture unknown-command unknown-command
     assert_nonzero unknown-command
