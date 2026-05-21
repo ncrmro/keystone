@@ -57,7 +57,22 @@ in
       ];
 
       exec = [
-        "pkill -SIGUSR2 waybar || uwsm app -- waybar"
+        # SIGUSR2 reloads waybar's config in place. No `|| uwsm app -- waybar`
+        # fallback — home-manager's `programs.waybar` already enables a
+        # `waybar.service` user unit (via `programs.waybar.systemd.enable`,
+        # default true on Linux), which is the canonical start path for the
+        # bar. Spawning waybar here as a fallback on Hyprland's config
+        # processing produced a second, parallel waybar at session start
+        # (one from this line, one from the systemd unit) — visually stacked
+        # bars on the same monitor, with the Hyprland-spawned one stuck on
+        # the previous theme after `keystone-theme-switch` (which only
+        # restarts waybar.service).
+        #
+        # If waybar isn't running when this line fires, pkill exits
+        # non-zero and the line is a no-op. waybar.service then starts as
+        # part of graphical-session.target. On subsequent `hyprctl reload`s,
+        # SIGUSR2 reloads the live waybar in place.
+        "pkill -SIGUSR2 waybar"
       ];
     };
   };
