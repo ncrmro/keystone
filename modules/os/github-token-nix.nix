@@ -25,9 +25,7 @@ let
   cfg = config.keystone.os.githubTokenNix;
   basename = baseNameOf cfg.tokenFile;
   # Detect whether this module is being evaluated under nix-darwin by checking
-  # for launchd options in the host module tree. This avoids forcing `pkgs`
-  # while the NixOS eval tests are still constructing module arguments, which
-  # would recurse.
+  # for launchd options in the host module tree.
   hasLaunchdOptions = options ? launchd;
   targetGroup = if hasLaunchdOptions then "wheel" else "root";
   includeDir = builtins.dirOf cfg.includePath;
