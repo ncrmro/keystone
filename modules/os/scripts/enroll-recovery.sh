@@ -82,11 +82,10 @@ cat <<EOF
           --recovery-key \\
           --unlock-key-file=<(echo -n "keystone")
 
-  [2] Enroll TPM + Remove default password (USER VERIFICATION):
+  [2] Enroll TPM (preserves password slot as manual fallback):
       $ systemd-cryptenroll $CREDSTORE_DEVICE \\
           --tpm2-device=auto \\
-          --tpm2-pcrs=$TPM_PCRS \\
-          --wipe-slot=password
+          --tpm2-pcrs=$TPM_PCRS
 
       When prompted, READ OR PASTE the recovery key from your backup.
 
@@ -209,16 +208,22 @@ echo ""
 # Check if running in interactive terminal
 if [[ -t 0 ]]; then
   # Interactive: Let user type recovery key for verification
-  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --wipe-slot=password"
+  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS"
   echo ""
 
+  # Layered-fallback model: the password slot (slot 0) is intentionally
+  # preserved alongside TPM/recovery/FIDO2 so that a user can still
+  # unlock the disk manually if every automatic method fails. The
+  # caller (`ks hardware setup` or the install-time wrapper) is
+  # responsible for ensuring slot 0 holds a strong user-chosen
+  # passphrase before this script runs, not the default "keystone"
+  # installer placeholder.
   if ! @systemd_cryptenroll@ \
     "$CREDSTORE_DEVICE" \
     --tpm2-device=auto \
-    --tpm2-pcrs="$TPM_PCRS" \
-    --wipe-slot=password; then
+    --tpm2-pcrs="$TPM_PCRS"; then
     echo ""
-    echo "[ERROR] TPM enrollment and password removal failed"
+    echo "[ERROR] TPM enrollment failed"
     echo ""
     echo "Your recovery key is still enrolled. To retry:"
     echo "  sudo keystone-enroll-recovery --auto"
@@ -226,7 +231,7 @@ if [[ -t 0 ]]; then
   fi
 else
   # Non-interactive: Auto-provide recovery key
-  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --wipe-slot=password --unlock-key-file=<(echo -n \"<recovery-key>\")"
+  echo "$ systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=$TPM_PCRS --unlock-key-file=<(echo -n \"<recovery-key>\")"
   echo "[Non-interactive mode - automatically using recovery key]"
   echo ""
 
@@ -234,15 +239,14 @@ else
     "$CREDSTORE_DEVICE" \
     --tpm2-device=auto \
     --tpm2-pcrs="$TPM_PCRS" \
-    --wipe-slot=password \
     --unlock-key-file=<(echo -n "$RECOVERY_KEY"); then
     echo ""
-    echo "[ERROR] TPM enrollment and password removal failed"
+    echo "[ERROR] TPM enrollment failed"
     exit 6
   fi
 fi
 echo ""
-echo "[OK] TPM enrolled and default password removed"
+echo "[OK] TPM enrolled (password slot preserved as manual fallback)"
 echo ""
 
 echo "[Step 3/3] Creating enrollment marker..."
