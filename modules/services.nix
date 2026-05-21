@@ -112,6 +112,24 @@ in
       description = "List of hostnames acting as GPU/ML workers.";
     };
 
+    vaultwarden.host = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "ocean";
+      description = ''
+        The networking.hostName of the Vaultwarden server.
+        Auto-enables keystone.server.services.vaultwarden on that host
+        and defaults keystone.terminal.secrets (rbw) on for users with
+        terminal enabled across the fleet.
+      '';
+    };
+
+    vaultwarden.domain = mkOption {
+      type = types.nullOr types.str;
+      default = if config.keystone.domain != null then "vaultwarden.${config.keystone.domain}" else null;
+      description = "FQDN of the Vaultwarden instance (e.g., vaultwarden.ncrmro.com). Used by the terminal secrets bridge to set rbw base_url.";
+    };
+
     generatedTagOwners = mkOption {
       type = types.attrsOf (types.listOf types.str);
       default = { };
@@ -166,5 +184,17 @@ in
     (validateHost "mail" cfg.mail.host)
     ++ (validateHost "git" cfg.git.host)
     ++ (validateHost "immich" cfg.immich.host)
-    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers);
+    ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers)
+    ++ (validateHost "vaultwarden" cfg.vaultwarden.host)
+    ++ (optional (cfg.vaultwarden.host != null && cfg.vaultwarden.domain == null) {
+      assertion = false;
+      message = ''
+        keystone.services.vaultwarden.host is set ("${cfg.vaultwarden.host}") but
+        keystone.services.vaultwarden.domain is null. The terminal secrets bridge
+        cannot derive an rbw base_url without a domain.
+
+        Either set keystone.domain (domain auto-derives to vaultwarden.''${keystone.domain})
+        or set keystone.services.vaultwarden.domain explicitly.
+      '';
+    });
 }

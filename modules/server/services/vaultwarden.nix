@@ -25,16 +25,27 @@ in
     registerDNS = true;
   };
 
-  config = lib.mkIf (serverCfg.enable && cfg.enable) {
-    keystone.server._enabledServices.vaultwarden = {
-      inherit (cfg)
-        subdomain
-        port
-        access
-        maxBodySize
-        websockets
-        registerDNS
-        ;
-    };
-  };
+  config = lib.mkMerge [
+    # Auto-enable when keystone.services.vaultwarden.host matches this
+    # machine's hostname — mirrors the mail/git auto-enable pattern.
+    {
+      keystone.server.services.vaultwarden.enable = lib.mkDefault (
+        config.keystone.services.vaultwarden.host != null
+        && config.keystone.services.vaultwarden.host == config.networking.hostName
+      );
+    }
+
+    (lib.mkIf (serverCfg.enable && cfg.enable) {
+      keystone.server._enabledServices.vaultwarden = {
+        inherit (cfg)
+          subdomain
+          port
+          access
+          maxBodySize
+          websockets
+          registerDNS
+          ;
+      };
+    })
+  ];
 }
