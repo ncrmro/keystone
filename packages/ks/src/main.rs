@@ -119,7 +119,9 @@ async fn main() -> Result<()> {
             Command::Agent(args) => run_agent_command(args, flake).await,
             Command::AgentLoop(args) => cmd::agent_loop::execute(&args).await,
             Command::Doctor(args) => run_doctor_command(args, flake).await,
-            Command::Install(args) => run_headless_install(&args.host, args.disk.as_deref()).await,
+            Command::Install(args) => {
+                run_headless_install(args.host.as_deref(), args.disk.as_deref()).await
+            }
             Command::Notification(args) => cmd::notifications::execute(&args).await,
             Command::Task(args) => cmd::tasks::execute(&args).await,
             Command::Project(args) => cmd::projects::execute(&args).await,
@@ -159,16 +161,33 @@ async fn main() -> Result<()> {
 
 /// Run the installer headlessly for a specific host, optionally selecting a
 /// target disk before an explicit destructive confirmation prompt.
-async fn run_headless_install(host: &str, disk: Option<&str>) -> Result<()> {
+///
+/// When `host` is `None`, an interactive prompt asks the user to pick from
+/// the embedded installer targets. With one host present, that host is
+/// auto-selected with a notice. In a non-interactive context (piped /
+/// scripted), `host = None` is rejected and the available hosts are
+/// printed so the next invocation can pass `--host` explicitly.
+async fn run_headless_install(host: Option<&str>, disk: Option<&str>) -> Result<()> {
     use components::install::InstallScreen;
 
     let installer_config = InstallerConfig::detect()?.ok_or_else(|| {
-        anyhow::anyhow!("--host requires installer ISO context (no install-repo found)")
+        anyhow::anyhow!("ks install requires installer ISO context (no install-repo found)")
     })?;
 
     let targets = match &installer_config.source {
         components::install::InstallSource::EmbeddedRepo { targets, .. } => targets.clone(),
-        _ => anyhow::bail!("--host requires an embedded-repo installer ISO"),
+        _ => anyhow::bail!("ks install requires an embedded-repo installer ISO"),
+    };
+
+    if targets.is_empty() {
+        anyhow::bail!("No installable Linux hosts found in /etc/keystone/install-repo");
+    }
+
+    // Resolve the host: explicit --host, single-host auto-select, or
+    // interactive prompt. Non-TTY without --host is a hard error.
+    let host = match host {
+        Some(h) => h.to_string(),
+        None => resolve_host_interactively(&targets)?,
     };
 
     let host_idx = targets
@@ -192,6 +211,54 @@ async fn run_headless_install(host: &str, disk: Option<&str>) -> Result<()> {
         .run_headless(disk)
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
+}
+
+/// Pick a host from `targets` without an explicit `--host` flag.
+///
+/// - 1 target → auto-select with a notice on stderr.
+/// - 2+ targets in an interactive terminal → numbered prompt on stderr,
+///   selection read from stdin.
+/// - 2+ targets in a non-interactive context → bail with the available
+///   list so the caller can re-run with `--host <name>`.
+fn resolve_host_interactively(targets: &[components::install::InstallTarget]) -> Result<String> {
+    use std::io::{self, Write};
+
+    if targets.len() == 1 {
+        let only = targets[0].flake_host.clone();
+        eprintln!("Only one host available — proceeding with '{}'.", only);
+        return Ok(only);
+    }
+
+    if !cmd::util::interactive_terminal() {
+        let available: Vec<_> = targets.iter().map(|t| t.flake_host.as_str()).collect();
+        anyhow::bail!(
+            "--host omitted and stdin is not a terminal. Re-run with `--host <name>`.\n\
+             Available hosts: {}",
+            available.join(", ")
+        );
+    }
+
+    eprintln!("Available hosts in this installer:");
+    for (i, t) in targets.iter().enumerate() {
+        let sys = t.system.as_deref().unwrap_or("?");
+        eprintln!("  [{}] {} ({})", i + 1, t.flake_host, sys);
+    }
+    eprintln!();
+    eprint!("Pick a host [1-{}]: ", targets.len());
+    io::stderr().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let n: usize = input
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid selection — expected a number"))?;
+
+    if n < 1 || n > targets.len() {
+        anyhow::bail!("Selection {} out of range (1-{})", n, targets.len());
+    }
+
+    Ok(targets[n - 1].flake_host.clone())
 }
 
 /// Render a single screen to stdout as ANSI and exit.
