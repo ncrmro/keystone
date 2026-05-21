@@ -2,6 +2,10 @@ name: Validate
 
 on:
   pull_request:
+  # Merge queue runs the full validation set — including the expensive
+  # ISO build that is otherwise skipped on pull requests. Configure the
+  # repository's merge queue settings to require the iso-build check.
+  merge_group:
   workflow_call:
     inputs:
       force_iso_build:
@@ -49,6 +53,8 @@ on:
         value: ${{ jobs.iso-build.outputs.iso_file_name }}
 
 concurrency:
+  # Merge queue runs use a synthetic gh-readonly-queue ref; key off the
+  # ref so concurrent queue entries do not cancel each other.
   group: validate-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
@@ -58,16 +64,17 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
     outputs:
-      check_eval: ${{ steps.pr-policy.outputs.check_eval || steps.call-policy.outputs.check_eval || 'true' }}
-      check_ks: ${{ steps.pr-policy.outputs.check_ks || steps.call-policy.outputs.check_ks || 'true' }}
-      check_scripts: ${{ steps.pr-policy.outputs.check_scripts || steps.call-policy.outputs.check_scripts || 'true' }}
-      check_desktop: ${{ steps.pr-policy.outputs.check_desktop || steps.call-policy.outputs.check_desktop || 'true' }}
-      check_agents: ${{ steps.pr-policy.outputs.check_agents || steps.call-policy.outputs.check_agents || 'true' }}
-      iso_build: ${{ steps.pr-policy.outputs.iso_build || steps.call-policy.outputs.iso_build || 'false' }}
-      nixfmt: ${{ steps.pr-policy.outputs.nixfmt || steps.call-policy.outputs.nixfmt || 'false' }}
-      shellcheck: ${{ steps.pr-policy.outputs.shellcheck || steps.call-policy.outputs.shellcheck || 'false' }}
+      check_eval: ${{ steps.pr-policy.outputs.check_eval || steps.merge-policy.outputs.check_eval || steps.call-policy.outputs.check_eval || 'true' }}
+      check_ks: ${{ steps.pr-policy.outputs.check_ks || steps.merge-policy.outputs.check_ks || steps.call-policy.outputs.check_ks || 'true' }}
+      check_scripts: ${{ steps.pr-policy.outputs.check_scripts || steps.merge-policy.outputs.check_scripts || steps.call-policy.outputs.check_scripts || 'true' }}
+      check_desktop: ${{ steps.pr-policy.outputs.check_desktop || steps.merge-policy.outputs.check_desktop || steps.call-policy.outputs.check_desktop || 'true' }}
+      check_agents: ${{ steps.pr-policy.outputs.check_agents || steps.merge-policy.outputs.check_agents || steps.call-policy.outputs.check_agents || 'true' }}
+      iso_build: ${{ steps.pr-policy.outputs.iso_build || steps.merge-policy.outputs.iso_build || steps.call-policy.outputs.iso_build || 'false' }}
+      nixfmt: ${{ steps.pr-policy.outputs.nixfmt || steps.merge-policy.outputs.nixfmt || steps.call-policy.outputs.nixfmt || 'false' }}
+      shellcheck: ${{ steps.pr-policy.outputs.shellcheck || steps.merge-policy.outputs.shellcheck || steps.call-policy.outputs.shellcheck || 'false' }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -121,18 +128,6 @@ jobs:
               - 'tests/module/agent-queue-migration.nix'
               - 'tests/module/binary-cache-*.nix'
               - 'tests/module/zellij-*.nix'
-            iso_build:
-              - '.github/workflows/validate.yml'
-              - '.github/workflows/release.yml'
-              - 'bin/generate-template-fixture'
-              - 'flake.lock'
-              - 'flake.nix'
-              - 'lib/templates.nix'
-              - 'modules/installer.nix'
-              - 'modules/iso-installer.nix'
-              - 'modules/os/**'
-              - 'packages/ks/**'
-              - 'templates/default/**'
             nixfmt:
               - '.github/workflows/validate.yml'
               - 'flake.nix'
@@ -146,15 +141,33 @@ jobs:
         if: github.event_name == 'pull_request'
         id: pr-policy
         run: |
+          # iso_build is intentionally forced false on PRs — the ISO build
+          # is expensive and runs in the merge queue instead.
           {
             echo "check_eval=${{ steps.filter.outputs.check_eval }}"
             echo "check_ks=${{ steps.filter.outputs.check_ks }}"
             echo "check_scripts=${{ steps.filter.outputs.check_scripts }}"
             echo "check_desktop=${{ steps.filter.outputs.check_desktop }}"
             echo "check_agents=${{ steps.filter.outputs.check_agents }}"
-            echo "iso_build=${{ steps.filter.outputs.iso_build }}"
+            echo "iso_build=false"
             echo "nixfmt=${{ steps.filter.outputs.nixfmt }}"
             echo "shellcheck=${{ steps.filter.outputs.shellcheck }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Use merge queue policy
+        if: github.event_name == 'merge_group'
+        id: merge-policy
+        run: |
+          # Merge queue runs everything, including the ISO build that PRs skip.
+          {
+            echo "check_eval=true"
+            echo "check_ks=true"
+            echo "check_scripts=true"
+            echo "check_desktop=true"
+            echo "check_agents=true"
+            echo "iso_build=true"
+            echo "nixfmt=true"
+            echo "shellcheck=true"
           } >> "$GITHUB_OUTPUT"
 
       - name: Use workflow-call policy
