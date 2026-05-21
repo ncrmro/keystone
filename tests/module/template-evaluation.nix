@@ -67,7 +67,7 @@ let
 
   nixosTests = {
     template-default-laptop = evalNixos "template-default-laptop" templateOutputs.nixosConfigurations.laptop;
-    template-default-server-ocean = evalNixos "template-default-server-ocean" templateOutputs.nixosConfigurations.server-ocean;
+    template-default-server = evalNixos "template-default-server" templateOutputs.nixosConfigurations.server;
 
     template-default-iso =
       let
@@ -94,7 +94,7 @@ let
         vmImageSystem = templateOutputs.nixosConfigurations.laptop.pkgs.stdenv.hostPlatform.system;
         vmImagePackages = templateOutputs.packages.${vmImageSystem};
         laptopImage = vmImagePackages.vm-image-laptop;
-        serverImage = vmImagePackages.vm-image-server-ocean;
+        serverImage = vmImagePackages.vm-image-server;
       in
       pkgs.runCommand "eval-template-vm-images" { } ''
         mkdir -p $out
