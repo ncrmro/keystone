@@ -1,13 +1,10 @@
 name: Validate (macOS / Darwin)
 
-# Builds the nix-darwin Darwin inventory path on a native macOS runner.
-#
-# Linux CI (validate.yml) only evaluates Nix on `ubuntu-latest`, so the
-# Darwin code paths introduced by `mkDarwinInventoryHost` and
-# `keystone.os.githubTokenNix` (launchd daemon, age identity defaults,
-# shared `keystone.os.{enable,adminUsername}`) are never instantiated
-# against `nix-darwin.lib.darwinSystem` upstream of merge. This workflow
-# closes that gap.
+# Instantiates the nix-darwin system closure on a native macOS runner.
+# Linux CI cannot build `aarch64-darwin` derivations; module-surface
+# assertions live in `nix build .#checks.x86_64-linux.darwin-evaluation`
+# and run on ubuntu-latest. This workflow is the irreducible "does the
+# real darwin closure actually build" check.
 
 on:
   pull_request:
@@ -16,20 +13,19 @@ on:
       - flake.nix
       - flake.lock
       - lib/templates.nix
+      - lib/tests.nix
       - modules/os/**
       - templates/default/**
-      - tests/module/template-evaluation.nix
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .github/workflows/validate-darwin.yml
       - flake.nix
       - flake.lock
       - lib/templates.nix
+      - lib/tests.nix
       - modules/os/**
       - templates/default/**
-      - tests/module/template-evaluation.nix
   workflow_dispatch:
 
 concurrency:
@@ -37,80 +33,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  darwin-eval:
-    name: darwin-eval
-    # macos-14 is Apple Silicon (aarch64-darwin), matching the system the
-    # Darwin host inventory targets by default. Pinned (not macos-latest)
-    # so a future runner image bump cannot silently change the result.
+  darwin-build:
+    name: darwin-build
     runs-on: macos-14
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      # Match the action pinned by the existing validate.yml jobs so the
-      # Nix install behavior is consistent across linux and darwin CI.
       - uses: cachix/install-nix-action@v31
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-          # `extra_nix_config` enables flakes on the macOS runner (the
-          # default action profile on darwin omits these features) and
-          # marks `runner` as trusted so the build can use substituters.
           extra_nix_config: |
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      # Pull from the production cache (read-only) the same way linux CI
-      # does, so darwin builds reuse any cross-pollinated cache hits.
-      - name: Configure Cachix (ks-systems)
-        uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v15
         with:
           name: ks-systems
 
-      # Evaluation-level proof: instantiate the Darwin inventory path
-      # through `lib.mkSystemFlake` and read the launchd daemon name. This
-      # exercises the cross-platform `keystone.os.githubTokenNix` Darwin
-      # branch end-to-end without realizing a derivation, so it works
-      # even when downstream nix-darwin builders hit nixpkgs deprecations.
-      - name: Evaluate darwinConfigurations.macbook
-        run: |
-          set -euo pipefail
-          nix eval --impure --raw --expr '
-            let
-              flake = builtins.getFlake (toString ./.);
-              fleet = flake.lib.mkSystemFlake {
-                admin = {
-                  username = "admin";
-                  fullName = "CI Admin";
-                  email = "ci@example.com";
-                  initialPassword = "changeme";
-                };
-                defaults.timeZone = "UTC";
-                hosts.macbook = {
-                  kind = "macbook";
-                  darwin.enable = true;
-                  darwin.modules = [
-                    { keystone.os.githubTokenNix.enable = true; }
-                  ];
-                };
-              };
-              cfg = fleet.darwinConfigurations.macbook.config;
-              daemonNames = builtins.attrNames cfg.launchd.daemons;
-              hasToken = builtins.elem "nix-github-access-token" daemonNames;
-            in
-              if hasToken
-              then "ok: launchd daemon nix-github-access-token present"
-              else throw "darwin inventory did not emit nix-github-access-token launchd daemon"
-          '
-
-      # Build the real darwin system closure on a darwin runner. This is
-      # the only check that actually instantiates `system.build.toplevel`
-      # against `nix-darwin.lib.darwinSystem`; linux CI cannot do it.
-      #
-      # CRITICAL: the launchd plist for the github-token daemon lives in
-      # the toplevel at /Library/LaunchDaemons/org.nixos.nix-github-access-token.plist
-      # — the assertion step below verifies that path so the build proves
-      # the cross-platform `keystone.os.githubTokenNix` Darwin branch
-      # actually emits its plist (not just that the option set evaluates).
+      # Build the real darwin system closure — the only check that
+      # actually instantiates `system.build.toplevel` against
+      # `nix-darwin.lib.darwinSystem`. The launchd plist filesystem
+      # assertion below proves the cross-platform
+      # `keystone.os.githubTokenNix` Darwin branch emitted its plist.
       - name: Build darwinConfigurations.macbook toplevel
         run: |
           set -euo pipefail
@@ -133,19 +78,16 @@ jobs:
                   ];
                 };
               };
-            in
-              fleet.darwinConfigurations.macbook.config.system.build.toplevel
+            in fleet.darwinConfigurations.macbook.config.system.build.toplevel
           '
 
       - name: Verify launchd plist present in built closure
         run: |
           set -euo pipefail
           plist="result-darwin/Library/LaunchDaemons/org.nixos.nix-github-access-token.plist"
-          if [ ! -e "$plist" ]; then
-            echo "Built closure is missing the expected launchd plist:" >&2
-            echo "  $plist" >&2
-            echo "Layout of result-darwin/Library:" >&2
+          [ -e "$plist" ] || {
+            echo "missing $plist" >&2
             ls -laR result-darwin/Library >&2 || true
             exit 1
-          fi
-          echo "ok: $plist present in darwin toplevel"
+          }
+          echo "ok: $plist"
