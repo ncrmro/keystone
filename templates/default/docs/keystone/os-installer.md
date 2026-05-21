@@ -125,6 +125,9 @@ iso-burn-usb
 
 # Otherwise:
 nix develop -c iso-burn-usb
+
+# Run nix build .#iso first, then burn — collapses both phases:
+nix develop -c iso-burn-usb --build
 ```
 
 (Running `./bin/iso-burn-usb` directly also works *after* you `chmod +x

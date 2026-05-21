@@ -11,6 +11,7 @@
 #
 # Usage (from the keystone-config dev shell or via `nix develop -c`):
 #   iso-burn-usb                        # auto-find result/iso/*.iso, guided pick
+#   iso-burn-usb --build                # run `nix build .#iso` first, then burn
 #   iso-burn-usb --iso PATH             # override the ISO source
 #   iso-burn-usb --device /dev/sdb      # skip the picker, still confirm
 #   iso-burn-usb --no-sync              # skip final `sync` (faster but unsafe)
@@ -43,12 +44,14 @@ CONFIG_ROOT="$(find_config_root 2>/dev/null)" || true
 ISO_PATH=""
 DEVICE_OVERRIDE=""
 DO_SYNC=true
+BUILD_FIRST=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --iso)      ISO_PATH="$2"; shift 2 ;;
     --device)   DEVICE_OVERRIDE="$2"; shift 2 ;;
     --no-sync)  DO_SYNC=false; shift ;;
+    --build)    BUILD_FIRST=true; shift ;;
     -h|--help)
       sed -n '/^# iso-burn-usb/,/^set -euo/{/^set -euo/!p;}' "$0" | sed -e 's/^# \{0,1\}//'
       exit 0 ;;
@@ -57,6 +60,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 OS="$(uname -s)"
+
+# ── optionally build the ISO first ──────────────────────────────────────────
+# `--build` collapses the two-step "nix build .#iso → burn" flow into one
+# command. The build runs in the keystone-config root so the resulting
+# `result/iso/*.iso` is exactly where the discovery step below expects to
+# find it.
+
+if [[ "$BUILD_FIRST" == "true" ]]; then
+  if [[ -z "$CONFIG_ROOT" ]]; then
+    echo "ERROR: --build requires running from inside a keystone-config" >&2
+    echo "       (no flake.nix found upward from $PWD)." >&2
+    exit 1
+  fi
+  echo "Building ISO in $CONFIG_ROOT…"
+  ( cd "$CONFIG_ROOT" && nix build .#iso )
+fi
 
 # ── locate the ISO ───────────────────────────────────────────────────────────
 

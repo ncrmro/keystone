@@ -201,10 +201,15 @@ build on a host that already has it (e.g. another keystone machine).
 **Run** (Linux + macOS):
 
 ```bash
+# If you already built in Step 3:
 nix develop -c iso-burn-usb
+
+# To build and burn in one go (skips Step 3's manual `nix build .#iso`):
+nix develop -c iso-burn-usb --build
 ```
 
-(Or just `iso-burn-usb` from an activated dev shell / direnv-loaded shell.)
+(Or just `iso-burn-usb [--build]` from an activated dev shell or
+direnv-loaded shell.)
 
 The script lists only USB devices (internal disks are filtered out), shows
 the picked device's model and partition layout, and requires you to type
