@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# preview-iso — boot the installer ISO in a local QEMU VM for validation
+# iso-vm-preview — boot the installer ISO in a local QEMU VM for validation
 #
 # Boots the ISO produced by `nix build .#iso` in a UEFI VM so you can confirm
 # the installer reaches a login prompt (or the TUI, if enabled) before writing
@@ -11,15 +11,15 @@
 # no system-installed QEMU, no KEYSTONE_LOCKED_PATH required.
 #
 # Usage (from the keystone-config dev shell or via `nix develop -c`):
-#   preview-iso              # graphical window + serial mirrored on stdio
-#   preview-iso --headless   # serial on stdio only (no window)
-#   preview-iso --iso PATH   # override the default result/iso/*.iso lookup
-#   preview-iso --disk PATH  # override the scratch install disk path
-#   preview-iso --memory MB  # RAM in MB (default: 4096)
-#   preview-iso --cpus N     # vCPU count (default: 2)
-#   preview-iso --clean      # remove the scratch disk + NVRAM before booting
+#   iso-vm-preview              # graphical window + serial mirrored on stdio
+#   iso-vm-preview --headless   # serial on stdio only (no window)
+#   iso-vm-preview --iso PATH   # override the default result/iso/*.iso lookup
+#   iso-vm-preview --disk PATH  # override the scratch install disk path
+#   iso-vm-preview --memory MB  # RAM in MB (default: 4096)
+#   iso-vm-preview --cpus N     # vCPU count (default: 2)
+#   iso-vm-preview --clean      # remove the scratch disk + NVRAM before booting
 #
-# `./bin/preview-iso` also works after `chmod +x bin/*`; the dev-shell form
+# `./bin/iso-vm-preview` also works after `chmod +x bin/*`; the dev-shell form
 # is canonical because `nix flake new -t` strips executable bits on scaffold.
 #
 # Exit the VM with Ctrl+A then X (serial console), or close the QEMU window.
@@ -27,8 +27,8 @@
 set -euo pipefail
 
 # Locate the keystone-config root by walking up from CWD looking for a
-# `flake.nix`. Covers both `./bin/preview-iso` (PWD is the root) and
-# `nix develop -c preview-iso` from anywhere inside the scaffold (the
+# `flake.nix`. Covers both `./bin/iso-vm-preview` (PWD is the root) and
+# `nix develop -c iso-vm-preview` from anywhere inside the scaffold (the
 # script lives in /nix/store under that invocation, so its own path is
 # not informative). Override via `--iso PATH`.
 find_config_root() {
@@ -44,9 +44,9 @@ CONFIG_ROOT="$(find_config_root 2>/dev/null)" || true
 
 ISO_PATH=""
 HEADLESS=false
-DISK="/tmp/keystone-preview-iso-disk.qcow2"
+DISK="/tmp/keystone-iso-vm-preview-disk.qcow2"
 DISK_SIZE="32G"
-VARS_COPY="/tmp/keystone-preview-iso-vars.fd"
+VARS_COPY="/tmp/keystone-iso-vm-preview-vars.fd"
 MEMORY=4096
 VCPUS=2
 CLEAN=false
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
         --cpus)     VCPUS="$2"; shift 2 ;;
         --clean)    CLEAN=true; shift ;;
         -h|--help)
-            sed -n '/^# preview-iso/,/^set -euo/{/^set -euo/!p;}' "$0" \
+            sed -n '/^# iso-vm-preview/,/^set -euo/{/^set -euo/!p;}' "$0" \
                 | sed -e 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;

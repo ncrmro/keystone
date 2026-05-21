@@ -70,7 +70,7 @@ reasoning from scratch when a question falls in their scope:
     device's model + size + partition layout, requires the literal word
     `BURN` to be typed, unmounts auto-mounted partitions before writing.
     Linux + macOS. See `docs/keystone/os-installer.md` § "Write the ISO to USB".
-  - `preview-iso` — boot the freshly-built `result/iso/*.iso` in a local
+  - `iso-vm-preview` — boot the freshly-built `result/iso/*.iso` in a local
     QEMU VM to validate it reaches the installer login prompt before burning
     to USB. Self-contained (uses `nix shell` for qemu + OVMF). See
     `docs/keystone/os-installer.md` § "Validate the ISO in a VM".

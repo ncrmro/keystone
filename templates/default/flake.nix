@@ -159,7 +159,7 @@
         # works immediately, with zero setup beyond entering the shell.
         scriptBin = name: pkgs.writeShellScriptBin name (builtins.readFile (./bin + "/${name}"));
         isoBurnUsb = scriptBin "iso-burn-usb";
-        previewIso = scriptBin "preview-iso";
+        isoVmPreview = scriptBin "iso-vm-preview";
       in
       {
         devShells.x86_64-linux.default = pkgs.mkShell {
@@ -169,14 +169,14 @@
             pkgs.imagemagick # PPM→PNG conversion for e2e screenshots
             pkgs.nix-serve # local binary cache for e2e VM installs
             isoBurnUsb
-            previewIso
+            isoVmPreview
           ];
           shellHook = ''
             cat <<'BANNER'
             Keystone dev shell — helper scripts on PATH:
               iso-burn-usb    write result/iso/*.iso to a USB stick (guided)
-              preview-iso     boot result/iso/*.iso in a local QEMU VM
-            Run `iso-burn-usb --help` or `preview-iso --help` for options.
+              iso-vm-preview  boot result/iso/*.iso in a local QEMU VM
+            Run `iso-burn-usb --help` or `iso-vm-preview --help` for options.
             BANNER
           '';
         };

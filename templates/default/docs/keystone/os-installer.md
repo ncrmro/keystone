@@ -64,18 +64,18 @@ but the console never comes back" — symptoms that are easy to miss until
 you're standing in front of the real hardware.
 
 The template ships a self-contained launcher at
-[`bin/preview-iso`](../../bin/preview-iso). It uses `nix shell` to pull
+[`bin/iso-vm-preview`](../../bin/iso-vm-preview). It uses `nix shell` to pull
 QEMU + OVMF (UEFI firmware) on demand, so it works on any Linux driver
 without libvirt or a system-installed QEMU.
 
 ```bash
-nix develop -c preview-iso              # graphical window + serial mirrored on stdio
-nix develop -c preview-iso --headless   # serial only, no window (good for SSH'd shells)
-nix develop -c preview-iso --clean      # wipe the scratch disk + NVRAM and start fresh
+nix develop -c iso-vm-preview              # graphical window + serial mirrored on stdio
+nix develop -c iso-vm-preview --headless   # serial only, no window (good for SSH'd shells)
+nix develop -c iso-vm-preview --clean      # wipe the scratch disk + NVRAM and start fresh
 ```
 
-(Or just `preview-iso ...` from an activated dev shell / direnv-loaded
-shell. `./bin/preview-iso` also works after `chmod +x bin/*`.)
+(Or just `iso-vm-preview ...` from an activated dev shell / direnv-loaded
+shell. `./bin/iso-vm-preview` also works after `chmod +x bin/*`.)
 
 What you should see:
 
@@ -104,7 +104,7 @@ ssh -p 12222 -o StrictHostKeyChecking=no root@localhost
 
 Exit the VM with **Ctrl+A then X** (when focused on the serial console) or
 just close the QEMU window. The scratch install disk lives at
-`/tmp/keystone-preview-iso-disk.qcow2` and is reused across runs — pass
+`/tmp/keystone-iso-vm-preview-disk.qcow2` and is reused across runs — pass
 `--clean` to start from a blank disk if you want to dry-run `ks install`.
 
 ## Write the ISO to USB

@@ -180,7 +180,7 @@ A `.iso` file should be present and at least several hundred MB.
 **Optional — preview the ISO in a VM before burning:**
 
 ```bash
-nix develop -c preview-iso   # opens a QEMU window, mirrors serial to your terminal
+nix develop -c iso-vm-preview   # opens a QEMU window, mirrors serial to your terminal
 ```
 
 Confirms the ISO boots cleanly to a login prompt (or installer TUI) without
