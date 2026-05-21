@@ -127,8 +127,19 @@ in
     networking.networkmanager.enable = lib.mkForce installerCfg.tui.enable;
     networking.useDHCP = lib.mkIf (!installerCfg.tui.enable) (lib.mkForce true);
 
-    # Disable getty on tty1 so the TUI installer can take over the console.
-    systemd.services."getty@tty1".enable = lib.mkIf installerCfg.tui.enable false;
+    # tty1 wiring:
+    # - In TUI mode, keystone-installer.service takes over tty1; suppress both
+    #   the static getty and the on-demand autovt so nothing fights for it.
+    # - In non-TUI mode the installer relies on the standard agetty + autologin
+    #   flow. The unit is materialized by the getty module, but
+    #   `installation-cd-base` upstream does not pull it into multi-user.target,
+    #   leaving it "linked but inactive" — boot reaches multi-user with no
+    #   process attached to tty1, so the framebuffer keeps whatever was last
+    #   drawn and the keyboard registers nothing. Explicitly want it.
+    systemd.services."getty@tty1" = {
+      enable = lib.mkIf installerCfg.tui.enable false;
+      wantedBy = lib.mkIf (!installerCfg.tui.enable) [ "multi-user.target" ];
+    };
     systemd.services."autovt@tty1".enable = lib.mkIf installerCfg.tui.enable false;
 
     # ks installer service - auto-starts on boot
@@ -180,19 +191,32 @@ in
       };
     };
 
-    # Suppress boot messages so the TUI appears cleanly on tty1.
-    # console=tty1 keeps the display signal active (prevents "no signal" flash
-    # between GRUB and the TUI); quiet + loglevel=0 ensure nothing is printed.
-    # Serial still receives all boot logs for remote debugging.
+    # Suppress boot-status residue on the live installer console.
+    # - Plain-shell ISO uses `systemd.show_status=auto`: systemd shows the
+    #   normal `[ OK ] Started …` scroll DURING boot (so the user sees
+    #   progress and any [FAILED] units), then stops emitting once
+    #   multi-user.target is reached. Without this, late-starting services
+    #   keep printing to /dev/console after the autologin shell prompt has
+    #   already been drawn, leaving residue on tty1.
+    # - TUI ISO uses `systemd.show_status=false`: a curses UI cannot
+    #   tolerate ANY console output, so silence everything from boot start.
+    #   The TUI path also adds `quiet`/`loglevel=0`/console pins to silence
+    #   the underlying kernel scroll — appropriate behind a curses UI,
+    #   counter-productive for the plain-shell flavor where kernel
+    #   warnings should still surface.
+    # - Journal records everything regardless of these console flags.
+    # - Serial still receives all boot logs for remote debugging.
     boot.consoleLogLevel = lib.mkIf installerCfg.tui.enable 0;
     boot.initrd.verbose = lib.mkIf installerCfg.tui.enable false;
-    boot.kernelParams = lib.mkIf installerCfg.tui.enable [
+    boot.kernelParams = [
+      (if installerCfg.tui.enable then "systemd.show_status=false" else "systemd.show_status=auto")
+    ]
+    ++ lib.optionals installerCfg.tui.enable [
       "console=ttyS0,115200"
       "console=tty1"
       "quiet"
       "loglevel=0"
       "rd.udev.log_level=3"
-      "systemd.show_status=false"
       "vt.global_cursor_default=0"
     ];
 

@@ -1,35 +1,55 @@
 # Keystone
 
-Own your infrastructure. Keystone turns one or more machines into a unified,
-self-hosted system — encrypted storage, integrated services, and a fully configurable
-foundation that enables capabilities like autonomous AI agents operating with real
-system identity. Add users for everyone in your household, or run it solo.
+A mission-focused operating system and suite of tools for owning your
+infrastructure. Declare a fleet of hosts — workstation, laptop, server,
+offsite — in one git-committed flake. Bring them up with encrypted storage,
+secure boot, integrated services, and autonomous AI agents running under real
+system identity.
 
-**[Get Started](docs/os/installation.md)** · **[Documentation](docs/index.md)** · **[ks CLI Reference](docs/ks.md)** · **[OS Comparison](docs/comparison.md)** · **[Agent Platform Comparison](docs/agents/comparison.md)**
-
-<!-- TODO: hero screenshot of TUI or dashboard -->
+**[Get started](docs/keystone/onboarding.md)** ·
+**[Modules](docs/index.md)** ·
+**[`ks` CLI](docs/ks.md)** ·
+**[Comparison](docs/comparison.md)**
 
 ---
 
-## Your Data, Your Hardware
+## Where Keystone runs
 
-Keystone installs on any x86 machine via USB. The setup TUI handles disk encryption,
-user creation, and service configuration — no config files required.
+Keystone is built on NixOS and deployable in three shapes:
 
-- Full disk encryption with TPM2 auto-unlock
-- Secure Boot with custom key enrollment
-- ZFS storage with snapshots and compression
+- **Linux (bare metal, primary)** — workstations, laptops, servers. Full
+  ownership of the boot chain.
+- **macOS via `nix-darwin`** — in flight. Same terminal, desktop tooling, and
+  OS-agent identity model on a macOS host you already use for other reasons.
+- **Windows via WSL** — bring the keystone terminal and dev environment to a
+  machine whose firmware you don't own.
 
-[Installation Guide](docs/os/installation.md) · [TPM Enrollment](docs/os/tpm-enrollment.md)
+## V1 — bare-metal install, the most secure path
 
-<!-- TODO: TUI welcome/setup screenshot -->
+V1 focuses on getting Keystone onto off-the-shelf hardware in the most secure
+way possible: Lanzaboote Secure Boot, LUKS + TPM2 auto-unlock, ZFS on `rpool`,
+fingerprint reader where available.
 
-## Self-Hosted Services
+Hardware classes targeted for V1:
 
-Enable services with a single toggle. Keystone auto-configures TLS certificates,
-reverse proxy, and DNS for each one.
+- **Framework** — Laptop 13, Laptop 16
+- **DIY desktops** — AMD or Intel, NVMe + ZFS
+- **Dell** — Latitude, XPS, Precision (TPM2-equipped)
+- **Lenovo** — ThinkPad T / X / P series
+- **Intel Macs** — late-2018+, standard UEFI
+- **Apple Silicon via Asahi Linux** — M1, M2 today; M3 as Asahi support matures
 
-| Service                     | What it replaces  |
+Install flow: USB ISO → installer TUI → encrypt disk → first-boot TPM
+enrollment → deploy the fleet flake with `ks update --lock`.
+
+[Installation guide](docs/keystone/onboarding.md) ·
+[OS installer reference](docs/keystone/os-installer.md)
+
+## Services you'd otherwise pay for
+
+Enable one with a toggle; Keystone auto-wires TLS, reverse proxy, and DNS.
+
+| Service                     | Replaces          |
 | --------------------------- | ----------------- |
 | Immich                      | Google Photos     |
 | Forgejo                     | GitHub            |
@@ -42,90 +62,21 @@ reverse proxy, and DNS for each one.
 | Attic                       | Cachix            |
 | SeaweedFS                   | S3                |
 
-[Server Documentation](docs/os/server.md)
+## Terminal, desktop, and OS agents
 
-<!-- TODO: services screenshot -->
+- **Terminal** — Zsh + starship, Helix, Zellij, mail (Himalaya), calendar
+  (Khal), DeepWork workflows, AI coding tools (Claude Code, Codex, Gemini,
+  OpenCode)
+- **Desktop** — Hyprland with themes, app launcher, clipboard history,
+  screenshot tools
+- **OS agents** — service-account user identities with their own mail, git
+  workspace, and task queue. They fetch issues, write code, open PRs, and
+  process documents under their own UID, on your hardware.
 
-## Desktop & Terminal
+## Contributing
 
-A complete development environment — terminal or full desktop.
-
-**Terminal**: Zsh, Helix editor, Zellij multiplexer, Git with SSH signing, AI coding tools
-
-**Desktop**: Hyprland compositor, 15 themes, app launcher, clipboard history, screenshot tools
-
-[Terminal](docs/terminal/terminal.md) · [Personal Info Management](docs/os/personal-info-management.md) · [Cross-Platform Comparison](docs/comparison.md)
-
-## OS Agents
-
-Autonomous user accounts that run on your system with their own identity,
-email, git workspace, and task queue. Agents fetch issues, write code, open PRs,
-and process documents — all on your hardware.
-
-[Agent Documentation](docs/agents/os-agents.md)
-
----
-
-## Getting Started
-
-### USB Install (Recommended)
-
-Build the installer ISO, boot on target hardware, and follow the TUI.
-
-```bash
-./bin/build-iso --ssh-key ~/.ssh/id_ed25519.pub
-```
-
-[Full Installation Guide](docs/os/installation.md)
-
-### For NixOS Users
-
-Keystone is a set of NixOS and home-manager modules. Use it as a flake input
-for full control over your configuration.
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    keystone.url = "github:ncrmro/keystone";
-    home-manager.url = "github:nix-community/home-manager/release-25.05";
-  };
-
-  outputs = { nixpkgs, keystone, home-manager, ... }: {
-    nixosConfigurations.my-server = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        home-manager.nixosModules.home-manager
-        keystone.nixosModules.operating-system
-        {
-          networking.hostId = "deadbeef";
-          keystone.os = {
-            enable = true;
-            storage.devices = [ "/dev/disk/by-id/nvme-..." ];
-            users.admin = {
-              fullName = "Admin";
-              admin = true;
-              authorizedKeys = [ "ssh-ed25519 ..." ];
-            };
-          };
-        }
-      ];
-    };
-  };
-}
-```
-
-[Module Reference](docs/index.md) · [Examples](docs/examples.md)
-
-## Development
-
-```bash
-make build-vm-terminal    # SSH into terminal VM
-make build-vm-desktop     # Hyprland desktop VM
-make test                 # Run test suite
-```
-
-[VM Testing](docs/os/testing-vm.md) · [Testing Procedures](docs/os/testing-procedure.md)
+See [`CONTRIBUTOR.md`](CONTRIBUTOR.md) for the development workflow and
+[`AGENTS.md`](AGENTS.md) for the agent-oriented map of the repo.
 
 ## License
 

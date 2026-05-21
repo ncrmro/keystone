@@ -1,72 +1,77 @@
 # keystone-config
 
-This repository was generated from the Keystone flake template.
+This repository was generated from the Keystone flake template:
 
 ```bash
 nix flake new -t github:ncrmro/keystone keystone-config
 cd keystone-config
 ```
 
-The starter flake defines one shared Keystone system config and one `hosts` inventory. Keystone expands that inventory into:
+Most keystone config changes happen in the `flake.nix`, read more about how
+it works in [`docs/keystone/flake.md`](docs/keystone/flake.md).
 
-- `nixosConfigurations` for Linux hosts
-- `homeConfigurations` for macOS hosts
+## After making changes
 
-That keeps `flake.nix` short while still making the important host choices easy to scan.
+```bash
+# Update the current host
+ks update
 
-## Configure the template
+# Update other hosts
+ks update HOST1,HOST2
+```
 
-Search for `TODO:` in the root flake and host hardware files:
+## Ask an AI assistant
+
+Any AI coding agent (Claude Code, Codex, Gemini CLI, opencode, etc.) loads
+[`AGENTS.md`](AGENTS.md) automatically when you open this directory — that
+file lists the rest of the docs, so your prompt can just state what you
+want. For example:
+
+> Ask me clarifying questions about my setup (the hosts I want, where my
+> SSH key lives, what OS I'm driving from), then walk me through the first
+> three onboarding steps, including the exact edits to `flake.nix`.
+
+More starter prompts (learning, secrets, ops, build + install) live in
+[`docs/keystone/system-agent-prompts.md`](docs/keystone/system-agent-prompts.md).
+
+## Quick start
+
+Open `docs/keystone/onboarding.md`.
+
+If you'd rather see the existing `TODO:` markers up front:
 
 ```bash
 grep -RIn "TODO:" flake.nix hosts/
 ```
 
-Fill in:
+## How this repo is organized
 
-- `owner.name` in `flake.nix`
-- `owner.username` in `flake.nix` if your primary username is not `keystone`
-- `owner.email` in `flake.nix`
-- `defaults.timeZone` in `flake.nix`
-- hostnames in `flake.nix` if `laptop`, `server-ocean`, or `macbook` should be renamed
-- `system` in Linux `hardware.nix` files if the default architecture is wrong
-- `networking.hostId` only if you are not using `ks install`
-- `keystone.os.storage.devices` only if you are not using `ks install`
+See [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md)
+for the mental model — scopes (fleet vs per-host, system vs user), where
+to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
 
-## File layout
+## Included docs
 
-- `flake.nix`: shared owner/defaults, shared module hooks, global `keystoneServices`, and the `hosts` inventory
-- `hosts/laptop/`: laptop-specific Linux files
-- `hosts/server-ocean/`: server-specific Linux files
-- `hosts/macbook/`: optional macOS Home Manager overrides
-- `hosts/<name>/hardware.nix`: optional Linux hardware metadata and machine-specific module
-- `hosts/<name>/configuration.nix`: optional host-only overrides
+- [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md) —
+  mental model for this repo: scopes, NixOS vs Home Manager, where to
+  install programs, when to drop down to vanilla Nix.
+- [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
+  walkthrough from `nix flake new` to a fully secured first host.
+- [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
+  `keystone.lib.mkSystemFlake`: every argument it accepts and every output
+  it produces.
+- [`docs/keystone/os-installer.md`](docs/keystone/os-installer.md) — build
+  the installer ISO and write it to USB (Linux + macOS + Windows).
+- [`docs/keystone/github-token.md`](docs/keystone/github-token.md) — set up
+  an agenix-encrypted GitHub PAT to avoid rate-limit 403s.
+- [`docs/keystone/system-agent-prompts.md`](docs/keystone/system-agent-prompts.md)
+  — copy-pasteable prompts for asking an AI coding agent to help with
+  onboarding, learning, secrets, ops, and install workflows.
+- [`AGENTS.md`](AGENTS.md) — short orientation for AI coding agents (Claude
+  Code, Codex, Gemini CLI, etc.). Repo shape, NixOS-vs-Home-Manager pitfalls,
+  agenix conventions.
 
-Linux `hardware.nix` files can export:
-
-- `system`
-- `module`
-
-Keystone uses those when present, but VPS-style servers can omit a hardware file entirely.
-
-## Included defaults
-
-The default template includes:
-
-- `laptop`: desktop Linux host
-- `server-ocean`: Linux server host
-- `macbook`: terminal-only macOS Home Manager host
-
-`server-ocean` is only an example name. Rename it to any hostname that fits your system.
-
-The server host can represent either:
-
-- a VPS with no local hardware file
-- a baremetal machine with a generated hardware file
-
-Shared infrastructure placement belongs in the top-level `keystoneServices` block in `flake.nix`, not inside individual host blocks.
-
-## Where to investigate
+## Where to investigate Keystone itself
 
 - Unified host helper implementation: `keystone/lib/templates.nix`
 - Keystone admin and user option schema: `keystone/modules/os/default.nix`
@@ -74,23 +79,3 @@ Shared infrastructure placement belongs in the top-level `keystoneServices` bloc
 - Keystone NixOS modules: `keystone/modules/`
 - Keystone terminal Home Manager module: `keystone/modules/terminal/default.nix`
 - Keystone desktop Home Manager module: `keystone/modules/desktop/home/default.nix`
-
-## Deploy
-
-Fresh laptop install:
-
-```bash
-nixos-anywhere --flake .#laptop root@<installer-ip>
-```
-
-Existing laptop host:
-
-```bash
-sudo nixos-rebuild switch --flake .#laptop
-```
-
-Server host:
-
-```bash
-sudo nixos-rebuild switch --flake .#server-ocean
-```

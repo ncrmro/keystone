@@ -313,6 +313,14 @@ let
       repoPath ? null,
       repoName ? "keystone-config",
       installerTargets ? { },
+      # When `offline = true`, every entry in `installerTargetToplevels`
+      # gets its full closure embedded in the ISO's squashfs nix-store via
+      # `isoImage.storeContents`. `ks install` then realizes the target
+      # system from the local store instead of fetching from
+      # cache.nixos.org / ks-systems.cachix.org — eliminating the network
+      # dependency at install time at the cost of a fatter ISO.
+      installerTargetToplevels ? [ ],
+      offline ? false,
       devMode ? false,
     }:
     (nixpkgs.lib.nixosSystem {
@@ -321,43 +329,69 @@ let
         "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
         self.nixosModules.isoInstaller
         self.nixosModules.experimental
+        # Home Manager runs the keystone terminal module for the installer
+        # admin so the live ISO ships starship/zoxide/helix/git config that
+        # matches the installed-system experience. Heavy submodules (mail,
+        # calendar, deepwork, agent-mail, forgejo, grafana, etc.) stay off
+        # because each `keystone.terminal.<feature>.enable` flag defaults
+        # to false and the installer admin HM config below only sets the
+        # root `keystone.terminal.enable = true` — not any opt-in subsystem.
+        home-manager.nixosModules.home-manager
         (
           { pkgs, ... }:
           let
-            installerRepoExtraIgnores = [
-              "result"
-              "result-*"
-              "installer-iso"
-              ".test-iso*"
-              "*.iso"
-              ".direnv/"
-              ".vscode/"
-              ".gemini/"
-              "*.swp"
-              "*.swo"
-              "*~"
-              ".DS_Store"
-              "Thumbs.db"
-            ];
-
+            # Drop transient build artifacts (esp. `result` symlinks left by
+            # `nix build`) from the snapshot the installer captures. Without
+            # this, every rebuild rotates the consumer-flake source narHash,
+            # which rotates `repoSource` → `closure-info` → the ISO drv,
+            # making the ISO byte-non-reproducible across builds even when
+            # nothing real changed. `nix-gitignore.gitignoreSource` does not
+            # reliably exclude symlinks-to-store (a `result` symlink survives
+            # its filter), so use `builtins.path` with an explicit predicate.
+            ignoredBaseNames = {
+              exact = [
+                "result"
+                "installer-iso"
+                ".direnv"
+                ".vscode"
+                ".gemini"
+                ".DS_Store"
+                "Thumbs.db"
+                # VCS metadata — a user with a dirty working tree would
+                # otherwise leak the full `.git` (or `.hg`/`.svn`/`.jj`)
+                # directory into the installer snapshot, bloating the ISO
+                # and rotating the snapshot's narHash on every git operation
+                # even when no tracked file changed.
+                ".git"
+                ".hg"
+                ".svn"
+                ".jj"
+              ];
+              prefix = [
+                "result-"
+                ".test-iso"
+              ];
+              suffix = [
+                ".iso"
+                ".swp"
+                ".swo"
+                "~"
+              ];
+            };
+            isTransientArtifact =
+              baseName:
+              builtins.elem baseName ignoredBaseNames.exact
+              || lib.any (p: lib.hasPrefix p baseName) ignoredBaseNames.prefix
+              || lib.any (s: lib.hasSuffix s baseName) ignoredBaseNames.suffix;
             repoSource =
               if repoPath == null then
                 null
               else
-                # Do not import the raw repo root with builtins.path.
-                #
-                # That eagerly copies every reachable file into the store before
-                # the installer snapshot logic runs, including large ignored VM
-                # artifacts like .test-iso-disk.raw. In practice that makes
-                # dev-mode ISO builds traverse local QEMU disks and other junk
-                # that should never be embedded in the live image.
-                #
-                # Instead, snapshot a gitignore-filtered working tree up front,
-                # then synthesize a fresh single-commit repo below for the ISO.
-                # gitignoreSource also loads repoPath/.gitignore automatically,
-                # so generated template repos keep their shared ignore rules
-                # while these extra patterns cover transient local build output.
-                pkgs.nix-gitignore.gitignoreSource installerRepoExtraIgnores repoPath;
+                builtins.path {
+                  path = repoPath;
+                  name = "${repoName}-source";
+                  filter = path: _: !(isTransientArtifact (baseNameOf (toString path)));
+                };
 
             installRepo =
               if repoSource == null then
@@ -395,6 +429,24 @@ let
           {
             # Force kernel 6.12 — must override minimal CD default
             boot.kernelPackages = lib.mkForce nixpkgs.legacyPackages.${system}.linuxPackages_6_12;
+
+            # Offline install bundle. When `offline = true`, the full
+            # closure of every Linux host toplevel is added to the
+            # installer's squashfs nix-store, so `nixos-install` realizes
+            # the target system from the local store without reaching out
+            # to substituters. The bundle is a cache, not a constraint —
+            # missing-delta paths still get fetched online if available.
+            isoImage.storeContents = lib.optionals offline installerTargetToplevels;
+
+            # Fast squashfs compression. nixpkgs default is level 19 (max),
+            # which spends 5-15 minutes single-threaded compressing every
+            # store path in the live closure. Level 1 finishes in 1-2 minutes
+            # and produces a ~20% larger ISO. The size penalty is irrelevant
+            # for the USB-stick target (everyone burns to 8 GB+ media); the
+            # time penalty hurts every iteration of the install flow.
+            # mkDefault so adopters with size-sensitive cases (slow-link
+            # distribution, archival, etc.) can override to a higher level.
+            isoImage.squashfsCompression = lib.mkDefault "zstd -Xcompression-level 1";
 
             # Admin user alongside the default "nixos" user from installation-device.nix
             users.users.${adminUsername} = {
@@ -445,45 +497,49 @@ let
               }
             );
 
-            # Plain first-login bootstrap for the live installer user.
-            systemd.services.installer-admin-zshrc = {
-              description = "Create minimal zshrc for installer admin user";
-              wantedBy = [ "multi-user.target" ];
-              before = [ "getty@tty1.service" ];
-              after = [
-                "systemd-tmpfiles-setup.service"
-                "local-fs.target"
-              ];
-              serviceConfig = {
-                Type = "oneshot";
+            # Home Manager configuration for the installer admin user.
+            # The keystone terminal module is imported with only its root
+            # `keystone.terminal.enable = true;` — none of the opt-in
+            # subsystems (mail, calendar, deepwork, agent-mail, forgejo,
+            # grafana, agenix-tools, etc.) are enabled, so they no-op under
+            # their own `mkIf` guards. This keeps the ISO closure small
+            # without the `_module.args.terminalMinimal` argument that
+            # historically wrapped this site — that gate caused an infinite
+            # recursion when the operating-system module imported
+            # home-manager inside the installer ISO.
+            home-manager = {
+              useGlobalPkgs = true;
+              useUserPackages = true;
+              extraSpecialArgs = {
+                # Pass keystone's own outputs in so keystone._repoInputs
+                # can derive when applicable. The terminal module guards
+                # this with `mkIf (keystoneInputs ? self)`.
+                keystoneInputs = { inherit self; };
               };
-              script = ''
-                                homeDir="/home/${adminUsername}"
-                                zshrc="$homeDir/.zshrc"
-                                mkdir -p "$homeDir"
-                                chown ${adminUsername}:users "$homeDir"
-                                chmod 0700 "$homeDir"
-
-                                cat > "$zshrc" <<'EOF'
-                # Minimal Keystone installer bootstrap zshrc.
-
-                tty_path="$(tty 2>/dev/null || true)"
-
-                if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
-                  ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
-                  clear >/dev/null 2>&1 || true
-                  echo 'Keystone installer live environment'
-                  echo 'Run `ks install` to choose a host from the embedded repo and install it.'
-                  echo 'SSH is available if keys were embedded in the ISO.'
-                  print
-                  PROMPT='%n@%m:%~ %# '
-                else
-                  PROMPT='%n@%m:%~ %# '
-                fi
-                EOF
-                                chown ${adminUsername}:users "$zshrc"
-                                chmod 0644 "$zshrc"
-              '';
+              users.${adminUsername} = {
+                imports = [ self.homeModules.terminal ];
+                home.stateVersion = "25.05";
+                keystone.terminal = {
+                  enable = true;
+                  git.userName = adminName;
+                  git.userEmail = adminEmail;
+                };
+                # Welcome banner on tty1. The keystone terminal module's
+                # starship + zsh config already handles colors, prompt,
+                # aliases, etc.; this just adds the install-time hint that
+                # used to live in the retired installer-admin-zshrc service.
+                programs.zsh.initExtra = ''
+                  tty_path="$(tty 2>/dev/null || true)"
+                  if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
+                    ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
+                    clear >/dev/null 2>&1 || true
+                    echo 'Keystone installer live environment'
+                    echo 'Run `ks install` to choose a host from the embedded repo and install it.'
+                    echo 'SSH is available if keys were embedded in the ISO.'
+                    print
+                  fi
+                '';
+              };
             };
             users.users.root.shell = pkgs.bashInteractive;
           }
@@ -733,6 +789,12 @@ rec {
       repoRoot ? null,
       keystoneServices ? { },
       hosts,
+      # Installer ISO knobs. Currently supports:
+      #   installer.offline = bool  — bundle every Linux host's toplevel
+      #     closure into the ISO so `ks install` runs without reaching out
+      #     to substituters. Default false to keep ISO size and build time
+      #     down for adopters who don't need offline installs.
+      installer ? { },
     }:
     let
       linuxKindDefaults = {
@@ -1061,6 +1123,16 @@ rec {
             # to a store-style `...-source` path, which would leak that hash
             # into the installed config handoff.
             inherit repoName;
+            # Offline-install plumbing. When `installer.offline = true` is
+            # set on mkSystemFlake, every Linux host's full closure is
+            # bundled into the squashfs nix-store so the live `ks install`
+            # realizes the target system without network fetches. Hosts on
+            # other architectures (not matching installerSystem) are
+            # already excluded via the vmImageHosts filter above.
+            installerTargetToplevels = map (h: h.config.system.build.toplevel) (
+              lib.attrValues linuxHostConfigurations
+            );
+            offline = installer.offline or false;
           };
         }
         // vmImagePackages;

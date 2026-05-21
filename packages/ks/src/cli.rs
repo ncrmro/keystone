@@ -272,8 +272,12 @@ pub enum Command {
 #[derive(Args)]
 pub struct InstallArgs {
     /// Target host to install (must match an embedded installer target).
+    /// When omitted, `ks install` lists the available hosts and prompts you
+    /// to pick one interactively. In a non-interactive context (piped or
+    /// scripted), `--host` is required and the available hosts are printed
+    /// to stderr to assist the next invocation.
     #[arg(long)]
-    pub host: String,
+    pub host: Option<String>,
 
     /// Target disk to install to (must match a discovered /dev/disk/by-id path).
     /// When omitted, headless install excludes installer media and may prompt

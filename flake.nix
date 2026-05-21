@@ -768,17 +768,18 @@
 
             Your Keystone config repo has been initialized.
 
-            ## Quick Start
+            ## Next step
 
-            Recommended scaffold command:
-               nix flake new -t github:ncrmro/keystone keystone-config
+            Open the onboarding walkthrough and follow the numbered steps:
 
-            1. Edit configuration.nix - search for TODO: to find required changes
-            2. Generate hostId: head -c 4 /dev/urandom | od -A none -t x4 | tr -d ' '
-            3. Find your disk: ls -l /dev/disk/by-id/
-            4. Deploy: nixos-anywhere --flake .#my-machine root@<installer-ip>
+               $EDITOR docs/keystone/onboarding.md
 
-            See README.md for detailed instructions.
+            Each step builds on the last and ends with a quick verification.
+            You can stop after Step 2 if you only need a configured flake,
+            after Step 5 once a host is up, or carry on through Step 8 for
+            secureboot + TPM + agenix.
+
+            README.md has the file layout reference.
           '';
         };
       };
