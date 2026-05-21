@@ -753,6 +753,52 @@ rec {
       ++ modules;
     };
 
+  # Standalone home-manager configuration intended for use inside a portable
+  # devbox container image. Loads the keystone terminal module in its
+  # `terminalMinimal` form — same gate the installer ISO uses (templates.nix
+  # ~481-494). The container always runs as uid 0; the user's identity
+  # propagates through git config, not the Linux user.
+  mkPortableTerminal =
+    {
+      system ? "x86_64-linux",
+      fullName,
+      email,
+      stateVersion ? "25.05",
+      modules ? [ ],
+    }:
+    home-manager.lib.homeManagerConfiguration {
+      pkgs = nixpkgs.legacyPackages.${system};
+      extraSpecialArgs = {
+        # The terminal module reads `keystoneInputs.self` for derive-on-demand
+        # asset generation; pass keystone's flake so that path stays available
+        # inside the container without bind-mounts.
+        keystoneInputs = { inherit self; };
+        # MUST be specialArgs (not _module.args) — the terminal module gates
+        # `imports` on this value, and imports must be resolved before
+        # `config` is settled. See templates.nix:481-494 for the same pattern
+        # in the installer ISO build.
+        terminalMinimal = true;
+      };
+      modules = [
+        self.homeModules.terminal
+        {
+          nixpkgs.overlays = [ self.overlays.default ];
+          home.username = "root";
+          home.homeDirectory = "/root";
+          home.stateVersion = stateVersion;
+
+          keystone.terminal = {
+            enable = true;
+            git = {
+              userName = fullName;
+              userEmail = email;
+            };
+          };
+        }
+      ]
+      ++ modules;
+    };
+
   mkZfsDataPool = mkZfsDataPoolModule;
 
   mkSystemFlake =
@@ -772,6 +818,18 @@ rec {
       #     to substituters. Default false to keep ISO size and build time
       #     down for adopters who don't need offline installs.
       installer ? { },
+      # Portable devbox container images, keyed by username. Each enabled
+      # entry produces a `packages.<sys>.devbox-image-<user>` OCI tarball
+      # built from a `terminalMinimal` home-manager profile, runnable on
+      # any rootless-podman host. Schema per user:
+      #   {
+      #     enable = true;
+      #     fullName = "...";          # defaults to admin.fullName
+      #     email    = "...@...";       # defaults to admin.email
+      #     tag      = "latest";        # OCI image tag
+      #     extraHomeModules = [ ... ]; # extra HM modules baked in
+      #   }
+      portableUsers ? { },
     }:
     let
       linuxKindDefaults = {
@@ -1063,6 +1121,14 @@ rec {
       packages.${installerSystem} =
         let
           pkgs = nixpkgs.legacyPackages.${installerSystem};
+          # `pkgs` above has no overlays — fine for nixpkgs-only packages, but
+          # the devbox image references `pkgs.keystone.ks` so it needs the
+          # keystone overlay applied. Re-import nixpkgs with the overlay
+          # rather than mutating the existing handle.
+          overlayPkgs = import nixpkgs.outPath {
+            system = installerSystem;
+            overlays = [ self.overlays.default ];
+          };
           # Build vm-image-<name> for every Linux host whose architecture
           # matches the installer system (avoids cross-compilation failures).
           # Filter first to avoid evaluating configs for hosts that won't be packaged.
@@ -1076,6 +1142,37 @@ rec {
               nixosSystem = linuxHostConfigurations.${name};
             })
           ) vmImageHosts;
+          # Portable devbox images, one per enabled `portableUsers` entry.
+          # Each is built from a standalone homeManagerConfiguration with
+          # `terminalMinimal = true` so the image carries only the workflow
+          # surface (shell + editor + conventions + ks) and none of the
+          # host-bound services (mail, deepwork, agenix, etc.).
+          portableImagePackages = lib.mapAttrs' (
+            userName: userOpts:
+            let
+              opts = {
+                tag = "latest";
+                extraHomeModules = [ ];
+                fullName = sharedAdmin.fullName;
+                email = sharedAdmin.email;
+              }
+              // userOpts;
+              homeCfg = mkPortableTerminal {
+                system = installerSystem;
+                fullName = opts.fullName;
+                email = opts.email;
+                modules = opts.extraHomeModules;
+              };
+            in
+            lib.nameValuePair "devbox-image-${userName}" (
+              overlayPkgs.callPackage ../packages/devbox-image {
+                homeActivationPackage = homeCfg.activationPackage;
+                ks = overlayPkgs.keystone.ks or null;
+                imageName = "devbox-${userName}";
+                imageTag = opts.tag;
+              }
+            )
+          ) (lib.filterAttrs (_: o: o.enable or false) portableUsers);
         in
         {
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
@@ -1107,6 +1204,7 @@ rec {
             offline = installer.offline or false;
           };
         }
-        // vmImagePackages;
+        // vmImagePackages
+        // portableImagePackages;
     };
 }
