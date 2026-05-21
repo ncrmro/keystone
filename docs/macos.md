@@ -49,6 +49,25 @@ This asymmetry is why `keystone.terminal.githubTokenNix` exists with
 materialize the file, so the home-manager activation script shells out to
 `gh` instead.
 
+## Shared option surface
+
+Cross-platform `keystone.os.*` options (`enable`, `adminUsername`, and
+anything else that grows Darwin parity later) live in
+`modules/os/shared.nix` and are imported by both the NixOS and Darwin
+entry files. Adopters set them once — typically via `admin.username` in
+`mkSystemFlake` — and the value flows to both `nixosConfigurations` and
+`darwinConfigurations` identically.
+
+Modules that emit different platform resources from the same enable
+flag (the canonical example being `keystone.os.githubTokenNix`, which
+becomes a `systemd.services` oneshot on NixOS and a `launchd.daemons`
+entry on Darwin) use runtime detection via `options ? launchd` inside
+their `config` block.
+
+See `conventions/os.cross-platform-modules.md` for the full convention,
+the anti-patterns, and the migration rules when a new option needs to
+gain Darwin parity.
+
 ## What nix-darwin would give keystone
 
 A new `darwinConfigurations.<host>` flake output produced by calling
