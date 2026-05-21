@@ -483,15 +483,6 @@ let
                 # can derive when applicable. The terminal module guards
                 # this with `mkIf (keystoneInputs ? self)`.
                 keystoneInputs = { inherit self; };
-                # `terminalMinimal` MUST be threaded via specialArgs (not
-                # `_module.args` inside config), because the terminal
-                # module gates `imports` on its value. Setting it via
-                # `_module.args` inside a `users.<name> = { … }` config
-                # block requires `config` to be fully resolved before
-                # imports, which is a cycle — Nix produces
-                # `infinite recursion encountered`. specialArgs are
-                # bound at module-call time, before imports evaluation.
-                terminalMinimal = true;
               };
               users.${adminUsername} = {
                 imports = [ self.homeModules.terminal ];

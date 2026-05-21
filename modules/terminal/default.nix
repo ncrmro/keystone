@@ -2,20 +2,22 @@
 # Implements REQ-002 (Terminal Development Environment)
 # See specs/REQ-018-repo-management/ (development mode)
 #
-# terminalMinimal: when true, only shell.nix + editor.nix + conventions.nix
-# (and the local config block) are imported — the heavy submodules (ai,
-# mail, calendar, deepwork, forgejo, grafana, secrets, sandbox, etc.) are
-# skipped. Intended for live-installer environments where the visual +
-# workflow surface is wanted but the post-install machinery is not. Passed
-# via `_module.args.terminalMinimal` at the consumer site; defaults to
-# false so installed-system consumers see no change.
+# All submodules are imported unconditionally. Each guards its own
+# `home.packages`/`programs.*` with `config = mkIf cfg.enable {…}`, so a
+# disabled submodule contributes zero runtime closure — only Nix module
+# evaluation cost. A prior attempt gated the `imports` list on a
+# `terminalMinimal` module argument; that proved fundamentally fragile
+# because any sharedModules / agent-HM / nested-eval path that loaded the
+# module without specialArgs hit an `_module.args` → `config` →
+# `imports` → `_module.args` cycle. The right place to slim the live
+# installer's surface is per-host configuration (enable flags), not
+# import-list gating.
 {
   config,
   lib,
   pkgs,
   keystoneInputs ? { },
   osConfig ? null,
-  terminalMinimal ? false,
   ...
 }:
 with lib;
@@ -49,8 +51,6 @@ in
     ./shell.nix
     ./editor.nix
     ./conventions.nix
-  ]
-  ++ optionals (!terminalMinimal) [
     ./agents
     ./deepwork.nix
     ./age-yubikey.nix
