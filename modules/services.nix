@@ -185,5 +185,16 @@ in
     ++ (validateHost "git" cfg.git.host)
     ++ (validateHost "immich" cfg.immich.host)
     ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers)
-    ++ (validateHost "vaultwarden" cfg.vaultwarden.host);
+    ++ (validateHost "vaultwarden" cfg.vaultwarden.host)
+    ++ (optional (cfg.vaultwarden.host != null && cfg.vaultwarden.domain == null) {
+      assertion = false;
+      message = ''
+        keystone.services.vaultwarden.host is set ("${cfg.vaultwarden.host}") but
+        keystone.services.vaultwarden.domain is null. The terminal secrets bridge
+        cannot derive an rbw base_url without a domain.
+
+        Either set keystone.domain (domain auto-derives to vaultwarden.''${keystone.domain})
+        or set keystone.services.vaultwarden.domain explicitly.
+      '';
+    });
 }

@@ -516,12 +516,14 @@ in
                     };
 
                     # rbw (Bitwarden CLI) auto-enables when the fleet declares
-                    # a Vaultwarden host and the user has a known email.
+                    # a Vaultwarden host AND a domain (otherwise rbw would
+                    # silently fall back to the official Bitwarden service).
                     secrets = {
                       enable = mkDefault (
                         userCfg.terminal.enable
                         && userCfg.email != null
                         && config.keystone.services.vaultwarden.host != null
+                        && config.keystone.services.vaultwarden.domain != null
                       );
                       email = mkDefault (if userCfg.email != null then userCfg.email else "");
                       baseUrl = mkDefault (

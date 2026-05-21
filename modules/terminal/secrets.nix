@@ -3,7 +3,24 @@
 # This module provides rbw (unofficial Bitwarden CLI) configuration.
 # rbw is a Rust-based alternative with better ergonomics and session caching.
 #
-# ## Example Usage
+# ## Fleet auto-enable
+#
+# Setting `keystone.services.vaultwarden.host` (and a domain, either via
+# `keystone.domain` or explicit `keystone.services.vaultwarden.domain`) in
+# the consumer flake's `mkSystemFlake { keystoneServices = { ... }; }` is
+# enough to install and configure rbw everywhere it makes sense:
+#
+# - **NixOS hosts**: `modules/os/users.nix` bridges this into each terminal
+#   user's home-manager — `enable`, `email`, and `baseUrl` default in.
+# - **macOS hosts** (`kind = "macbook"`): `lib/templates.nix`'s
+#   `mkSharedMacosHome` reads the same fleet `keystoneServices` and applies
+#   the same defaults to the standalone home-manager configuration.
+#
+# On both platforms the bridge stays off until *both* `host` and `domain`
+# are set — otherwise rbw would silently fall back to the official
+# Bitwarden service.
+#
+# ## Manual usage
 #
 # ```nix
 # keystone.terminal.secrets = {

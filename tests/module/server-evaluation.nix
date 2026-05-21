@@ -169,6 +169,48 @@ let
         };
       }
     ];
+    # Vaultwarden auto-enable: declaring keystone.services.vaultwarden.host
+    # equal to networking.hostName must flip keystone.server.services.vaultwarden
+    # on (and register it in _enabledServices) without an explicit enable line.
+    vaultwarden-auto-enable =
+      let
+        result = nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.repos
+            self.nixosModules.server
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+              fileSystems."/" = {
+                device = "/dev/vda1";
+                fsType = "ext4";
+              };
+              networking.hostName = "vault-host";
+              keystone = {
+                domain = "example.com";
+                server.enable = true;
+                services.vaultwarden.host = "vault-host";
+              };
+            }
+          ];
+        };
+        enabled = result.config.keystone.server.services.vaultwarden.enable;
+        registered = builtins.hasAttr "vaultwarden" (result.config.keystone.server._enabledServices or { });
+      in
+      pkgs.runCommand "vaultwarden-auto-enable" { } ''
+        if [ "${builtins.toJSON enabled}" != "true" ]; then
+          echo "FAIL: expected vaultwarden.enable=true on matching host" >&2
+          exit 1
+        fi
+        if [ "${builtins.toJSON registered}" != "true" ]; then
+          echo "FAIL: expected vaultwarden in _enabledServices" >&2
+          exit 1
+        fi
+        echo "OK: vaultwarden auto-enabled from keystone.services.vaultwarden.host"
+        touch $out
+      '';
+
     grafana-locked-dashboards = eval "grafana-locked-dashboards" [
       {
         keystone = {
@@ -213,6 +255,7 @@ pkgs.runCommand "test-server-evaluation"
     echo "  - journal-remote-proxy: Journal HTTPS proxy registration"
     echo "  - grafana-locked-dashboards: keystone dashboards are provisioned outside development mode"
     echo "  - grafana-development-dashboards: keystone dashboards are not provisioned in development mode"
+    echo "  - vaultwarden-auto-enable: keystone.services.vaultwarden.host turns on the server module"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

@@ -178,9 +178,21 @@ let
       email ? defaults.email,
       timeZone ? defaults.timeZone or "UTC",
       updateChannel ? defaults.updateChannel or "stable",
+      keystoneServices ? defaults.keystoneServices or { },
       modules ? [ ],
       ...
     }@args:
+    let
+      # Mac homeConfigurations are standalone — they do not share a NixOS
+      # evaluation with the fleet, so the `modules/services.nix` defaults
+      # never fire here. Read keystoneServices.vaultwarden.{host,domain}
+      # directly; only enable rbw when both are explicit (otherwise rbw
+      # would silently target the official Bitwarden service).
+      vaultwarden = keystoneServices.vaultwarden or { };
+      vwBaseUrl = if (vaultwarden.domain or null) != null then "https://${vaultwarden.domain}" else "";
+      enableVwSecrets =
+        (vaultwarden.host or null) != null && (vaultwarden.domain or null) != null && email != null;
+    in
     home-manager.lib.homeManagerConfiguration {
       pkgs = nixpkgs.legacyPackages.${system};
       modules = [
@@ -201,6 +213,11 @@ let
             git = {
               userName = fullName;
               userEmail = email;
+            };
+            secrets = {
+              enable = lib.mkDefault enableVwSecrets;
+              email = lib.mkDefault (if email != null then email else "");
+              baseUrl = lib.mkDefault vwBaseUrl;
             };
           };
         }
@@ -962,6 +979,11 @@ rec {
               email = if hostCfg ? email then hostCfg.email else sharedAdmin.email;
               timeZone = if hostCfg ? timeZone then hostCfg.timeZone else sharedTimeZone;
               updateChannel = if hostCfg ? updateChannel then hostCfg.updateChannel else sharedUpdateChannel;
+              # Pass the fleet service registry so the Mac home template can
+              # auto-derive rbw / vaultwarden config the same way the Linux
+              # users.nix bridge does.
+              keystoneServices =
+                if hostCfg ? keystoneServices then hostCfg.keystoneServices else keystoneServices;
               modules = sharedUserModules ++ modules;
             };
         in
