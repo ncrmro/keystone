@@ -314,9 +314,11 @@ let
         self.nixosModules.experimental
         # Home Manager runs the keystone terminal module for the installer
         # admin so the live ISO ships starship/zoxide/helix/git config that
-        # matches the installed-system experience. The terminal module's
-        # heavy submodules (AI agents, mail, calendar, deepwork, etc.) are
-        # gated off via `_module.args.terminalMinimal = true` below.
+        # matches the installed-system experience. Heavy submodules (mail,
+        # calendar, deepwork, agent-mail, forgejo, grafana, etc.) stay off
+        # because each `keystone.terminal.<feature>.enable` flag defaults
+        # to false and the installer admin HM config below only sets the
+        # root `keystone.terminal.enable = true` — not any opt-in subsystem.
         home-manager.nixosModules.home-manager
         (
           { pkgs, ... }:
@@ -479,12 +481,15 @@ let
             );
 
             # Home Manager configuration for the installer admin user.
-            # The keystone terminal module is loaded in its `terminalMinimal`
-            # form — shell.nix, editor.nix, conventions.nix, and the local
-            # config block (programs.git, lazygit, ensurePaths, session
-            # vars) only. The heavy submodules (ai, mail, calendar, deepwork,
-            # forgejo, grafana, agenix, etc.) are skipped because they have
-            # post-install assumptions that don't hold in a live installer.
+            # The keystone terminal module is imported with only its root
+            # `keystone.terminal.enable = true;` — none of the opt-in
+            # subsystems (mail, calendar, deepwork, agent-mail, forgejo,
+            # grafana, agenix-tools, etc.) are enabled, so they no-op under
+            # their own `mkIf` guards. This keeps the ISO closure small
+            # without the `_module.args.terminalMinimal` argument that
+            # historically wrapped this site — that gate caused an infinite
+            # recursion when the operating-system module imported
+            # home-manager inside the installer ISO.
             home-manager = {
               useGlobalPkgs = true;
               useUserPackages = true;

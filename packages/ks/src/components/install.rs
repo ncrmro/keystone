@@ -1708,18 +1708,40 @@ impl InstallScreen {
             // Writing to root's --global (~root/.gitconfig) works on the live
             // installer; /etc/gitconfig is on the read-only squashfs.
             let safe_dir = config_dir.to_string_lossy().to_string();
-            if let Err(e) = run_command_quiet(
-                "git",
-                &["config", "--global", "--add", "safe.directory", &safe_dir],
-                Some(&config_dir),
-                true,
-            )
-            .await
+            // Dedup: `--add` would otherwise accumulate identical
+            // safe.directory entries on repeated install attempts in
+            // the same live-installer boot.
+            let already_set = match tokio::process::Command::new("sudo")
+                .args([
+                    "-n",
+                    "git",
+                    "config",
+                    "--global",
+                    "--get-all",
+                    "safe.directory",
+                ])
+                .output()
+                .await
             {
-                let _ = tx.send(InstallMessage::Output(format!(
-                    "warning: failed to set git safe.directory for root: {} (nixos-install may fail on flake eval)",
-                    e
-                )));
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|l| l == safe_dir),
+                _ => false,
+            };
+            if !already_set {
+                if let Err(e) = run_command_quiet(
+                    "git",
+                    &["config", "--global", "--add", "safe.directory", &safe_dir],
+                    Some(&config_dir),
+                    true,
+                )
+                .await
+                {
+                    let _ = tx.send(InstallMessage::Output(format!(
+                        "warning: failed to set git safe.directory for root: {} (nixos-install may fail on flake eval)",
+                        e
+                    )));
+                }
             }
 
             let install_result = run_command(
@@ -2980,9 +3002,10 @@ async fn read_to_string_for_validation(p: &Path) -> Result<String, String> {
         .map_err(|e| format!("Cannot read {}: {}", p.display(), e))?;
     if !output.status.success() {
         return Err(format!(
-            "Cannot read {}: sudo cat exited with status {}",
+            "Cannot read {}: sudo cat exited with {}: {}",
             p.display(),
-            output.status
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
