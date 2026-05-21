@@ -78,3 +78,59 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 The **keystone config repo** is `nixos-config` — the consumer flake that imports keystone
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
+
+## Pull request workflow
+
+Agents shepherd PRs end-to-end per the `process.pr-shepherding` skill
+(24 rules covering draft delivery, CI stabilization, Copilot iteration,
+merge queue, post-merge verification). The operational loop has three
+stages.
+
+### Stage 1 — Draft
+
+```bash
+gh pr create --draft --title "type(scope): subject" --body "...Closes #N..."
+gh pr checks --watch                 # watch PR-event CI to green
+```
+
+PR-event CI runs the cheap checks for fast feedback: `changes`, `eval`,
+`ks`, `scripts`, `desktop`, `agents`, `nixfmt`, `shellcheck`,
+`warm-cache`. The expensive `iso-build` is deferred to the merge queue
+(Stage 3) and will appear `skipping` on PR-event runs — that is
+expected.
+
+Do NOT undraft while CI is failing or in progress.
+
+### Stage 2 — Ready for review + Copilot
+
+```bash
+gh pr ready <PR>
+gh pr edit <PR> --add-reviewer copilot-pull-request-reviewer
+```
+
+After Copilot files inline comments, address each on a follow-up commit
+with the conventional subject `<type>(scope): address Copilot review on
+PR #<PR>` (or `address post-merge Copilot review on PR #<PR>` for issues
+caught after a fast merge). Reply on the PR thread for each comment,
+then push and re-watch CI to green before re-requesting review.
+
+### Stage 3 — Merge queue
+
+```bash
+gh pr merge <PR> --auto --squash --delete-branch
+
+gh run list --event merge_group --limit 3       # find the queue run
+gh run watch <RUN_ID>                           # watch it to completion
+gh run view <RUN_ID> --log-failed               # if iso-build or another
+                                                # merge_group check fails
+# Fix, push — the merge queue automatically re-queues.
+
+gh pr view <PR> --json state,mergedAt           # verify merge landed
+```
+
+`iso-build` only runs under the `merge_group` event, against the final
+merged tree. Required gating checks for merge: all of the PR-event
+checks plus `iso-build` under merge_group.
+
+After the PR exits the queue, verify the default-branch CI is green on
+the merge commit.
