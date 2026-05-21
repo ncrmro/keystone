@@ -195,11 +195,26 @@
           ;
         lib = nixpkgs.lib;
       };
+
+      testsLib = import ./lib/tests.nix {
+        inherit
+          self
+          nixpkgs
+          nix-darwin
+          home-manager
+          ;
+      };
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
       lib = templateLib // {
+        # Test harness helpers — vanilla shared keystone config for eval
+        # tests. See lib/tests.nix. Exposed under `self.lib.tests.*` so
+        # tests/module/*.nix can read `self.lib.tests.{evalNixos,evalDarwin,admin}`
+        # without re-wiring nixpkgs / nix-darwin / home-manager every time.
+        tests = testsLib;
+
         # Build an installer ISO with the given SSH keys baked in.
         # Consumer flakes call this instead of duplicating the module wiring.
         mkInstallerIso =
