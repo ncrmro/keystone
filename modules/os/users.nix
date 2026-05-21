@@ -515,6 +515,23 @@ in
                       forgejo.enable = mkDefault (config.keystone.services.git.host != null);
                     };
 
+                    # rbw (Bitwarden CLI) auto-enables when the fleet declares
+                    # a Vaultwarden host and the user has a known email.
+                    secrets = {
+                      enable = mkDefault (
+                        userCfg.terminal.enable
+                        && userCfg.email != null
+                        && config.keystone.services.vaultwarden.host != null
+                      );
+                      email = mkDefault (if userCfg.email != null then userCfg.email else "");
+                      baseUrl = mkDefault (
+                        if config.keystone.services.vaultwarden.domain != null then
+                          "https://${config.keystone.services.vaultwarden.domain}"
+                        else
+                          ""
+                      );
+                    };
+
                     sshAutoLoad.enable = mkDefault userCfg.sshAutoLoad.enable;
                   };
                 }
