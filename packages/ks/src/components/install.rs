@@ -2630,6 +2630,7 @@ async fn create_install_commit(
         &[
             "commit",
             "--allow-empty",
+            "--no-gpg-sign",
             "-m",
             INITIAL_INSTALL_COMMIT_MESSAGE,
         ],
@@ -2671,7 +2672,7 @@ async fn amend_install_commit(
         .map_err(|e| format!("Failed to stage normalized install repo: {e}"))?;
     run_command_quiet(
         "git",
-        &["commit", "--amend", "--no-edit"],
+        &["commit", "--amend", "--no-edit", "--no-gpg-sign"],
         Some(config_dir),
         false,
     )
