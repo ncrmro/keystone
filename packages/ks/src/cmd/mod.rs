@@ -11,7 +11,7 @@ pub mod build;
 pub mod docs;
 pub mod doctor;
 pub mod grafana;
-pub mod hardware_key;
+pub mod hardware;
 pub mod menu;
 pub mod notifications;
 pub mod notify;
