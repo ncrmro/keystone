@@ -25,6 +25,7 @@ let
   cfg = config.keystone.os.githubTokenNix;
   basename = baseNameOf cfg.tokenFile;
   isDarwin = options ? launchd;
+  targetGroup = if isDarwin then "wheel" else "root";
   includeDir = builtins.dirOf cfg.includePath;
   materializeScript = pkgs.writeShellScript "keystone-nix-github-access-token" ''
     set -eu
@@ -40,7 +41,7 @@ let
       printf 'access-tokens = github.com=%s\n' \
         "$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg cfg.tokenFile})"
     } > "$tmp"
-    ${pkgs.coreutils}/bin/chown root:wheel "$tmp" 2>/dev/null || ${pkgs.coreutils}/bin/chown root:root "$tmp"
+    ${pkgs.coreutils}/bin/chown root:${targetGroup} "$tmp"
     ${pkgs.coreutils}/bin/chmod 0640 "$tmp"
     ${pkgs.coreutils}/bin/mv "$tmp" ${lib.escapeShellArg cfg.includePath}
     trap - EXIT
