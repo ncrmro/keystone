@@ -270,27 +270,38 @@ that the disko config matches the target's actual block devices.
 
 ## Step 6 — First-boot housekeeping (per-host SSH key + password)
 
-**Goal:** Replace the bootstrap-from-driver SSH credential with a per-host
-identity, and replace the `changeme` user password.
+**Goal:** Two independent housekeeping tasks on the freshly-installed
+host:
+
+1. Replace the temporary `changeme` user password with one you choose.
+2. Generate a per-host SSH key that gives this target its own outbound
+   identity — useful once the fleet has more than one host (so it can
+   SSH to siblings) and required by Step 8 if you wire up agenix
+   (the host's pubkey becomes a recipient for system-scoped secrets).
+
+The driver's bootstrap key in `admin.sshKeys` is *not* removed — it
+continues to authorize inbound SSH from the driver. This step adds the
+new target identity alongside it, not as a replacement.
 
 **Edit:** Nothing in the repo yet — these changes happen *on the target*.
 
 **Run:** On the target (SSH in as your owner user):
 
 ```bash
-# Replace the changeme user password
+# 1. Replace the changeme user password.
 passwd
 
-# Generate a per-host SSH key
+# 2. Generate a per-host SSH key (the target's outbound identity).
 ssh-keygen -t ed25519 -C "<username>@<hostname>"
 cat ~/.ssh/id_ed25519.pub
 ```
 
 Copy the new pubkey output. **On your driver**, edit your `keystone-config`
-repo:
-
-- Add the new pubkey to `admin.sshKeys` in `flake.nix`. Keep your driver's
-  key in the list too — you may want to SSH from both.
+repo and add it to `admin.sshKeys` in `flake.nix` *alongside* the existing
+driver key — this is what enables fleet-internal SSH (target reaches other
+hosts that share the same `admin.sshKeys`). If your fleet is single-host
+for now, you can skip this addition; the key still serves as an agenix
+recipient in Step 8.
 
 Commit and push the repo change (assuming you've initialized a Git remote;
 not required for v1).

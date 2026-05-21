@@ -22,8 +22,8 @@
 #   # Host keys — machines that decrypt secrets at runtime.
 #   # Derive each via:
 #   #   ssh-to-age -i /etc/ssh/ssh_host_ed25519_key.pub
-#   # on the target host (after first boot — fresh installs generate host keys
-#   # on first systemd-machined run).
+#   # on the target host (after first boot — fresh installs generate the
+#   # host keys at first boot via sshd-keygen.target, before sshd starts).
 #   systems = {
 #     # laptop = "age1...";
 #     # server = "age1...";

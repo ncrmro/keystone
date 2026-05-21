@@ -324,6 +324,15 @@ let
                 ".gemini"
                 ".DS_Store"
                 "Thumbs.db"
+                # VCS metadata — a user with a dirty working tree would
+                # otherwise leak the full `.git` (or `.hg`/`.svn`/`.jj`)
+                # directory into the installer snapshot, bloating the ISO
+                # and rotating the snapshot's narHash on every git operation
+                # even when no tracked file changed.
+                ".git"
+                ".hg"
+                ".svn"
+                ".jj"
               ];
               prefix = [
                 "result-"
