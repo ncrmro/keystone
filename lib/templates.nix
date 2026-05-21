@@ -419,6 +419,16 @@ let
             # missing-delta paths still get fetched online if available.
             isoImage.storeContents = lib.optionals offline installerTargetToplevels;
 
+            # Fast squashfs compression. nixpkgs default is level 19 (max),
+            # which spends 5-15 minutes single-threaded compressing every
+            # store path in the live closure. Level 1 finishes in 1-2 minutes
+            # and produces a ~20% larger ISO. The size penalty is irrelevant
+            # for the USB-stick target (everyone burns to 8 GB+ media); the
+            # time penalty hurts every iteration of the install flow.
+            # mkDefault so adopters with size-sensitive cases (slow-link
+            # distribution, archival, etc.) can override to a higher level.
+            isoImage.squashfsCompression = lib.mkDefault "zstd -Xcompression-level 1";
+
             # Admin user alongside the default "nixos" user from installation-device.nix
             users.users.${adminUsername} = {
               isNormalUser = true;
