@@ -239,7 +239,6 @@
     "darwin": {
       "inputs": {
         "nixpkgs": [
-          "keystone",
           "agenix",
           "nixpkgs"
         ]
@@ -1074,6 +1073,7 @@
     },
     "keystone": {
       "inputs": {
+        "nix-darwin": "darwin",
         "agenix": "agenix",
         "browser-previews": "browser-previews",
         "calendula": "calendula",

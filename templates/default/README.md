@@ -10,7 +10,8 @@ cd keystone-config
 The starter flake defines one shared Keystone system config and one `hosts` inventory. Keystone expands that inventory into:
 
 - `nixosConfigurations` for Linux hosts
-- `homeConfigurations` for macOS hosts
+- `homeConfigurations` for standalone macOS Home Manager hosts
+- `darwinConfigurations` for macOS hosts that opt into nix-darwin
 
 That keeps `flake.nix` short while still making the important host choices easy to scan.
 
@@ -39,6 +40,7 @@ Fill in:
 - `hosts/laptop/`: laptop-specific Linux files
 - `hosts/server-ocean/`: server-specific Linux files
 - `hosts/macbook/`: optional macOS Home Manager overrides
+- `hosts/macbook/darwin.nix`: optional nix-darwin system overrides for a macbook that sets `darwin.enable = true`
 - `hosts/<name>/hardware.nix`: optional Linux hardware metadata and machine-specific module
 - `hosts/<name>/configuration.nix`: optional host-only overrides
 
@@ -55,7 +57,7 @@ The default template includes:
 
 - `laptop`: desktop Linux host
 - `server-ocean`: Linux server host
-- `macbook`: terminal-only macOS Home Manager host
+- `macbook`: terminal-only macOS host by default; add `darwin.enable = true` to switch it to nix-darwin + Home Manager
 
 `server-ocean` is only an example name. Rename it to any hostname that fits your system.
 

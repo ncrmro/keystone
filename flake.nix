@@ -11,6 +11,7 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-darwin.follows = "agenix/darwin";
     omarchy = {
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
@@ -120,6 +121,7 @@
       crane,
       disko,
       home-manager,
+      nix-darwin,
       omarchy,
       lanzaboote,
       hyprland,
@@ -152,6 +154,7 @@
           disko
           lanzaboote
           home-manager
+          nix-darwin
           hyprland
           hyprpaper
           himalaya
@@ -188,6 +191,7 @@
           self
           nixpkgs
           home-manager
+          nix-darwin
           ;
         lib = nixpkgs.lib;
       };
@@ -371,6 +375,26 @@
           # terminal and desktop are active.
         };
         notes = ./modules/notes/default.nix;
+      };
+
+      darwinModules = {
+        operating-system = {
+          imports = [
+            agenix.darwinModules.default
+            ./modules/domain.nix
+            ./modules/services.nix
+            ./modules/hosts.nix
+            ./modules/shared/experimental.nix
+            ./modules/shared/repos.nix
+            ./modules/shared/update.nix
+            ./modules/os/darwin.nix
+          ];
+          _module.args.keystoneInputs = keystoneInputs;
+          keystone._repoInputs = {
+            keystone = self;
+            inherit deepwork;
+          };
+        };
       };
 
       # Focused flake checks — run via `nix flake check` and CI.

@@ -17,12 +17,34 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
 let
   cfg = config.keystone.os.githubTokenNix;
   basename = baseNameOf cfg.tokenFile;
+  isDarwin = options ? launchd;
+  includeDir = builtins.dirOf cfg.includePath;
+  materializeScript = pkgs.writeShellScript "keystone-nix-github-access-token" ''
+    set -eu
+    if [ ! -s ${lib.escapeShellArg cfg.tokenFile} ]; then
+      echo "nix-github-access-token: ${cfg.tokenFile} missing or empty" >&2
+      exit 1
+    fi
+    ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg includeDir}
+    umask 0137
+    tmp="$(${pkgs.coreutils}/bin/mktemp ${lib.escapeShellArg (cfg.includePath + ".XXXXXX")})"
+    trap '${pkgs.coreutils}/bin/rm -f "$tmp"' EXIT
+    {
+      printf 'access-tokens = github.com=%s\n' \
+        "$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg cfg.tokenFile})"
+    } > "$tmp"
+    ${pkgs.coreutils}/bin/chown root:wheel "$tmp" 2>/dev/null || ${pkgs.coreutils}/bin/chown root:root "$tmp"
+    ${pkgs.coreutils}/bin/chmod 0640 "$tmp"
+    ${pkgs.coreutils}/bin/mv "$tmp" ${lib.escapeShellArg cfg.includePath}
+    trap - EXIT
+  '';
   # Accepted patterns (also documented in tool.nix.md):
   #   nix-flake-github-token             — portable, recommended default
   #   <hostname>-nix-flake-github-token  — host-scoped
@@ -70,58 +92,53 @@ in
     };
   };
 
-  config = lib.mkIf (config.keystone.os.enable && cfg.enable) {
-    assertions = [
-      {
-        assertion = validBasename;
-        message =
-          "keystone.os.githubTokenNix.tokenFile basename '${basename}' does not match "
-          + "the OS-level naming convention. Use 'nix-flake-github-token' (portable) "
-          + "or '<hostname>-nix-flake-github-token' (host-scoped). See "
-          + "conventions/tool.nix.md.";
-      }
-    ];
-
-    systemd.services.nix-github-access-token = {
-      description = "Materialize ${cfg.includePath} from ${cfg.tokenFile}";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "agenix.service" ];
-      requires = [ "agenix.service" ];
-
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        # Hardening — write only to /etc/nix.
-        NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        ReadWritePaths = [ (builtins.dirOf cfg.includePath) ];
-        # /run/agenix is a tmpfs mount; PrivateTmp would shadow it.
-        PrivateTmp = false;
-      };
-
-      script = ''
-        set -eu
-        if [ ! -s ${lib.escapeShellArg cfg.tokenFile} ]; then
-          echo "nix-github-access-token: ${cfg.tokenFile} missing or empty" >&2
-          exit 1
-        fi
-        umask 0137
-        tmp="$(${pkgs.coreutils}/bin/mktemp ${lib.escapeShellArg (cfg.includePath + ".XXXXXX")})"
-        trap '${pkgs.coreutils}/bin/rm -f "$tmp"' EXIT
+  config = lib.mkIf (config.keystone.os.enable && cfg.enable) (
+    {
+      assertions = [
         {
-          printf 'access-tokens = github.com=%s\n' \
-            "$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg cfg.tokenFile})"
-        } > "$tmp"
-        ${pkgs.coreutils}/bin/chown root:root "$tmp"
-        ${pkgs.coreutils}/bin/chmod 0640 "$tmp"
-        ${pkgs.coreutils}/bin/mv "$tmp" ${lib.escapeShellArg cfg.includePath}
-        trap - EXIT
-      '';
-    };
+          assertion = validBasename;
+          message =
+            "keystone.os.githubTokenNix.tokenFile basename '${basename}' does not match "
+            + "the OS-level naming convention. Use 'nix-flake-github-token' (portable) "
+            + "or '<hostname>-nix-flake-github-token' (host-scoped). See "
+            + "conventions/tool.nix.md.";
+        }
+      ];
 
-    nix.extraOptions = lib.mkAfter ''
-      !include ${cfg.includePath}
-    '';
-  };
+      nix.extraOptions = lib.mkAfter ''
+        !include ${cfg.includePath}
+      '';
+    }
+    // lib.optionalAttrs (!isDarwin) {
+      systemd.services.nix-github-access-token = {
+        description = "Materialize ${cfg.includePath} from ${cfg.tokenFile}";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "agenix.service" ];
+        requires = [ "agenix.service" ];
+
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          # Hardening — write only to /etc/nix.
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          ReadWritePaths = [ includeDir ];
+          # /run/agenix is a tmpfs mount; PrivateTmp would shadow it.
+          PrivateTmp = false;
+        };
+
+        script = builtins.readFile materializeScript;
+      };
+    }
+    // lib.optionalAttrs isDarwin {
+      launchd.daemons.nix-github-access-token = {
+        programArguments = [ materializeScript ];
+        serviceConfig = {
+          KeepAlive = false;
+          RunAtLoad = true;
+        };
+      };
+    }
+  );
 }

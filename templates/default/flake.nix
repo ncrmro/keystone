@@ -126,6 +126,7 @@
 
         macbook = {
           kind = "macbook";
+          # darwin.enable = true;
         };
       };
     }

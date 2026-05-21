@@ -1516,6 +1516,10 @@
         "lanzaboote": "lanzaboote",
         "lfs-s3-src": "lfs-s3-src",
         "llm-agents": "llm-agents",
+        "nix-darwin": [
+          "agenix",
+          "darwin"
+        ],
         "nix-flatpak": "nix-flatpak",
         "nix-index-database": "nix-index-database",
         "nixos-hardware": "nixos-hardware",
