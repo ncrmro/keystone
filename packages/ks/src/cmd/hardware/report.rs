@@ -127,6 +127,25 @@ async fn write_status(report: &HardwareReport, path: &std::path::Path) -> Result
         fido2_enrolled: root.map(|v| v.slots.fido2.enrolled).unwrap_or(false),
     })?;
     tokio::fs::write(path, body).await?;
+    // World-readable 0644: the legacy refresh-disk-unlock-status.sh
+    // chmod'd this explicitly so non-root consumers (ks doctor, the
+    // first-boot wizard) can read it. Setting umask-independent
+    // permissions here preserves that contract.
+    set_world_readable(path).await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn set_world_readable(path: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = tokio::fs::metadata(path).await?.permissions();
+    perms.set_mode(0o644);
+    tokio::fs::set_permissions(path, perms).await?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn set_world_readable(_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 

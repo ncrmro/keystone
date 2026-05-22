@@ -326,6 +326,11 @@ async fn write_enrollment_marker(method: &str) -> Result<()> {
         tokio::fs::create_dir_all(parent).await.ok();
     }
     let timestamp = chrono::Utc::now().to_rfc3339();
+    // CRITICAL: never write the recovery key (or any unlock secret)
+    // into the marker. The legacy script did this; the marker is
+    // world-readable (0644) so the notification system can suppress
+    // the "TPM not enrolled" warning, and writing the recovery key
+    // here would leak it to anyone with read access to /var/lib.
     let body = format!(
         "Enrollment completed: {}\nMethod: {}\nTPM PCRs: {}\n",
         timestamp, method, TPM_PCRS
@@ -333,6 +338,21 @@ async fn write_enrollment_marker(method: &str) -> Result<()> {
     tokio::fs::write(ENROLLMENT_MARKER, body)
         .await
         .with_context(|| format!("writing {}", ENROLLMENT_MARKER))?;
+    set_marker_world_readable(Path::new(ENROLLMENT_MARKER)).await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn set_marker_world_readable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = tokio::fs::metadata(path).await?.permissions();
+    perms.set_mode(0o644);
+    tokio::fs::set_permissions(path, perms).await?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+async fn set_marker_world_readable(_path: &Path) -> Result<()> {
     Ok(())
 }
 
