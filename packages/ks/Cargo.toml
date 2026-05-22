@@ -22,6 +22,18 @@ futures = "0.3"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# No-echo passphrase prompts (used by `ks hardware enroll password` etc.)
+# Wraps libc termios; widely used; no native deps.
+rpassword = "7"
+
+# Regex for parsing systemd-cryptenroll stdout (e.g., the 8-word
+# recovery key emitted by --recovery-key).
+regex = "1"
+
+# Tempfile handling for short-lived passphrase keyfiles passed via
+# --unlock-key-file= to systemd-cryptenroll / cryptsetup.
+tempfile = "3"
+
 # Git
 git2 = "0.19"
 
@@ -66,4 +78,3 @@ chrono = "0.4"
 
 [dev-dependencies]
 insta = "1"
-tempfile = "3"

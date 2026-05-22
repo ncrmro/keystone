@@ -249,23 +249,17 @@ pub async fn execute<P: SetupPrompts>(
         prompts.say(&format!("→ {}", step.label())).await;
         match step {
             SetupStep::RotateDefaultPassword { volume_id: _ } => {
-                // The keystone-enroll-password script prompts for the
-                // new passphrase itself; we don't pipe it. In future,
-                // when we accept --new-passphrase, this becomes a
-                // Piped IoMode.
-                enroll::enroll_password(enroll::IoMode::Interactive)
+                enroll::enroll_password()
                     .await
                     .context("rotating default password")?;
             }
             SetupStep::EnrollRecoveryAndTpm2 { .. } => {
-                enroll::enroll_recovery(enroll::IoMode::Interactive)
+                enroll::enroll_recovery()
                     .await
                     .context("enrolling recovery + TPM2")?;
             }
             SetupStep::EnrollFido2 { .. } => {
-                enroll::enroll_fido2(enroll::IoMode::Interactive)
-                    .await
-                    .context("enrolling FIDO2")?;
+                enroll::enroll_fido2().await.context("enrolling FIDO2")?;
             }
             SetupStep::EnrollFingerprint => {
                 enroll::enroll_fingerprint()

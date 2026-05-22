@@ -25,48 +25,12 @@ let
       "/dev/disk/by-partlabel/disk-root-root";
 
   # Helper to create executable substituted scripts
-  makeExecutableScript =
-    name: src: substitutions:
-    pkgs.runCommand name { } ''
-      cp ${pkgs.replaceVars src substitutions} $out
-      chmod +x $out
-    '';
-
-  # Recovery key enrollment script
-  enrollRecoveryScript = makeExecutableScript "enroll-recovery.sh" ./scripts/enroll-recovery.sh {
-    systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    bootctl = "${pkgs.systemd}/bin/bootctl";
-    credstoreDevice = credstoreDevice;
-    tpmPCRs = tpmPCRString;
-  };
-
-  # Password enrollment script
-  enrollPasswordScript = makeExecutableScript "enroll-password.sh" ./scripts/enroll-password.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
-    bootctl = "${pkgs.systemd}/bin/bootctl";
-    credstoreDevice = credstoreDevice;
-    tpmPCRs = tpmPCRString;
-  };
-
-  # TPM enrollment script
-  enrollTpmScript = makeExecutableScript "enroll-tpm.sh" ./scripts/enroll-tpm.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
-    bootctl = "${pkgs.systemd}/bin/bootctl";
-    credstoreDevice = credstoreDevice;
-    tpmPCRs = tpmPCRString;
-  };
-
-  # FIDO2 enrollment script
-  enrollFido2Script = makeExecutableScript "enroll-fido2.sh" ./scripts/enroll-fido2.sh {
-    cryptsetup = "${pkgs.cryptsetup}/bin/cryptsetup";
-    systemd_cryptenroll = "${pkgs.systemd}/bin/systemd-cryptenroll";
-    bootctl = "${pkgs.systemd}/bin/bootctl";
-    credstoreDevice = credstoreDevice;
-  };
-
+  # The keystone-enroll-* shell scripts that used to live here have
+  # been ported to native Rust in `packages/ks/src/cmd/hardware/enroll.rs`.
+  # All enrollment now goes through `ks hardware enroll <method>` or
+  # `ks hardware setup`. The keystone-tpm-check systemd service below
+  # is the only inline shell that remains; it just writes the
+  # disk-unlock-status.json marker.
   refreshDiskUnlockStatusScript = pkgs.writeShellScript "refresh-disk-unlock-status.sh" ''
         set -euo pipefail
 
@@ -150,26 +114,24 @@ in
         title = "TPM Enrollment Required";
         body = ''
           +--------------------------------------------------------------------------+
-          | [!] WARNING: TPM ENROLLMENT NOT CONFIGURED                              |
+          | [!] WARNING: HARDWARE ENROLLMENT NOT CONFIGURED                          |
           +--------------------------------------------------------------------------+
           |                                                                          |
           | Your system is using the default LUKS password "keystone" which is      |
-          | publicly known and provides NO security.                                |
+          | publicly known and provides NO security.                                 |
           |                                                                          |
-          | To secure your encrypted disk, you MUST complete TPM enrollment:        |
+          | To secure your encrypted disk, run the one-shot enrollment:             |
           |                                                                          |
-          |   Option 1: Generate recovery key (recommended)                         |
-          |      $ sudo keystone-enroll-recovery                                    |
+          |      $ sudo ks hardware setup                                            |
           |                                                                          |
-          |   Option 2: Set custom password                                         |
-          |      $ sudo keystone-enroll-password                                    |
+          | This will detect your hardware and chain:                               |
+          |   1. Rotate the default password to one you choose                      |
+          |   2. Generate a paper recovery key                                      |
+          |   3. Enroll TPM2 auto-unlock                                            |
+          |   4. Enroll your YubiKey/FIDO2 (if plugged in)                          |
+          |   5. Enroll fingerprint reader (if present)                             |
           |                                                                          |
-          | After enrollment:                                                        |
-          |   * Default "keystone" password will be removed                         |
-          |   * Disk will unlock automatically via TPM on boot                      |
-          |   * Recovery credential available if TPM fails                          |
-          |                                                                          |
-          | Documentation: /usr/share/doc/keystone/tpm-enrollment.md                |
+          | See `ks hardware report` for the current credential state.             |
           |                                                                          |
           +--------------------------------------------------------------------------+
         '';
@@ -177,32 +139,20 @@ in
       }
     ];
 
-    # SECURITY: TPM auto-unlock is not active until explicit enrollment via one of
-    # the commands below. The tpm2-device=auto crypttab hint in storage.nix tells
-    # systemd-cryptsetup to attempt TPM unlock, but when no TPM token is enrolled
-    # in the LUKS header, it falls back to password (fallbackToPassword = true).
+    # SECURITY: TPM auto-unlock is not active until explicit enrollment
+    # via `ks hardware setup` (or the per-method `ks hardware enroll
+    # <method>` primitives). The tpm2-device=auto crypttab hint in
+    # storage.nix tells systemd-cryptsetup to attempt TPM unlock, but
+    # when no TPM token is enrolled in the LUKS header, it falls back
+    # to password (fallbackToPassword = true).
+    #
+    # The keystone-enroll-* shell-script wrappers that used to live
+    # here are gone; all enrollment is native Rust in `ks hardware`.
     environment.systemPackages = [
-      # Recovery key enrollment
-      (pkgs.writeShellScriptBin "keystone-enroll-recovery" ''
-        exec ${enrollRecoveryScript} "$@"
-      '')
-
-      # Custom password enrollment
-      (pkgs.writeShellScriptBin "keystone-enroll-password" ''
-        exec ${enrollPasswordScript} "$@"
-      '')
-
-      # TPM enrollment (standalone)
-      (pkgs.writeShellScriptBin "keystone-enroll-tpm" ''
-        exec ${enrollTpmScript} "$@"
-      '')
-
-      # FIDO2 hardware-key enrollment for disk unlock
-      (pkgs.writeShellScriptBin "keystone-enroll-fido2" ''
-        exec ${enrollFido2Script} "$@"
-      '')
-
-      # Root helper to refresh the world-readable disk unlock status file
+      # Root helper to refresh the world-readable disk unlock status file.
+      # Kept as a shell wrapper for backwards compat with anything that
+      # invokes `keystone-refresh-disk-unlock-status` directly; the
+      # canonical surface is `ks hardware report --write-status-file`.
       (pkgs.writeShellScriptBin "keystone-refresh-disk-unlock-status" ''
         exec ${refreshDiskUnlockStatusScript}
       '')
