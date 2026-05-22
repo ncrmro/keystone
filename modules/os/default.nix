@@ -241,7 +241,6 @@ let
 in
 {
   imports = [
-    ./shared.nix
     ../keys.nix
     ../secrets.nix
     ../shared/system-flake.nix
@@ -275,11 +274,7 @@ in
   ];
 
   options.keystone.os = {
-    # `enable` and `adminUsername` are declared in ./shared.nix so the
-    # schema is identical on NixOS and Darwin. The derivation of
-    # `adminUsername` from `users.<name>.admin = true` (and the matching
-    # assertion in modules/os/users.nix) stays in this file because the
-    # users-schema is NixOS-only today.
+    enable = mkEnableOption "Keystone OS - secure storage, boot, and user management";
 
     # Storage configuration
     storage = {
@@ -600,10 +595,26 @@ in
     };
 
     # User configuration
-    # `adminUsername` is declared in ./shared.nix. On NixOS it is derived
-    # below from the user flagged `keystone.os.users.<name>.admin = true`;
-    # the assertion in modules/os/users.nix catches drift between an
-    # explicit assignment and the admin-flagged user.
+    adminUsername = mkOption {
+      type = types.str;
+      default = "admin";
+      defaultText = literalExpression ''
+        The name of the keystone.os.users.<name> entry with admin = true.
+        Falls back to the literal "admin" only when no user is flagged —
+        which is itself a configuration error caught by assertion.
+      '';
+      description = ''
+        Unix username for the administrator account.
+
+        By default this derives from the user flagged
+        keystone.os.users.<name>.admin = true. An explicit assignment still
+        wins (via mkDefault), but MUST name the admin-flagged user —
+        otherwise evaluation fails with an assertion pointing at the drift.
+
+        Set via admin.username in mkSystemFlake.
+      '';
+      example = "noah";
+    };
 
     users = mkOption {
       type = types.attrsOf userSubmodule;

@@ -61,33 +61,6 @@ let
         "gitEnabled": ${gitEnabledJson},
         "homeDirectory": ${homeDirJson},
         "homeFileKeys": ${homeFileKeysJson}
-       }
-       ENDJSON
-    '';
-
-  evalDarwin =
-    name: system:
-    let
-      result = system.config;
-      daemonKeysJson = builtins.toJSON (builtins.attrNames result.launchd.daemons);
-      identityPathsJson = builtins.toJSON result.age.identityPaths;
-      hostJson = builtins.toJSON result.networking.hostName;
-      # `system.primaryUser` is not in the agenix-pinned nix-darwin rev
-      # (43975d78, Apr 2025) so we don't read it. The Darwin admin
-      # identity is asserted via the shared `keystone.os.adminUsername`
-      # below, which is what callers actually configure.
-      adminUsernameJson = builtins.toJSON result.keystone.os.adminUsername;
-    in
-    pkgs.runCommand "eval-template-${name}" { } ''
-      mkdir -p $out
-      cat > $out/${name}.json <<'ENDJSON'
-      {
-        "name": "${name}",
-        "kind": "darwin",
-        "hostname": ${hostJson},
-        "adminUsername": ${adminUsernameJson},
-        "launchdDaemons": ${daemonKeysJson},
-        "ageIdentityPaths": ${identityPathsJson}
       }
       ENDJSON
     '';
@@ -357,51 +330,6 @@ let
         email = "mac@example.com";
       }
     );
-
-    macos-system-layer =
-      let
-        fleet = self.lib.mkSystemFlake {
-          admin = {
-            username = "admin";
-            fullName = "Mac Admin";
-            email = "mac-admin@example.com";
-            initialPassword = "changeme";
-          };
-          defaults.timeZone = "UTC";
-          hosts = {
-            macbook = {
-              kind = "macbook";
-              darwin.enable = true;
-              darwin.modules = [
-                {
-                  keystone.os.githubTokenNix.enable = true;
-                }
-              ];
-            };
-          };
-        };
-        system = fleet.darwinConfigurations.macbook;
-        result = system.config;
-        hasDarwinConfig = builtins.hasAttr "macbook" fleet.darwinConfigurations;
-        hasStandaloneHome = builtins.hasAttr "macbook" fleet.homeConfigurations;
-        hasTokenDaemon = builtins.hasAttr "nix-github-access-token" result.launchd.daemons;
-        hasInclude = lib.hasInfix "!include /etc/nix/access-tokens.conf" result.nix.extraOptions;
-        identityPaths = result.age.identityPaths;
-        expectIdentity = identityPaths == [ "/etc/ssh/ssh_host_ed25519_key" ];
-        allChecksPass =
-          hasDarwinConfig && !hasStandaloneHome && hasTokenDaemon && hasInclude && expectIdentity;
-      in
-      if !allChecksPass then
-        throw ''
-          macos-system-layer evaluation failed.
-            darwinConfigurations.macbook present: ${builtins.toJSON hasDarwinConfig}
-            homeConfigurations.macbook present: ${builtins.toJSON hasStandaloneHome}
-            launchd daemon present: ${builtins.toJSON hasTokenDaemon}
-            nix include present: ${builtins.toJSON hasInclude}
-            age.identityPaths: ${builtins.toJSON identityPaths}
-        ''
-      else
-        evalDarwin "macos-system-layer" system;
   };
 
   tests = nixosTests // homeTests;

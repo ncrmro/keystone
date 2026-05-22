@@ -1,15 +1,15 @@
 # Keystone Terminal — GitHub token for per-user nix.conf (Darwin focus).
 #
-# On standalone Darwin keystone hosts there may be no nix-darwin system layer.
-# In that mode `nix flake update` runs as the user, so authenticating GitHub
-# flake fetches happens via the user's ~/.config/nix/nix.conf, not
+# On Darwin keystone hosts there is no nix-darwin system module (see
+# lib/templates.nix mkDarwinInventoryHost — Darwin hosts are standalone
+# home-manager only). `nix flake update` runs as the user, so authenticating
+# GitHub flake fetches happens via the user's ~/.config/nix/nix.conf, not
 # /etc/nix/nix.conf.
 #
 # This module materializes ~/.config/nix/access-tokens.conf at home-manager
 # activation time from a token source — by default `gh auth token`, which
 # leverages the existing gh CLI login the user already has. No agenix secret
-# is required on macOS for this path. Keep this as the opt-in fallback for
-# adopters who do not want the nix-darwin system layer.
+# is required on macOS for this path.
 #
 # Pair with `keystone.terminal.github` (the PAT module) when you also want
 # GITHUB_TOKEN/GH_TOKEN exported into the shell; the two modules are
@@ -33,8 +33,8 @@ in
       description = ''
         Materialize ~/.config/nix/access-tokens.conf at home-manager
         activation time so per-user `nix flake update` invocations
-        authenticate to GitHub. Primarily useful on standalone Darwin
-        Home Manager hosts that do not opt into nix-darwin.
+        authenticate to GitHub. Primarily useful on Darwin where there
+        is no system-level nix.conf writer.
       '';
     };
 
