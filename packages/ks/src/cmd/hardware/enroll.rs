@@ -363,7 +363,9 @@ fn is_executable_present(name: &str) -> bool {
 
 async fn write_enrollment_marker(method: &str) -> Result<()> {
     if let Some(parent) = Path::new(ENROLLMENT_MARKER).parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
+        tokio::fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("creating parent directory {}", parent.display()))?;
     }
     let timestamp = chrono::Utc::now().to_rfc3339();
     // CRITICAL: never write the recovery key (or any unlock secret)

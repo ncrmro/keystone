@@ -64,6 +64,13 @@ pub async fn execute(
     let mut report = unfiltered;
     if let Some(ref id) = disk_filter {
         report.volumes.retain(|v| &v.id == id);
+        // Warnings must follow the same filter: drop per-volume
+        // findings that aren't for the focused disk, but keep all
+        // machine-wide warnings (Secure Boot disabled, etc.).
+        report.warnings.retain(|w| match &w.scope {
+            probe::WarningScope::Machine => true,
+            probe::WarningScope::Volume { id: warn_id } => warn_id == id,
+        });
     }
 
     if json {

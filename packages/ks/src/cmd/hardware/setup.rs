@@ -87,13 +87,19 @@ impl SetupStep {
     }
 }
 
-/// I/O surface for the orchestrator. CLI implements this via stdin +
-/// `rpassword`-style prompts; the TUI implements it via crossterm
-/// state machine.
+/// I/O surface for the orchestrator. CLI implements this via stdin;
+/// the TUI implements it via crossterm state machine.
+///
+/// Currently exposes only `confirm_plan` and `say` — passphrase entry
+/// and recovery-key acknowledgment happen inside the per-method
+/// primitives in [`enroll`] (which use `rpassword` directly and the
+/// terminal stdout for the recovery key display). The TUI integration
+/// will reintroduce passphrase + recovery-key methods on this trait
+/// when it needs to drive those prompts through ratatui instead of
+/// the per-method stdin/stdout path.
 ///
 /// Uses Rust 1.75+ native `async fn` in traits (no `async-trait`
-/// dep). Callers should use `impl SetupPrompts` for static dispatch
-/// (we only have a handful of concrete implementations).
+/// dep). Callers should use `impl SetupPrompts` for static dispatch.
 pub trait SetupPrompts: Send + Sync {
     /// Show the plan and ask "Continue? [y/N]". Returns true to proceed.
     fn confirm_plan(
@@ -101,20 +107,22 @@ pub trait SetupPrompts: Send + Sync {
         plan: &SetupPlan,
     ) -> impl std::future::Future<Output = Result<bool>> + Send;
 
-    /// Prompt for the new LUKS passphrase. Returned twice-typed +
-    /// validated by the implementation.
-    fn request_new_passphrase(&self) -> impl std::future::Future<Output = Result<String>> + Send;
-
-    /// Display the freshly generated recovery key and require the user
-    /// to confirm they've recorded it. Returns true once acknowledged.
-    fn acknowledge_recovery_key(
-        &self,
-        key_display: &str,
-    ) -> impl std::future::Future<Output = Result<bool>> + Send;
-
     /// Show free-form progress text (used for "Touch your YubiKey",
     /// "Place finger 5×", etc.).
     fn say(&self, text: &str) -> impl std::future::Future<Output = ()> + Send;
+}
+
+/// v1.1 RC limits enrollment to the canonical `root` volume; bail
+/// loudly if the planner ever produced a step against a different
+/// target. Multi-volume support is tracked as a v1.2 follow-up.
+fn require_root_volume(volume_id: &str) -> Result<()> {
+    if volume_id != "root" {
+        anyhow::bail!(
+            "setup tried to enroll on non-root volume `{}`; v1.1 only supports root",
+            volume_id
+        );
+    }
+    Ok(())
 }
 
 /// Compute the plan for a given probed report. Pure — no IO, no
@@ -270,17 +278,35 @@ pub async fn execute<P: SetupPrompts>(
     for step in &full_plan.steps {
         prompts.say(&format!("→ {}", step.label())).await;
         match step {
-            SetupStep::RotateDefaultPassword { volume_id: _ } => {
+            SetupStep::RotateDefaultPassword { volume_id } => {
+                require_root_volume(volume_id)?;
                 enroll::enroll_password()
                     .await
                     .context("rotating default password")?;
             }
-            SetupStep::EnrollRecoveryAndTpm2 { .. } => {
-                enroll::enroll_recovery()
-                    .await
-                    .context("enrolling recovery + TPM2")?;
+            SetupStep::EnrollRecoveryAndTpm2 {
+                volume_id,
+                already_recovery,
+                already_tpm2: _,
+            } => {
+                require_root_volume(volume_id)?;
+                // If the recovery key is already enrolled but TPM2 is
+                // missing, don't run the full enroll_recovery (which
+                // would generate a *new* recovery key and overwrite
+                // the user's existing one). Fall back to the
+                // standalone TPM2 enrollment instead.
+                if *already_recovery {
+                    enroll::enroll_tpm()
+                        .await
+                        .context("enrolling TPM2 (recovery already present)")?;
+                } else {
+                    enroll::enroll_recovery()
+                        .await
+                        .context("enrolling recovery + TPM2")?;
+                }
             }
-            SetupStep::EnrollFido2 { .. } => {
+            SetupStep::EnrollFido2 { volume_id, .. } => {
+                require_root_volume(volume_id)?;
                 enroll::enroll_fido2().await.context("enrolling FIDO2")?;
             }
             SetupStep::EnrollFingerprint => {
@@ -327,19 +353,6 @@ impl SetupPrompts for CliPrompts {
             line.trim().to_ascii_lowercase().as_str(),
             "y" | "yes"
         ))
-    }
-
-    async fn request_new_passphrase(&self) -> Result<String> {
-        // `enroll::enroll_password` reads the new passphrase via the
-        // passphrase prompt itself, so we don't need to. This method
-        // exists for symmetry with the TUI implementation.
-        Ok(String::new())
-    }
-
-    async fn acknowledge_recovery_key(&self, _key_display: &str) -> Result<bool> {
-        // Likewise — `enroll::enroll_recovery` displays the key itself
-        // and prompts for verification. Inherit stdin and return ok.
-        Ok(true)
     }
 
     async fn say(&self, text: &str) {
