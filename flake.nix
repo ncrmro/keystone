@@ -11,6 +11,14 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Pinned directly (was `follows = "agenix/darwin"`) — agenix's
+    # transitive pin lagged behind the nixpkgs `substituteAll` removal
+    # (2025-05-23), breaking real darwin closure builds. Bumping here
+    # decouples keystone's nix-darwin from agenix's release cadence.
+    nix-darwin = {
+      url = "github:LnL7/nix-darwin";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     omarchy = {
       url = "github:basecamp/omarchy/v3.0.2";
       flake = false;
@@ -120,6 +128,7 @@
       crane,
       disko,
       home-manager,
+      nix-darwin,
       omarchy,
       lanzaboote,
       hyprland,
@@ -152,6 +161,7 @@
           disko
           lanzaboote
           home-manager
+          nix-darwin
           hyprland
           hyprpaper
           himalaya
@@ -188,14 +198,30 @@
           self
           nixpkgs
           home-manager
+          nix-darwin
           ;
         lib = nixpkgs.lib;
+      };
+
+      testsLib = import ./lib/tests.nix {
+        inherit
+          self
+          nixpkgs
+          nix-darwin
+          home-manager
+          ;
       };
     in
     {
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
       lib = templateLib // {
+        # Test harness helpers — vanilla shared keystone config for eval
+        # tests. See lib/tests.nix. Exposed under `self.lib.tests.*` so
+        # tests/module/*.nix can read `self.lib.tests.{evalNixos,evalDarwin,admin}`
+        # without re-wiring nixpkgs / nix-darwin / home-manager every time.
+        tests = testsLib;
+
         # Build an installer ISO with the given SSH keys baked in.
         # Consumer flakes call this instead of duplicating the module wiring.
         mkInstallerIso =
@@ -373,6 +399,26 @@
         notes = ./modules/notes/default.nix;
       };
 
+      darwinModules = {
+        operating-system = {
+          imports = [
+            agenix.darwinModules.default
+            ./modules/domain.nix
+            ./modules/services.nix
+            ./modules/hosts.nix
+            ./modules/shared/experimental.nix
+            ./modules/shared/repos.nix
+            ./modules/shared/update.nix
+            ./modules/os/darwin.nix
+          ];
+          _module.args.keystoneInputs = keystoneInputs;
+          keystone._repoInputs = {
+            keystone = self;
+            inherit deepwork;
+          };
+        };
+      };
+
       # Focused flake checks — run via `nix flake check` and CI.
       # Repo-wide nixfmt and shellcheck live in pre-commit and dedicated CI jobs.
       #
@@ -442,6 +488,10 @@
               nixpkgs
               home-manager
               ;
+            self = self;
+          };
+          darwinEvaluation = import ./tests/module/darwin-evaluation.nix {
+            inherit pkgs lib;
             self = self;
           };
           templateUpdateChannel = import ./tests/module/template-update-channel.nix {
@@ -540,6 +590,7 @@
           os-evaluation = osEvaluation;
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
+          darwin-evaluation = darwinEvaluation;
           template-update-channel = templateUpdateChannel;
           template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
@@ -583,6 +634,7 @@
             ln -s ${osEvaluation} "$out/os-evaluation"
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${darwinEvaluation} "$out/darwin-evaluation"
             ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${templateSpecialArgs} "$out/template-special-args"
             ln -s ${serverEvaluation} "$out/server-evaluation"

@@ -10,6 +10,13 @@ cd keystone-config
 Most keystone config changes happen in the `flake.nix`, read more about how
 it works in [`docs/keystone/flake.md`](docs/keystone/flake.md).
 
+The starter flake defines one shared Keystone system config and one `hosts`
+inventory. Keystone expands that inventory into:
+
+- `nixosConfigurations` for Linux hosts
+- `homeConfigurations` for standalone macOS Home Manager hosts
+- `darwinConfigurations` for macOS hosts that opt into nix-darwin
+
 ## After making changes
 
 ```bash
@@ -49,6 +56,18 @@ grep -RIn "TODO:" flake.nix hosts/
 See [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md)
 for the mental model — scopes (fleet vs per-host, system vs user), where
 to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
+
+## Hosts the template ships with
+
+- `laptop`: desktop Linux host
+- `server`: Linux server host (rename freely; can be a VPS with no
+  hardware file or a baremetal machine with a generated one)
+- `macbook`: terminal-only macOS host by default; add `darwin.enable = true`
+  (and supply `hosts/macbook/darwin.nix`) to switch it to nix-darwin +
+  Home Manager
+
+Shared infrastructure placement belongs in the top-level `keystoneServices`
+block in `flake.nix`, not inside individual host blocks.
 
 ## Included docs
 
