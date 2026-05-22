@@ -41,15 +41,17 @@ let
           ];
         }
         {
-          name = "keystone-enroll-fido2-auto";
+          name = "ks-hardware-enroll-fido2";
           displayName = "Enroll hardware key for disk unlock";
           reason = "Enroll a FIDO2 hardware key for disk unlock.";
           runAs = "root";
           approvalMethods = [ "password" ];
           match = "exact";
           argv = [
-            "keystone-enroll-fido2"
-            "--auto"
+            "ks"
+            "hardware"
+            "enroll"
+            "fido2"
           ];
         }
       ];
@@ -124,11 +126,11 @@ pkgs.runCommand "test-approve-exec-script"
       fail "approve-exec.sh --validate must accept 'ks update --approve' (prefix match)"
     fi
 
-    # -- Exact-match: keystone-enroll-fido2 --auto -------------------------
+    # -- Exact-match: ks hardware enroll fido2 -----------------------------
 
-    output_exact="$(bash ${helperScript} --validate --reason "regression test" -- keystone-enroll-fido2 --auto)"
-    if ! grep -F '"name":"keystone-enroll-fido2-auto"' <<<"$output_exact" >/dev/null; then
-      fail "approve-exec.sh --validate must accept the exact 'keystone-enroll-fido2 --auto' entry"
+    output_exact="$(bash ${helperScript} --validate --reason "regression test" -- ks hardware enroll fido2)"
+    if ! grep -F '"name":"ks-hardware-enroll-fido2"' <<<"$output_exact" >/dev/null; then
+      fail "approve-exec.sh --validate must accept the exact 'ks hardware enroll fido2' entry"
     fi
 
     # -- Negative: non-allowlisted argv MUST be rejected -------------------

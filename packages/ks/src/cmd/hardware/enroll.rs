@@ -71,29 +71,30 @@ pub async fn execute(method: Method, disk: Option<String>) -> Result<()> {
 /// / `enroll_tpm` handle them.
 pub async fn enroll_password() -> Result<()> {
     println!("=== Keystone enrollment: rotate LUKS password ===\n");
-    preflight().await?;
+    preflight(PreflightSpec::PASSWORD_ROTATION).await?;
 
     let new_pw = read_new_passphrase_with_confirmation()?;
     let old_keyfile = current_passphrase_keyfile().await?;
+    // Pass the new passphrase as the second positional argument to
+    // `cryptsetup luksChangeKey <device> <new-key-file>`. Without a
+    // new-key-file, cryptsetup prompts for the new passphrase TWICE
+    // (enter + verify); the tempfile path is the non-interactive
+    // shape and matches the script-port's contract.
+    let new_keyfile = write_tempfile(new_pw.as_bytes())?;
 
     println!("\nRotating slot 0 to the new passphrase...");
-    let device = Path::new(ROOT_CREDSTORE);
-    let mut child = Command::new("cryptsetup")
+    let status = Command::new("cryptsetup")
         .arg("luksChangeKey")
-        .arg(device)
+        .arg(Path::new(ROOT_CREDSTORE))
         .arg("--key-file")
         .arg(old_keyfile.path())
-        .stdin(std::process::Stdio::piped())
+        .arg(new_keyfile.path())
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
-        .spawn()
+        .status()
+        .await
         .context("spawning cryptsetup luksChangeKey")?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(new_pw.as_bytes()).await?;
-        stdin.write_all(b"\n").await?;
-        stdin.shutdown().await?;
-    }
-    let status = child.wait().await?;
     if !status.success() {
         bail!("cryptsetup luksChangeKey failed: {}", status);
     }
@@ -107,7 +108,7 @@ pub async fn enroll_password() -> Result<()> {
 /// the layered-fallback design).
 pub async fn enroll_recovery() -> Result<()> {
     println!("=== Keystone enrollment: recovery key + TPM2 ===\n");
-    preflight().await?;
+    preflight(PreflightSpec::TPM_ENROLLMENT).await?;
     let keyfile = current_passphrase_keyfile().await?;
     let device = Path::new(ROOT_CREDSTORE);
     let device_str = device.to_string_lossy().to_string();
@@ -141,7 +142,7 @@ pub async fn enroll_recovery() -> Result<()> {
 /// prompt for it if `keystone` no longer unlocks.
 pub async fn enroll_tpm() -> Result<()> {
     println!("=== Keystone enrollment: TPM2 (standalone) ===\n");
-    preflight().await?;
+    preflight(PreflightSpec::TPM_ENROLLMENT).await?;
     let keyfile = current_passphrase_keyfile().await?;
     let device = Path::new(ROOT_CREDSTORE);
     let device_str = device.to_string_lossy().to_string();
@@ -164,7 +165,7 @@ pub async fn enroll_tpm() -> Result<()> {
 /// device, and the user to touch it when prompted.
 pub async fn enroll_fido2() -> Result<()> {
     println!("=== Keystone enrollment: FIDO2 hardware key ===\n");
-    preflight().await?;
+    preflight(PreflightSpec::FIDO2_ENROLLMENT).await?;
 
     let device_list = run_systemd_cryptenroll(&["--fido2-device=list"])
         .await
@@ -210,24 +211,63 @@ pub async fn enroll_fingerprint() -> Result<()> {
 // IO helpers
 // ---------------------------------------------------------------------------
 
-/// Preflight: Secure Boot enabled, TPM2 device present, credstore
-/// device exists. Mirrors the prerequisite blocks the old enroll-*.sh
-/// scripts ran before doing anything destructive.
-async fn preflight() -> Result<()> {
+/// Method-specific preflight requirements.
+///
+/// Each enroll primitive needs a different subset of the full check
+/// list. Password rotation only needs the credstore device; TPM
+/// enrollment needs the TPM2 chip and Secure Boot for PCR-7 to be a
+/// meaningful integrity anchor; FIDO2 enrollment needs the credstore
+/// (the device check itself happens later via
+/// `systemd-cryptenroll --fido2-device=list`).
+#[derive(Debug, Clone, Copy)]
+struct PreflightSpec {
+    require_tpm2: bool,
+    require_secure_boot: bool,
+}
+
+impl PreflightSpec {
+    /// Only the credstore device. Password rotation works on TPM-less
+    /// or Secure-Boot-off machines.
+    const PASSWORD_ROTATION: Self = Self {
+        require_tpm2: false,
+        require_secure_boot: false,
+    };
+    /// TPM2 + Secure Boot. Used by recovery enrollment (which also
+    /// enrolls TPM as part of the same flow) and standalone TPM.
+    const TPM_ENROLLMENT: Self = Self {
+        require_tpm2: true,
+        require_secure_boot: true,
+    };
+    /// Credstore only. FIDO2 device check happens via
+    /// `systemd-cryptenroll --fido2-device=list` in `enroll_fido2`.
+    const FIDO2_ENROLLMENT: Self = Self {
+        require_tpm2: false,
+        require_secure_boot: false,
+    };
+}
+
+async fn preflight(spec: PreflightSpec) -> Result<()> {
     println!("[Preflight]");
     let report = probe::probe().await;
-    if matches!(report.machine.secure_boot, probe::SecureBootState::Disabled) {
+
+    if spec.require_secure_boot
+        && matches!(report.machine.secure_boot, probe::SecureBootState::Disabled)
+    {
         bail!(
             "Secure Boot is DISABLED. TPM PCR-7 binding has no integrity anchor. \
-             Enable Secure Boot in firmware before enrolling."
+             Enable Secure Boot in firmware before enrolling TPM-bound credentials."
         );
     }
-    println!("[OK] Secure Boot: {:?}", report.machine.secure_boot);
+    if spec.require_secure_boot {
+        println!("[OK] Secure Boot: {:?}", report.machine.secure_boot);
+    }
 
-    if !matches!(report.machine.tpm2, probe::TpmDeviceState::Present) {
+    if spec.require_tpm2 && !matches!(report.machine.tpm2, probe::TpmDeviceState::Present) {
         bail!("no TPM2 device found at /dev/tpmrm0");
     }
-    println!("[OK] TPM2 device present");
+    if spec.require_tpm2 {
+        println!("[OK] TPM2 device present");
+    }
 
     if !Path::new(ROOT_CREDSTORE).exists() {
         bail!("credstore device not found: {}", ROOT_CREDSTORE);

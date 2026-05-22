@@ -45,8 +45,8 @@ pub enum SetupStep {
     /// Slot 0 currently accepts "keystone" — rotate it before anything
     /// else can touch the volume.
     RotateDefaultPassword { volume_id: String },
-    /// Generate the recovery key and enroll TPM2 in one shot
-    /// (`keystone-enroll-recovery --auto`). Skipped if both are already
+    /// Generate the recovery key and enroll TPM2 in one shot via
+    /// [`enroll::enroll_recovery`]. Skipped if both are already
     /// enrolled.
     EnrollRecoveryAndTpm2 {
         volume_id: String,
@@ -132,9 +132,14 @@ pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
         );
     }
 
-    // Per-volume steps (password rotation, recovery+TPM2, FIDO2 if plugged in)
+    // Per-volume steps. TPM and FIDO2 enrollment depend on the
+    // machine having those credentials available; password rotation
+    // does not. We pass machine-level state in so the planner can
+    // skip TPM steps on TPM-less hosts instead of generating a plan
+    // that will fail at execute time.
+    let tpm_available = matches!(report.machine.tpm2, probe::TpmDeviceState::Present);
     for v in &report.volumes {
-        steps.extend(plan_volume(v, &report.machine.fido2_devices));
+        steps.extend(plan_volume(v, &report.machine.fido2_devices, tpm_available));
     }
 
     // Surface critical warnings as blockers if they would leave the
@@ -175,19 +180,36 @@ fn is_default_password_warning(w: &probe::Warning) -> bool {
     w.message.contains("default installer password")
 }
 
-fn plan_volume(v: &LuksVolume, fido2_devices: &[probe::Fido2Device]) -> Vec<SetupStep> {
+fn plan_volume(
+    v: &LuksVolume,
+    fido2_devices: &[probe::Fido2Device],
+    tpm_available: bool,
+) -> Vec<SetupStep> {
     let mut steps = Vec::new();
     if v.slots.password.is_default {
         steps.push(SetupStep::RotateDefaultPassword {
             volume_id: v.id.clone(),
         });
     }
+    // EnrollRecoveryAndTpm2 covers both the recovery key slot and the
+    // TPM2 token in one systemd-cryptenroll invocation pair. If TPM2
+    // isn't available, skip the whole step with an explicit reason
+    // so the user sees why it's missing in the dry-run.
     if !v.slots.recovery.enrolled || !v.slots.tpm2.enrolled {
-        steps.push(SetupStep::EnrollRecoveryAndTpm2 {
-            volume_id: v.id.clone(),
-            already_recovery: v.slots.recovery.enrolled,
-            already_tpm2: v.slots.tpm2.enrolled,
-        });
+        if tpm_available {
+            steps.push(SetupStep::EnrollRecoveryAndTpm2 {
+                volume_id: v.id.clone(),
+                already_recovery: v.slots.recovery.enrolled,
+                already_tpm2: v.slots.tpm2.enrolled,
+            });
+        } else {
+            steps.push(SetupStep::Skip {
+                reason: format!(
+                    "no TPM2 device on this host — skipping recovery+TPM2 on `{}`",
+                    v.id
+                ),
+            });
+        }
     }
     // Opportunistic FIDO2 enrollment: if a device is plugged in *now*
     // and this volume doesn't already have a FIDO2 token, pair the
@@ -308,14 +330,14 @@ impl SetupPrompts for CliPrompts {
     }
 
     async fn request_new_passphrase(&self) -> Result<String> {
-        // The underlying keystone-enroll-password script handles the
+        // `enroll::enroll_password` reads the new passphrase via the
         // passphrase prompt itself, so we don't need to. This method
         // exists for symmetry with the TUI implementation.
         Ok(String::new())
     }
 
     async fn acknowledge_recovery_key(&self, _key_display: &str) -> Result<bool> {
-        // Likewise — keystone-enroll-recovery displays the key itself
+        // Likewise — `enroll::enroll_recovery` displays the key itself
         // and prompts for verification. Inherit stdin and return ok.
         Ok(true)
     }

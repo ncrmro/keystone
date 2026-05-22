@@ -54,7 +54,7 @@ pkgs.runCommand "test-ks-approve"
     printf '%s\n' "$mode|$reason|''${requested[*]}" >> "$PWD/logs/helper.log"
 
     if [[ "$mode" == "validate" ]]; then
-      if [[ "''${requested[*]}" == "keystone-enroll-fido2 --auto" ]]; then
+      if [[ "''${requested[*]}" == "ks hardware enroll fido2" ]]; then
         cat <<'JSON'
     {"displayName":"Enroll FIDO2 key","reason":"Allowlisted enrollment flow"}
     JSON
@@ -84,18 +84,18 @@ pkgs.runCommand "test-ks-approve"
     EOF
     chmod +x "$PWD/bin/sudo"
 
-    WAYLAND_DISPLAY=wayland-1 ks approve --reason "Enroll hardware key" -- keystone-enroll-fido2 --auto >"$PWD/logs/stdout-graphical.log"
+    WAYLAND_DISPLAY=wayland-1 ks approve --reason "Enroll hardware key" -- ks hardware enroll fido2 >"$PWD/logs/stdout-graphical.log"
 
     grep -F "Approval request: Enroll FIDO2 key" "$PWD/logs/stdout-graphical.log" >/dev/null
-    grep -F -- "--reason Enroll hardware key -- keystone-enroll-fido2 --auto" "$PWD/logs/pkexec.log" >/dev/null
+    grep -F -- "--reason Enroll hardware key -- ks hardware enroll fido2" "$PWD/logs/pkexec.log" >/dev/null
     [[ ! -e "$PWD/logs/sudo.log" ]]
-    grep -F "exec|Enroll hardware key|keystone-enroll-fido2 --auto" "$PWD/logs/helper.log" >/dev/null
+    grep -F "exec|Enroll hardware key|ks hardware enroll fido2" "$PWD/logs/helper.log" >/dev/null
 
     rm -f "$PWD/logs/pkexec.log" "$PWD/logs/sudo.log"
 
-    ks approve --reason "Enroll hardware key" -- keystone-enroll-fido2 --auto >"$PWD/logs/stdout-terminal.log"
+    ks approve --reason "Enroll hardware key" -- ks hardware enroll fido2 >"$PWD/logs/stdout-terminal.log"
 
-    grep -F -- "--reason Enroll hardware key -- keystone-enroll-fido2 --auto" "$PWD/logs/sudo.log" >/dev/null
+    grep -F -- "--reason Enroll hardware key -- ks hardware enroll fido2" "$PWD/logs/sudo.log" >/dev/null
     [[ ! -e "$PWD/logs/pkexec.log" ]]
 
     if ks approve --reason "Nope" -- /bin/echo nope >"$PWD/logs/stdout-reject.log" 2>"$PWD/logs/stderr-reject.log"; then

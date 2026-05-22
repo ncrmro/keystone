@@ -395,10 +395,10 @@ pub enum HardwareCommand {
     /// the plan without executing.
     ///
     /// Non-interactive mode and `--allow-no-sb` are tracked as v1.2
-    /// follow-ups — the underlying `keystone-enroll-*` shell scripts
-    /// prompt interactively and treat Secure Boot disabled as a hard
-    /// error, so plumbing those overrides end-to-end requires the
-    /// full Rust port of the enrollment primitives.
+    /// follow-ups — the per-method primitives prompt interactively
+    /// for the new passphrase, and Secure Boot disabled is currently
+    /// a hard blocker. Plumbing those overrides end-to-end will land
+    /// alongside the multi-LUKS-volume work.
     Setup {
         /// Compute and print the plan, then exit without changing state.
         #[arg(long)]

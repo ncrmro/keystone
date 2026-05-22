@@ -24,12 +24,12 @@ let
     else
       "/dev/disk/by-partlabel/disk-root-root";
 
-  # Helper to create executable substituted scripts
-  # The keystone-enroll-* shell scripts that used to live here have
-  # been ported to native Rust in `packages/ks/src/cmd/hardware/enroll.rs`.
-  # All enrollment now goes through `ks hardware enroll <method>` or
-  # `ks hardware setup`. The keystone-tpm-check systemd service below
-  # is the only inline shell that remains; it just writes the
+  # All disk-unlock enrollment goes through `ks hardware setup` and the
+  # per-method `ks hardware enroll <method>` primitives in
+  # `packages/ks/src/cmd/hardware/enroll.rs`. The keystone-tpm-check
+  # systemd service below is the only inline shell that remains; it
+  # writes the world-readable disk-unlock-status.json marker.
+  # Some context for the inline script:
   # disk-unlock-status.json marker.
   refreshDiskUnlockStatusScript = pkgs.writeShellScript "refresh-disk-unlock-status.sh" ''
         set -euo pipefail
@@ -145,14 +145,9 @@ in
     # storage.nix tells systemd-cryptsetup to attempt TPM unlock, but
     # when no TPM token is enrolled in the LUKS header, it falls back
     # to password (fallbackToPassword = true).
-    #
-    # The keystone-enroll-* shell-script wrappers that used to live
-    # here are gone; all enrollment is native Rust in `ks hardware`.
     environment.systemPackages = [
-      # Root helper to refresh the world-readable disk unlock status file.
-      # Kept as a shell wrapper for backwards compat with anything that
-      # invokes `keystone-refresh-disk-unlock-status` directly; the
-      # canonical surface is `ks hardware report --write-status-file`.
+      # Root helper to refresh the world-readable disk unlock status
+      # file. Invoked from the keystone-tpm-check systemd service.
       (pkgs.writeShellScriptBin "keystone-refresh-disk-unlock-status" ''
         exec ${refreshDiskUnlockStatusScript}
       '')
