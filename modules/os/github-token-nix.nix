@@ -1,19 +1,20 @@
 # Keystone OS — GitHub token for the nix daemon.
 #
 # Materializes /etc/nix/access-tokens.conf from a root-readable agenix
-# secret and `!include`s it into nix.conf so flake fetches (e.g.
-# `nix flake update`, `ks update`) authenticate to GitHub and hit the
-# 5000/hr authenticated rate ceiling instead of the 60/hr anonymous one.
+# secret and `!include`s it into nix.conf so flake fetches authenticate
+# to GitHub and hit the 5000/hr authenticated rate ceiling instead of
+# the 60/hr anonymous one.
 #
 # The token value never enters the Nix store: the secret stays in
-# /run/agenix, and a systemd oneshot copies it into the include file at
-# activation time.
+# /run/agenix, and a hardened systemd oneshot copies it into the
+# include file at activation time.
 #
-# This is the OS-level counterpart to keystone.terminal.github (the
-# user-PAT module). The user PAT is mode 0400 owner=<user> and serves
-# `gh`/`git`; the nix-daemon runs as root and needs its own secret with
-# system-key recipients. See conventions/tool.github-pats.md rule 26 and
-# conventions/tool.nix.md for the os-level access-tokens convention.
+# Auto-discovery order (when `tokenFile` is unset):
+#   1. /run/agenix/nix-github-token             — dedicated nix-daemon secret
+#   2. /run/agenix/${adminUsername}-github-token — user-home PAT shared as os-level
+#   3. (nothing found) — module stays inert, no assertion failure
+#
+# See conventions/tool.nix.md for the os-level access-tokens convention.
 {
   config,
   lib,
@@ -22,15 +23,22 @@
 }:
 let
   cfg = config.keystone.os.githubTokenNix;
-  basename = baseNameOf cfg.tokenFile;
-  # Accepted patterns (also documented in tool.nix.md):
-  #   nix-flake-github-token             — portable, recommended default
-  #   <hostname>-nix-flake-github-token  — host-scoped
+  adminUsername = config.keystone.os.adminUsername;
+  userPatSecretName = "${adminUsername}-github-token";
+
+  effectiveTokenFile =
+    if cfg.tokenFile != null then
+      cfg.tokenFile
+    else if lib.hasAttrByPath [ "age" "secrets" "nix-github-token" ] config then
+      lib.getAttrFromPath [ "age" "secrets" "nix-github-token" "path" ] config
+    else if lib.hasAttrByPath [ "age" "secrets" userPatSecretName ] config then
+      lib.getAttrFromPath [ "age" "secrets" userPatSecretName "path" ] config
+    else
+      null;
+
+  basename = if effectiveTokenFile == null then "" else baseNameOf effectiveTokenFile;
   validBasename =
-    basename == "nix-flake-github-token"
-    || (
-      lib.hasSuffix "-nix-flake-github-token" basename && builtins.match "[a-z0-9-]+" basename != null
-    );
+    lib.hasSuffix "-github-token" basename && builtins.match "[a-z0-9-]+" basename != null;
 in
 {
   options.keystone.os.githubTokenNix = {
@@ -41,22 +49,27 @@ in
         Wire an agenix-decrypted GitHub token into /etc/nix/nix.conf via
         a root-readable include file, so the nix daemon uses the
         authenticated 5000/hr GitHub rate-limit ceiling for flake fetches.
+
+        Token source is auto-discovered from declared agenix secrets when
+        `tokenFile` is unset — first `nix-github-token` (dedicated), then
+        `''${adminUsername}-github-token` (user-PAT shared at os-level).
+        The module stays inert if neither is declared.
       '';
     };
 
     tokenFile = lib.mkOption {
-      type = lib.types.str;
-      default = "/run/agenix/nix-flake-github-token";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/run/agenix/nix-github-token";
       description = ''
-        Path to the decrypted token file. The adopter is responsible for
-        declaring an `age.secrets.<name>` entry that produces this file
-        with `owner = "root"; mode = "0400";` and a recipient set drawn
-        from system keys (not user keys).
+        Explicit path to the decrypted token file. Overrides the auto-
+        discovery chain. The adopter is responsible for declaring an
+        `age.secrets.<name>` entry that produces this file with
+        `owner = "root"; mode = "0440";` (group-readable) when the same
+        secret backs the user shell env, or `mode = "0400";` when
+        dedicated to the nix daemon.
 
-        The basename SHOULD follow the convention
-        `nix-flake-github-token` (portable) or
-        `<hostname>-nix-flake-github-token` (host-scoped). See
-        conventions/tool.nix.md.
+        See conventions/tool.nix.md.
       '';
     };
 
@@ -70,20 +83,21 @@ in
     };
   };
 
-  config = lib.mkIf (config.keystone.os.enable && cfg.enable) {
+  config = lib.mkIf (config.keystone.os.enable && cfg.enable && effectiveTokenFile != null) {
     assertions = [
       {
         assertion = validBasename;
         message =
-          "keystone.os.githubTokenNix.tokenFile basename '${basename}' does not match "
-          + "the OS-level naming convention. Use 'nix-flake-github-token' (portable) "
-          + "or '<hostname>-nix-flake-github-token' (host-scoped). See "
+          "keystone.os.githubTokenNix effective token file basename '${basename}' does not match "
+          + "the OS-level naming convention. Use 'nix-github-token' (portable), "
+          + "'<hostname>-nix-github-token' (host-scoped dedicated), or "
+          + "'<username>-github-token' (user-PAT shared at os-level). See "
           + "conventions/tool.nix.md.";
       }
     ];
 
     systemd.services.nix-github-access-token = {
-      description = "Materialize ${cfg.includePath} from ${cfg.tokenFile}";
+      description = "Materialize ${cfg.includePath} from ${effectiveTokenFile}";
       wantedBy = [ "multi-user.target" ];
       after = [ "agenix.service" ];
       requires = [ "agenix.service" ];
@@ -91,7 +105,6 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        # Hardening — write only to /etc/nix.
         NoNewPrivileges = true;
         ProtectSystem = "strict";
         ProtectHome = true;
@@ -102,8 +115,8 @@ in
 
       script = ''
         set -eu
-        if [ ! -s ${lib.escapeShellArg cfg.tokenFile} ]; then
-          echo "nix-github-access-token: ${cfg.tokenFile} missing or empty" >&2
+        if [ ! -s ${lib.escapeShellArg effectiveTokenFile} ]; then
+          echo "nix-github-access-token: ${effectiveTokenFile} missing or empty" >&2
           exit 1
         fi
         umask 0137
@@ -111,7 +124,7 @@ in
         trap '${pkgs.coreutils}/bin/rm -f "$tmp"' EXIT
         {
           printf 'access-tokens = github.com=%s\n' \
-            "$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg cfg.tokenFile})"
+            "$(${pkgs.coreutils}/bin/tr -d '\n' < ${lib.escapeShellArg effectiveTokenFile})"
         } > "$tmp"
         ${pkgs.coreutils}/bin/chown root:root "$tmp"
         ${pkgs.coreutils}/bin/chmod 0640 "$tmp"

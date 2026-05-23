@@ -56,7 +56,7 @@ in
     tokenFile = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      example = "/run/agenix/nix-flake-github-token";
+      example = "/run/agenix/nix-github-token";
       description = ''
         Path to a token file when `source = "tokenFile"`. Ignored
         otherwise.

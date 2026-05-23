@@ -89,44 +89,72 @@ When a user-level Home Manager profile needs reusable credentials across multipl
 
 ## Os-level GitHub access tokens for the nix daemon
 
-32. The nix daemon authenticating to GitHub for flake fetches (`nix flake update`, `ks update`) MUST use an **os-level** agenix secret distinct from the user-PAT secret described in `tool.github-pats`. The daemon runs as root and cannot read a `mode 0400 owner=<user>` file; even if it could, daemon-level access requires its own recipient set drawn from system keys.
-33. The os-level secret basename MUST follow one of:
-    - `nix-flake-github-token` — portable, recommended default.
-    - `<hostname>-nix-flake-github-token` — host-scoped when blast radius must be smaller. `<hostname>` is the agenix `systems.*` key.
-34. The recipient set for the os-level secret MUST include the **system** keys of every host that runs `nix flake update` against `github:` inputs. It MUST NOT include user or yubikey keys — those are user-PAT territory.
-35. The `age.secrets.<name>` declaration MUST set `owner = "root"; mode = "0400";`.
-36. The keystone module `keystone.os.githubTokenNix` MUST be used to wire the secret into `nix.conf`. The module materializes `/etc/nix/access-tokens.conf` from the runtime file via a hardened systemd oneshot and appends `!include` to `nix.extraOptions` — the token value never enters the Nix store.
-37. The os-level secret MAY share its plaintext PAT value with the user-readable agents PAT (`github-agents-token`) during bootstrap, but SHOULD be rotated to a distinct, narrowly-scoped token before relying on the audit trail. Distinct secret names with distinct recipient sets and distinct file ownership are required regardless of whether the underlying token value is shared.
+32. The nix daemon authenticating to GitHub for fetches (`nix flake update`, `ks update`, channel updates, builtin builders) MUST use an agenix secret materialized into a root-readable include file referenced from `nix.conf`. The daemon runs as root under `sudo nixos-rebuild` / `ks update`, so a user-only `mode 0400 owner=<user>` file is not sufficient.
+33. `keystone.os.githubTokenNix` MUST be the wiring module. It writes `/etc/nix/access-tokens.conf` from the runtime file via a hardened systemd oneshot and appends `!include` to `nix.extraOptions`. The token value never enters the Nix store.
+34. The module auto-discovers the secret at module-eval time when `tokenFile` is unset; explicit `tokenFile = "..."` always overrides. Discovery order:
+    1. `/run/agenix/nix-github-token` — dedicated nix-daemon secret if `age.secrets."nix-github-token"` is declared.
+    2. `/run/agenix/${adminUsername}-github-token` — user-home PAT shared at os-level if `age.secrets."${adminUsername}-github-token"` is declared.
+    3. (nothing found) — module stays inert. No assertion failure, no systemd unit emitted.
+35. The **preferred default** is shape (2): single PAT backing `gh` / `git` / nix-daemon. CLAUDE.md rule 26 already requires user-home secrets to include every relevant host's system key, so root on those hosts can already decrypt the same ciphertext. Adopters declare one `age.secrets."${username}-github-token"` with `owner = "root"; group = "users"; mode = "0440";` — root reads it for the nix-daemon include file, the `users` group reads it for the user shell env hook.
+36. Shape (1) — dedicated `nix-github-token` — is the right call when the nix-daemon needs a narrower PAT scope than the user PAT (e.g. agents-only audit trail), or when the host has no human user installed. Dedicated secrets MUST set `owner = "root"; mode = "0400";`.
+37. Accepted basename patterns (validated by the module's assertion):
+    - `nix-github-token` — portable, dedicated shape (1).
+    - `<hostname>-nix-github-token` — host-scoped dedicated.
+    - `<username>-github-token` — user-PAT shared, shape (2).
+    - `<hostname>-<username>-github-token` — host-scoped user-PAT.
+    Any other basename ending in `-github-token` is also accepted; the assertion only rejects shapes that clearly aren't GitHub tokens.
 
-### Golden example: os-level nix-daemon token
+### Golden example: shared user-PAT shape (preferred)
 
 ```nix
 # agenix-secrets/secrets.nix
-"secrets/nix-flake-github-token.age".publicKeys = adminKeys ++ [
+"secrets/ncrmro-github-token.age".publicKeys = adminKeys ++ [
   systems.ncrmro-workstation
   systems.ncrmro-laptop
 ];
 
 # nixos host that runs `ks update` / `nix flake update`
-age.secrets.nix-flake-github-token = {
-  file = "${inputs.agenix-secrets}/secrets/nix-flake-github-token.age";
+age.secrets."ncrmro-github-token" = {
+  file = "${inputs.agenix-secrets}/secrets/ncrmro-github-token.age";
+  owner = "root";
+  group = "users";
+  mode = "0440";
+};
+
+keystone.os.githubTokenNix.enable = true;
+# tokenFile auto-resolves to /run/agenix/ncrmro-github-token via the fallback chain
+```
+
+### Golden example: dedicated nix-daemon shape
+
+```nix
+# agenix-secrets/secrets.nix
+"secrets/nix-github-token.age".publicKeys = adminKeys ++ [
+  systems.shared-build-host
+];
+
+age.secrets."nix-github-token" = {
+  file = "${inputs.agenix-secrets}/secrets/nix-github-token.age";
   owner = "root";
   mode = "0400";
 };
 
-keystone.os.githubTokenNix = {
-  enable = true;
-  # tokenFile defaults to /run/agenix/nix-flake-github-token
-};
+keystone.os.githubTokenNix.enable = true;
+# tokenFile auto-resolves to /run/agenix/nix-github-token (preferred over user-PAT when both declared)
 ```
 
-### Darwin parity (per-user nix.conf)
+### Darwin (per-user nix.conf)
 
-On Darwin keystone hosts there is no nix-darwin system module — `mkDarwinInventoryHost` produces standalone home-manager only. `nix flake update` runs as the user, so the equivalent wiring is per-user. Use `keystone.terminal.githubTokenNix` (the home-manager module) with `source = "gh-auth"` to materialize `~/.config/nix/access-tokens.conf` at activation time from the existing `gh auth` login. No additional agenix secret is required on macOS for this path.
+On Darwin keystone hosts there is no nix-darwin system module — Darwin keystone hosts run standalone home-manager only, and `nix flake update` is always user-invoked (no `sudo nixos-rebuild`). Use `keystone.terminal.githubTokenNix` to materialize `~/.config/nix/access-tokens.conf` at home-manager activation. The default `source = "gh-auth"` shells out to `gh auth token` and requires no agenix wiring. For adopters using home-manager-agenix on Darwin, set `source = "tokenFile"; tokenFile = config.age.secrets."${username}-github-token".path;` to share the same PAT used elsewhere.
 
 ```nix
+# Darwin default — uses gh CLI login
+keystone.terminal.githubTokenNix.enable = true;
+
+# Darwin with home-manager-agenix
 keystone.terminal.githubTokenNix = {
   enable = true;
-  # source defaults to "gh-auth"
+  source = "tokenFile";
+  tokenFile = config.age.secrets."ncrmro-github-token".path;
 };
 ```
