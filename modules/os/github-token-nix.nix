@@ -29,9 +29,9 @@ let
   effectiveTokenFile =
     if cfg.tokenFile != null then
       cfg.tokenFile
-    else if config.age.secrets ? "nix-github-token" then
+    else if lib.hasAttrByPath [ "age" "secrets" "nix-github-token" ] config then
       config.age.secrets."nix-github-token".path
-    else if config.age.secrets ? "${userPatSecretName}" then
+    else if lib.hasAttrByPath [ "age" "secrets" userPatSecretName ] config then
       config.age.secrets."${userPatSecretName}".path
     else
       null;
