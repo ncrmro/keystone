@@ -93,3 +93,12 @@ dated target note before replacing the entrypoint with a symlink.
 the module MUST perform an additional sync pass after daily rollover so the
 newly-created symlink change is committed and pushed without waiting for the
 next timer tick.
+
+**REQ-009.21** `keystone.notes.daily.symlinkPath` and
+`keystone.notes.daily.journalPath` MUST stay under `keystone.notes.path`. The
+module MUST reject absolute paths and parent-directory traversal segments such
+as `..`.
+
+**REQ-009.22** The rollover helper MUST fail fast when the configured daily
+entrypoint resolves to the same path as the derived dated target note, so it
+cannot replace a real note with a symlink.

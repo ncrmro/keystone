@@ -48,6 +48,15 @@ let
     }
   ]);
 
+  parentTraversalResult = builtins.tryEval (evalNotes [
+    {
+      keystone.notes.daily = {
+        enable = true;
+        symlinkPath = "../daily.md";
+      };
+    }
+  ]);
+
   enabledExecStart = normalizeCommand enabledConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
   disabledExecStart = normalizeCommand disabledConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
   execStartPost = normalizeCommand (
@@ -55,6 +64,7 @@ let
   );
   timerCalendar = enabledConfig.systemd.user.timers.keystone-notes-sync.Timer.OnCalendar;
   assertionTripped = !badConfigResult.success;
+  parentTraversalAssertionTripped = !parentTraversalResult.success;
   boolString = value: if value then "true" else "false";
 in
 pkgs.runCommand "notes-evaluation" { } ''
@@ -99,6 +109,18 @@ pkgs.runCommand "notes-evaluation" { } ''
       echo "PASS: daily-enabled sync script derives the dated journal target"
     fi
 
+    if [ -z "$rollover_helper" ] || ! grep -Fq 'if [[ "$DAILY_REAL" == "$TARGET_REAL" ]]' "$rollover_helper"; then
+      echo "FAIL: daily-enabled sync script does not guard against daily/target path aliasing" >&2
+      if [ -n "$rollover_helper" ]; then
+        cat "$rollover_helper" >&2
+      else
+        cat "$enabled_script" >&2
+      fi
+      errors=$((errors + 1))
+    else
+      echo "PASS: daily-enabled sync script guards against daily/target path aliasing"
+    fi
+
     if ! grep -Fq '/bin/repo-sync' "$enabled_script"; then
       echo "FAIL: daily-enabled sync script does not wrap repo-sync" >&2
       cat "$enabled_script" >&2
@@ -131,6 +153,9 @@ pkgs.runCommand "notes-evaluation" { } ''
 
     check "${boolString assertionTripped}" \
       "absolute daily symlink paths trip the module assertion"
+
+    check "${boolString parentTraversalAssertionTripped}" \
+      "parent traversal in daily symlink paths trips the module assertion"
 
     if [ "$errors" -gt 0 ]; then
       echo "$errors test(s) failed" >&2

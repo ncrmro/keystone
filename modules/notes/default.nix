@@ -27,6 +27,7 @@
 }:
 let
   cfg = config.keystone.notes;
+  pathHasParentTraversal = path: builtins.elem ".." (lib.splitString "/" path);
   sshAuthSock =
     if
       lib.hasAttrByPath [
@@ -298,6 +299,14 @@ let
       "$JOURNAL_PATH" \
       "$(${pkgs.coreutils}/bin/dirname "$DAILY_PATH")"
 
+    DAILY_REAL="$(${pkgs.coreutils}/bin/realpath -m "$DAILY_PATH")"
+    TARGET_REAL="$(${pkgs.coreutils}/bin/realpath -m "$TARGET_PATH")"
+
+    if [[ "$DAILY_REAL" == "$TARGET_REAL" ]]; then
+      echo "keystone-notes-daily-rollover: daily.symlinkPath resolves to today's journal target; refusing to replace the note with a symlink" >&2
+      exit 1
+    fi
+
     if [[ -L "$DAILY_PATH" ]] && [[ "$(${pkgs.coreutils}/bin/readlink "$DAILY_PATH")" == "$TARGET_REL" ]]; then
       if [[ ! -e "$TARGET_PATH" ]]; then
         : > "$TARGET_PATH"
@@ -431,12 +440,14 @@ in
   config = lib.mkIf cfg.enable {
     assertions = lib.optionals cfg.daily.enable [
       {
-        assertion = !lib.hasPrefix "/" cfg.daily.symlinkPath;
-        message = "keystone.notes.daily.symlinkPath must be relative to keystone.notes.path.";
+        assertion =
+          !lib.hasPrefix "/" cfg.daily.symlinkPath && !pathHasParentTraversal cfg.daily.symlinkPath;
+        message = "keystone.notes.daily.symlinkPath must stay under keystone.notes.path and must not contain '..' segments.";
       }
       {
-        assertion = !lib.hasPrefix "/" cfg.daily.journalPath;
-        message = "keystone.notes.daily.journalPath must be relative to keystone.notes.path.";
+        assertion =
+          !lib.hasPrefix "/" cfg.daily.journalPath && !pathHasParentTraversal cfg.daily.journalPath;
+        message = "keystone.notes.daily.journalPath must stay under keystone.notes.path and must not contain '..' segments.";
       }
     ];
 
