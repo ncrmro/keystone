@@ -92,7 +92,7 @@ When a user-level Home Manager profile needs reusable credentials across multipl
 32. The nix daemon authenticating to GitHub for fetches (`nix flake update`, `ks update`, channel updates, builtin builders) MUST use an agenix secret materialized into a root-readable include file referenced from `nix.conf`. The daemon runs as root under `sudo nixos-rebuild` / `ks update`, so a user-only `mode 0400 owner=<user>` file is not sufficient.
 33. `keystone.os.githubTokenNix` MUST be the wiring module. It writes `/etc/nix/access-tokens.conf` from the runtime file via a hardened systemd oneshot and appends `!include` to `nix.extraOptions`. The token value never enters the Nix store.
 34. The module auto-discovers the secret at module-eval time when `tokenFile` is unset; explicit `tokenFile = "..."` always overrides. Discovery order:
-    1. `/run/agenix/nix-github-token` — dedicated nix-daemon secret if `age.secrets.nix-github-token` is declared.
+    1. `/run/agenix/nix-github-token` — dedicated nix-daemon secret if `age.secrets."nix-github-token"` is declared.
     2. `/run/agenix/${adminUsername}-github-token` — user-home PAT shared at os-level if `age.secrets."${adminUsername}-github-token"` is declared.
     3. (nothing found) — module stays inert. No assertion failure, no systemd unit emitted.
 35. The **preferred default** is shape (2): single PAT backing `gh` / `git` / nix-daemon. CLAUDE.md rule 26 already requires user-home secrets to include every relevant host's system key, so root on those hosts can already decrypt the same ciphertext. Adopters declare one `age.secrets."${username}-github-token"` with `owner = "root"; group = "users"; mode = "0440";` — root reads it for the nix-daemon include file, the `users` group reads it for the user shell env hook.
@@ -114,7 +114,7 @@ When a user-level Home Manager profile needs reusable credentials across multipl
 ];
 
 # nixos host that runs `ks update` / `nix flake update`
-age.secrets.ncrmro-github-token = {
+age.secrets."ncrmro-github-token" = {
   file = "${inputs.agenix-secrets}/secrets/ncrmro-github-token.age";
   owner = "root";
   group = "users";
@@ -133,7 +133,7 @@ keystone.os.githubTokenNix.enable = true;
   systems.shared-build-host
 ];
 
-age.secrets.nix-github-token = {
+age.secrets."nix-github-token" = {
   file = "${inputs.agenix-secrets}/secrets/nix-github-token.age";
   owner = "root";
   mode = "0400";
@@ -155,6 +155,6 @@ keystone.terminal.githubTokenNix.enable = true;
 keystone.terminal.githubTokenNix = {
   enable = true;
   source = "tokenFile";
-  tokenFile = config.age.secrets.ncrmro-github-token.path;
+  tokenFile = config.age.secrets."ncrmro-github-token".path;
 };
 ```

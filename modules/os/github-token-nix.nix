@@ -29,10 +29,10 @@ let
   effectiveTokenFile =
     if cfg.tokenFile != null then
       cfg.tokenFile
-    else if config.age.secrets ? nix-github-token then
-      "/run/agenix/nix-github-token"
-    else if config.age.secrets ? ${userPatSecretName} then
-      "/run/agenix/${userPatSecretName}"
+    else if config.age.secrets ? "nix-github-token" then
+      config.age.secrets."nix-github-token".path
+    else if config.age.secrets ? "${userPatSecretName}" then
+      config.age.secrets."${userPatSecretName}".path
     else
       null;
 
@@ -88,7 +88,7 @@ in
       {
         assertion = validBasename;
         message =
-          "keystone.os.githubTokenNix.tokenFile basename '${basename}' does not match "
+          "keystone.os.githubTokenNix effective token file basename '${basename}' does not match "
           + "the OS-level naming convention. Use 'nix-github-token' (portable), "
           + "'<hostname>-nix-github-token' (host-scoped dedicated), or "
           + "'<username>-github-token' (user-PAT shared at os-level). See "
