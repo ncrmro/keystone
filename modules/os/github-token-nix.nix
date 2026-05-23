@@ -30,9 +30,9 @@ let
     if cfg.tokenFile != null then
       cfg.tokenFile
     else if lib.hasAttrByPath [ "age" "secrets" "nix-github-token" ] config then
-      config.age.secrets."nix-github-token".path
+      lib.getAttrFromPath [ "age" "secrets" "nix-github-token" "path" ] config
     else if lib.hasAttrByPath [ "age" "secrets" userPatSecretName ] config then
-      config.age.secrets."${userPatSecretName}".path
+      lib.getAttrFromPath [ "age" "secrets" userPatSecretName "path" ] config
     else
       null;
 
