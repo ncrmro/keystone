@@ -276,6 +276,87 @@ let
       chmod g+s "$NOTES_PATH/.zk"
     fi
   '';
+
+  dailyRolloverScript = pkgs.writeShellScript "keystone-notes-daily-rollover" ''
+    set -euo pipefail
+
+    NOTES_PATH=${lib.escapeShellArg cfg.path}
+    DAILY_REL=${lib.escapeShellArg cfg.daily.symlinkPath}
+    JOURNAL_REL=${lib.escapeShellArg cfg.daily.journalPath}
+    TODAY_FILE_NAME="$(date +${lib.escapeShellArg cfg.daily.dateFormat}).md"
+
+    DAILY_PATH="$NOTES_PATH/$DAILY_REL"
+    JOURNAL_PATH="$NOTES_PATH/$JOURNAL_REL"
+    TARGET_REL="$JOURNAL_REL/$TODAY_FILE_NAME"
+    TARGET_PATH="$NOTES_PATH/$TARGET_REL"
+
+    if [[ ! -d "$NOTES_PATH/.git" ]]; then
+      exit 0
+    fi
+
+    ${pkgs.coreutils}/bin/mkdir -p \
+      "$JOURNAL_PATH" \
+      "$(${pkgs.coreutils}/bin/dirname "$DAILY_PATH")"
+
+    if [[ -L "$DAILY_PATH" ]] && [[ "$(${pkgs.coreutils}/bin/readlink "$DAILY_PATH")" == "$TARGET_REL" ]]; then
+      if [[ ! -e "$TARGET_PATH" ]]; then
+        : > "$TARGET_PATH"
+      fi
+      exit 0
+    fi
+
+    if [[ -e "$DAILY_PATH" ]] && [[ ! -L "$DAILY_PATH" ]]; then
+      if [[ "$(${pkgs.coreutils}/bin/realpath -m "$DAILY_PATH")" != "$(${pkgs.coreutils}/bin/realpath -m "$TARGET_PATH")" ]]; then
+        if [[ ! -e "$TARGET_PATH" ]]; then
+          ${pkgs.coreutils}/bin/mv "$DAILY_PATH" "$TARGET_PATH"
+        else
+          if ! ${pkgs.diffutils}/bin/cmp -s "$DAILY_PATH" "$TARGET_PATH"; then
+            printf '\n' >> "$TARGET_PATH"
+            ${pkgs.coreutils}/bin/cat "$DAILY_PATH" >> "$TARGET_PATH"
+          fi
+          ${pkgs.coreutils}/bin/rm -f "$DAILY_PATH"
+        fi
+      fi
+    fi
+
+    if [[ ! -e "$TARGET_PATH" ]]; then
+      : > "$TARGET_PATH"
+    fi
+
+    TMP_LINK="$DAILY_PATH.tmp"
+    ${pkgs.coreutils}/bin/ln -sfn "$TARGET_REL" "$TMP_LINK"
+    ${pkgs.coreutils}/bin/mv -Tf "$TMP_LINK" "$DAILY_PATH"
+  '';
+
+  notesSyncScript = pkgs.writeShellScript "keystone-notes-sync" ''
+    set -euo pipefail
+
+    NOTES_GIT_DIR=${lib.escapeShellArg "${cfg.path}/.git"}
+
+    repo_sync() {
+      ${pkgs.keystone.repo-sync}/bin/repo-sync \
+        --repo ${lib.escapeShellArg cfg.repo} \
+        --path ${lib.escapeShellArg cfg.path} \
+        --commit-prefix ${lib.escapeShellArg cfg.commitPrefix} \
+        --log-dir ${lib.escapeShellArg "${config.home.homeDirectory}/.local/state/notes-sync/logs"}
+    }
+
+    if [[ ! -d "$NOTES_GIT_DIR" ]]; then
+      repo_sync
+
+      # First-run daily rollover needs a second sync pass because repo-sync is
+      # responsible for the initial clone.
+      ${lib.optionalString cfg.daily.enable ''
+        ${dailyRolloverScript}
+        repo_sync
+      ''}
+    else
+      ${lib.optionalString cfg.daily.enable ''
+        ${dailyRolloverScript}
+      ''}
+      repo_sync
+    fi
+  '';
 in
 {
   imports = [ ../shared/experimental.nix ];
@@ -320,12 +401,45 @@ in
       };
     };
 
+    daily = {
+      enable = lib.mkEnableOption "git-tracked daily note rollover";
+
+      symlinkPath = lib.mkOption {
+        type = lib.types.str;
+        default = "daily.md";
+        description = "Path to the current daily note entrypoint, relative to the notes repo root.";
+      };
+
+      journalPath = lib.mkOption {
+        type = lib.types.str;
+        default = "journal";
+        description = "Directory for dated daily notes, relative to the notes repo root.";
+      };
+
+      dateFormat = lib.mkOption {
+        type = lib.types.str;
+        default = "%Y-%m-%d";
+        description = "Format string passed to date(1) when deriving the dated daily note filename.";
+      };
+    };
+
     zk = {
       enable = lib.mkEnableOption "zk Zettelkasten notebook initialization";
     };
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = lib.optionals cfg.daily.enable [
+      {
+        assertion = !lib.hasPrefix "/" cfg.daily.symlinkPath;
+        message = "keystone.notes.daily.symlinkPath must be relative to keystone.notes.path.";
+      }
+      {
+        assertion = !lib.hasPrefix "/" cfg.daily.journalPath;
+        message = "keystone.notes.daily.journalPath must be relative to keystone.notes.path.";
+      }
+    ];
+
     systemd.user.services.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
       Unit = {
         Description = "Sync notes repo via repo-sync";
@@ -336,13 +450,7 @@ in
         Environment = [
           "SSH_AUTH_SOCK=${sshAuthSock}"
         ];
-        ExecStart = builtins.concatStringsSep " " [
-          "${pkgs.keystone.repo-sync}/bin/repo-sync"
-          "--repo ${lib.escapeShellArg cfg.repo}"
-          "--path ${lib.escapeShellArg cfg.path}"
-          "--commit-prefix ${lib.escapeShellArg cfg.commitPrefix}"
-          "--log-dir ${config.home.homeDirectory}/.local/state/notes-sync/logs"
-        ];
+        ExecStart = "${notesSyncScript}";
         ExecStartPost = "${pkgs.bash}/bin/bash -lc 'if command -v pz >/dev/null 2>&1; then pz export-menu-cache --write-state >/dev/null 2>&1 || true; fi'";
       };
     };
