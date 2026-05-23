@@ -84,7 +84,6 @@ in
     ./mail-client.nix
     ./tailscale.nix
     ./ssh.nix
-    ./notes.nix
     ./home-manager.nix
     ./observability.nix
     ./perception.nix

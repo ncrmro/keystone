@@ -172,15 +172,6 @@ in
                   chown ${username}:agent-admins /home/${username}
                   chmod 2770 /home/${username}
                   ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
-                  for _qf_name in TASKS PROJECTS; do
-                    _qf="/home/${username}/$_qf_name.yaml"
-                    if [ ! -f "$_qf" ]; then
-                      _key=$(echo "$_qf_name" | tr '[:upper:]' '[:lower:]')
-                      printf -- '---\n%s: []\n' "$_key" > "$_qf"
-                      chown ${username}:agent-admins "$_qf"
-                      chmod 0660 "$_qf"
-                    fi
-                  done
                 fi
               ''
             ) cfg
@@ -214,15 +205,6 @@ in
                 chown ${username}:agent-admins /home/${username}
                 chmod 2770 /home/${username}
                 ${pkgs.acl}/bin/setfacl -d -m g::rwx /home/${username}
-                for _qf_name in TASKS PROJECTS; do
-                  _qf="/home/${username}/$_qf_name.yaml"
-                  if [ ! -f "$_qf" ]; then
-                    _key=$(echo "$_qf_name" | tr '[:upper:]' '[:lower:]')
-                    printf -- '---\n%s: []\n' "$_key" > "$_qf"
-                    chown ${username}:agent-admins "$_qf"
-                    chmod 0660 "$_qf"
-                  fi
-                done
 
                 ${labwcConfigScript username agentCfg}
               ''

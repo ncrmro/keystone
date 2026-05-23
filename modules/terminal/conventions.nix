@@ -99,22 +99,12 @@ let
           if aiCommandIds == [ ] then "_none_" else concatStringsSep ", " aiCommandIds
         }
       ''
-      (optionalString (elem "notes" aiCapabilities) ''
-        ## Notes command guidance
-
-        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-        - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-        - On Keystone systems, use `NOTES_DIR` as the canonical notebook root. It resolves to `keystone.notes.path` (`~/notes` for human users, per-agent notes paths for OS agents).
-        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
-        - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
-      '')
       ''
         ## Shared-surface tracking
 
         - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
         - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
         - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
-        - Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
       ''
       ''
         ## PR review comments
@@ -204,15 +194,6 @@ let
 
         ${reposList}
       ''
-      (optionalString (elem "notes" aiCapabilities) ''
-        ## Notes command guidance
-
-        - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
-        - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-        - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
-        - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
-        - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
-      '')
       ''
         ## Shared-surface tracking
 

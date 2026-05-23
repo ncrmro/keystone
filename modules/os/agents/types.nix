@@ -16,107 +16,11 @@
 with lib;
 let
   topDomain = config.keystone.domain;
-  taskLoopProviderType = types.enum [
-    "claude"
-    "gemini"
-    "codex"
-  ];
-  taskLoopEffortType = types.enum [
-    "low"
-    "medium"
-    "high"
-    "max"
-  ];
-  taskLoopProfileProviderSubmodule = types.submodule {
-    options = {
-      model = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Model name for this provider when the profile is selected.";
-      };
-
-      fallbackModel = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Fallback model for this provider when the primary model is unavailable.";
-      };
-
-      effort = mkOption {
-        type = types.nullOr taskLoopEffortType;
-        default = null;
-        description = "Reasoning effort level for this provider. Currently only Claude consumes this value.";
-      };
-    };
-  };
-  taskLoopProfileSubmodule = types.submodule {
-    options = {
-      claude = mkOption {
-        type = taskLoopProfileProviderSubmodule;
-        default = { };
-        description = "Claude-specific model settings for this task-loop profile.";
-      };
-
-      gemini = mkOption {
-        type = taskLoopProfileProviderSubmodule;
-        default = { };
-        description = "Gemini-specific model settings for this task-loop profile.";
-      };
-
-      codex = mkOption {
-        type = taskLoopProfileProviderSubmodule;
-        default = { };
-        description = "Codex-specific model settings for this task-loop profile.";
-      };
-    };
-  };
-  taskLoopStageSubmodule =
-    {
-      providerDefault ? null,
-      profileDefault ? null,
-      descriptionPrefix,
-    }:
-    types.submodule {
-      options = {
-        profile = mkOption {
-          type = types.nullOr types.str;
-          default = profileDefault;
-          description = "${descriptionPrefix} profile name. Semantic profiles such as fast, medium, and max resolve to provider-specific model settings.";
-          example = "fast";
-        };
-
-        provider = mkOption {
-          type = types.nullOr taskLoopProviderType;
-          default = providerDefault;
-          description = "${descriptionPrefix} provider. If null, the task loop falls back to the next configured scope.";
-        };
-
-        model = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "${descriptionPrefix} explicit model override.";
-          example = "sonnet";
-        };
-
-        fallbackModel = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-          description = "${descriptionPrefix} fallback model override.";
-          example = "opus";
-        };
-
-        effort = mkOption {
-          type = types.nullOr taskLoopEffortType;
-          default = null;
-          description = "${descriptionPrefix} reasoning effort override. Currently only Claude consumes this value.";
-        };
-      };
-    };
 in
 {
   agentSubmodule = types.submodule (
     {
       name,
-      config,
       ...
     }:
     {
@@ -143,7 +47,6 @@ in
               "ks"
               "ks-dev"
               "assistant"
-              "notes"
               "project"
               "engineer"
               "product"
@@ -158,7 +61,6 @@ in
             gate what the generated `/ks` and `/ks-dev` skills may do.
           '';
           example = [
-            "notes"
             "executive-assistant"
           ];
         };
@@ -370,109 +272,6 @@ in
             type = types.bool;
             default = false;
             description = "Emit provisioning instructions for Vaultwarden (no API available for auto-create).";
-          };
-        };
-
-        notes = {
-          repo = mkOption {
-            type = types.str;
-            default = "ssh://forgejo@${config.git.host}:${toString config.git.sshPort}/${config.git.username}/${config.git.repoName}.git";
-            description = "Git repository URL for the agent's notes. Auto-derived from git options.";
-            example = "ssh://forgejo@git.example.com:2222/user/notes.git";
-          };
-
-          path = mkOption {
-            type = types.str;
-            default = "/home/agent-${name}/notes";
-            description = "Local checkout path for the notes repo.";
-          };
-
-          syncOnCalendar = mkOption {
-            type = types.str;
-            default = "*:0/5";
-            description = "Systemd calendar spec for notes sync timer. Default: every 5 minutes.";
-          };
-
-          taskLoop = {
-            onCalendar = mkOption {
-              type = types.str;
-              default = "*:0/5";
-              description = "Systemd calendar spec for task loop timer. Default: every 5 minutes.";
-            };
-
-            maxTasks = mkOption {
-              type = types.int;
-              default = 5;
-              description = "Maximum number of pending tasks to execute per run.";
-            };
-
-            defaults = mkOption {
-              type = taskLoopStageSubmodule {
-                providerDefault = "claude";
-                profileDefault = null;
-                descriptionPrefix = "Global task-loop default";
-              };
-              default = { };
-              description = ''
-                Global task-loop defaults shared by ingest, prioritize, and
-                execute. Stage-specific settings and TASKS.yaml fields can
-                override these values.
-              '';
-            };
-
-            profiles = mkOption {
-              type = types.attrsOf taskLoopProfileSubmodule;
-              default = { };
-              description = ''
-                Custom task-loop model profiles keyed by semantic names such as
-                fast, medium, or max. These extend and override the built-in
-                profile catalog.
-              '';
-              example = literalExpression ''
-                {
-                  medium = {
-                    claude = {
-                      model = "sonnet";
-                      fallbackModel = "opus";
-                      effort = "medium";
-                    };
-                    gemini.model = "auto-gemini-3";
-                  };
-                }
-              '';
-            };
-
-            ingest = mkOption {
-              type = taskLoopStageSubmodule {
-                descriptionPrefix = "Ingest-stage";
-              };
-              default = { };
-              description = "Provider, profile, model, fallback model, and effort overrides for the ingest stage.";
-            };
-
-            prioritize = mkOption {
-              type = taskLoopStageSubmodule {
-                descriptionPrefix = "Prioritize-stage";
-              };
-              default = { };
-              description = "Provider, profile, model, fallback model, and effort overrides for the prioritize stage.";
-            };
-
-            execute = mkOption {
-              type = taskLoopStageSubmodule {
-                descriptionPrefix = "Execute-stage";
-              };
-              default = { };
-              description = "Provider, profile, model, fallback model, and effort overrides for task execution.";
-            };
-          };
-
-          scheduler = {
-            onCalendar = mkOption {
-              type = types.str;
-              default = "*-*-* 05:00:00";
-              description = "Systemd calendar spec for scheduler timer. Default: daily at 5 AM.";
-            };
           };
         };
 

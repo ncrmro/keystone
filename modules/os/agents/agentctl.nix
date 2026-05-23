@@ -35,8 +35,12 @@ let
   agentHelperCases = concatStringsSep "\n" (
     mapAttrsToList (name: _: "    ${name}) HELPER=\"${agentSvcHelper name}\" ;;") cfg
   );
+  # NOTES_DIR is retained as the working-directory hint for interactive agent
+  # sessions launched via `agentctl <agent> claude|gemini|codex|bash`. It now
+  # defaults to the agent's home directory; per-agent path configuration was
+  # removed alongside the autonomous notes-sync subsystem.
   agentNotesCases = concatStringsSep "\n" (
-    mapAttrsToList (name: agentCfg: "    ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;") cfg
+    mapAttrsToList (name: _: "    ${name}) NOTES_DIR=\"/home/agent-${name}\" ;;") cfg
   );
   agentVncCases = concatStringsSep "\n" (
     mapAttrsToList (

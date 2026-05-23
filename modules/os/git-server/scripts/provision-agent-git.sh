@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Provision Forgejo user and repo for an agent.
+# Provision Forgejo user account and SSH key for an agent.
 #
 # Environment variables expected:
 #   FORGEJO_USER: System user running Forgejo (e.g. forgejo)
@@ -9,10 +9,8 @@ set -euo pipefail
 #   API_URL: Forgejo API URL
 #   USERNAME: Agent's Forgejo username
 #   EMAIL: Agent's email
-#   REPO_NAME: Name of the repo to create
 #   AGENT_NAME: The identifier of the agent (e.g. drago)
 #   AGENT_PUBKEY: (Optional) SSH public key for the agent
-#   ADMIN_USERS_JSON: (Optional) JSON array of admin users to add as collaborators
 #   DOMAIN: Forgejo domain
 
 FORGEJO="sudo -u ${FORGEJO_USER} forgejo --work-path ${STATE_DIR} admin"
@@ -41,7 +39,7 @@ TOKEN=$($FORGEJO user generate-access-token \
   --raw 2>/dev/null || true)
 
 if [ -z "$TOKEN" ]; then
-  echo "${USERNAME}: Could not generate API token, skipping SSH key and repo provisioning"
+  echo "${USERNAME}: Could not generate API token, skipping SSH key provisioning"
   exit 0
 fi
 AUTH="Authorization: token $TOKEN"
@@ -68,40 +66,6 @@ if [ -n "${AGENT_PUBKEY:-}" ]; then
     echo "${USERNAME}: SSH key added"
     echo "${USERNAME}: NOTE: To enable signed commit verification, verify the SSH key in Forgejo web UI: Settings → SSH/GPG Keys → Verify"
   fi
-fi
-
-# --- Repo provisioning ---
-REPO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "$AUTH" "$API/repos/${USERNAME}/${REPO_NAME}")
-
-if [ "$REPO_STATUS" = "200" ]; then
-  echo "${USERNAME}: Repo ${REPO_NAME} already exists"
-else
-  echo "${USERNAME}: Creating repo ${REPO_NAME}..."
-  curl -sf -H "$AUTH" "$API/user/repos" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n \
-      --arg name "${REPO_NAME}" \
-      --arg desc "Notes and task workspace for agent-${AGENT_NAME}" \
-      '{name: $name, description: $desc, private: true, auto_init: true}')"
-  echo "${USERNAME}: Repo ${REPO_NAME} created"
-fi
-
-# --- Add admin collaborators ---
-if [ -n "${ADMIN_USERS_JSON:-}" ]; then
-  echo "$ADMIN_USERS_JSON" | jq -r '.[]' | while read -r collab; do
-    COLLAB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-      -H "$AUTH" "$API/repos/${USERNAME}/${REPO_NAME}/collaborators/${collab}")
-    if [ "$COLLAB_STATUS" = "204" ]; then
-      echo "${USERNAME}: ${collab} already a collaborator on ${REPO_NAME}"
-    else
-      curl -sf -X PUT -H "$AUTH" \
-        "$API/repos/${USERNAME}/${REPO_NAME}/collaborators/${collab}" \
-        -H "Content-Type: application/json" \
-        -d '{"permission": "admin"}'
-      echo "${USERNAME}: Added ${collab} as admin collaborator on ${REPO_NAME}"
-    fi
-  done
 fi
 
 # --- Persistent API token for tea/fj CLI access ---

@@ -194,15 +194,6 @@ in
                   };
                 };
 
-                # Bridge agent notes config to the home-manager notes module.
-                # Agents get both zk scaffolding and repo-sync via this module.
-                keystone.notes = mkIf agentCfg.terminal.enable {
-                  enable = mkDefault true;
-                  repo = mkDefault agentCfg.notes.repo;
-                  path = mkDefault agentCfg.notes.path;
-                  zk.enable = mkDefault true;
-                };
-
                 # Delegate Grafana MCP to the terminal module (REQ-017.10, REQ-017.11).
                 keystone.terminal.grafana.mcp = mkIf agentCfg.grafana.mcp.enable {
                   enable = true;
