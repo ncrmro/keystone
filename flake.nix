@@ -444,6 +444,13 @@
               ;
             self = self;
           };
+          notesEvaluation = import ./tests/module/notes-evaluation.nix {
+            inherit
+              pkgs
+              home-manager
+              ;
+            self = self;
+          };
           templateUpdateChannel = import ./tests/module/template-update-channel.nix {
             inherit pkgs lib;
             self = self;
@@ -540,6 +547,7 @@
           os-evaluation = osEvaluation;
           agent-evaluation = agentEvaluation;
           template-evaluation = templateEvaluation;
+          notes-evaluation = notesEvaluation;
           template-update-channel = templateUpdateChannel;
           template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
@@ -583,6 +591,7 @@
             ln -s ${osEvaluation} "$out/os-evaluation"
             ln -s ${agentEvaluation} "$out/agent-evaluation"
             ln -s ${templateEvaluation} "$out/template-evaluation"
+            ln -s ${notesEvaluation} "$out/notes-evaluation"
             ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${templateSpecialArgs} "$out/template-special-args"
             ln -s ${serverEvaluation} "$out/server-evaluation"

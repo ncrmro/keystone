@@ -41,7 +41,8 @@ module's role is shifting to pure knowledge management. The option surface and
 zk integration may be restructured.
 
 **Options**: `keystone.notes.enable`, `.repo`, `.path`, `.syncInterval`,
-`.commitPrefix`, `.sync.enable`, `.zk.enable`
+`.commitPrefix`, `.sync.enable`, `.daily.enable`, `.daily.symlinkPath`,
+`.daily.journalPath`, `.daily.dateFormat`, `.zk.enable`
 
 ### `keystone.terminal.conventions` — Agent instruction generation
 

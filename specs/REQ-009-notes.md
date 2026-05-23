@@ -70,3 +70,35 @@ macOS in the future).
 
 **REQ-009.15** The module MAY provide launchd plist generation for macOS
 support as a future extension.
+
+### Daily note rollover
+
+**REQ-009.16** The module MUST expose `keystone.notes.daily.enable` (bool,
+default `false`) to opt into git-tracked daily note rollover.
+
+**REQ-009.17** When `keystone.notes.daily.enable = true`, the notes sync path
+MUST ensure the configured daily entrypoint (default `daily.md`) is a relative
+symlink to a dated note under the configured journal directory (default
+`journal/YYYY-MM-DD.md`) before the final sync pass commits and pushes changes.
+
+**REQ-009.18** The module MUST create the dated target note if it does not yet
+exist, so a day rollover can be committed even before the user manually edits
+the new file.
+
+**REQ-009.19** If the daily entrypoint already exists as a regular file on the
+same day the feature is enabled, the module MUST migrate that content into the
+dated target note before replacing the entrypoint with a symlink.
+
+**REQ-009.20** On first run, when the notes repo is cloned by the sync path,
+the module MUST perform an additional sync pass after daily rollover so the
+newly-created symlink change is committed and pushed without waiting for the
+next timer tick.
+
+**REQ-009.21** `keystone.notes.daily.symlinkPath` and
+`keystone.notes.daily.journalPath` MUST stay under `keystone.notes.path`. The
+module MUST reject absolute paths and parent-directory traversal segments such
+as `..`.
+
+**REQ-009.22** The rollover helper MUST fail fast when the configured daily
+entrypoint resolves to the same path as the derived dated target note, so it
+cannot replace a real note with a symlink.

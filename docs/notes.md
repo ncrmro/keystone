@@ -56,6 +56,11 @@ Keystone automatically fetches and pushes the notes repo on a timer.
 This makes the notes repo usable as shared state between the human operator,
 desktop project navigation, `pz`, and agent workflows.
 
+When `keystone.notes.daily.enable = true`, the same sync path also keeps
+`daily.md` pointed at today's dated journal note (for example
+`journal/2026-05-22.md`). The first sync after a day rollover commits and
+pushes the symlink move automatically.
+
 ## What the notes system is for
 
 Use the notes system to:
@@ -95,6 +100,7 @@ bodies into a new note each day.
 The current notes model uses these groups:
 
 - `inbox/` for quick captures and raw notes
+- `journal/` for dated daily notes such as `journal/2026-05-22.md`
 - `literature/` for source summaries
 - `notes/` for durable idea notes
 - `decisions/` for explicit decisions
@@ -344,7 +350,9 @@ and update a relevant system or operations hub if one exists.
 ## Where this is configured
 
 - The home-manager notes module syncs the notes repo and can scaffold a zk
-  notebook for human users.
+  notebook for human users. When `keystone.notes.daily.enable = true`, it also
+  rotates `daily.md` to the current `journal/YYYY-MM-DD.md` target before the
+  sync commit/push step.
 - OS agents use the same notebook model in their agent-space.
 - The AI command layer exposes the notes workflows across the supported coding
   agents, with tool-specific UX differences.
