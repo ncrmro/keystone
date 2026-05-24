@@ -35,7 +35,7 @@ stdenvNoCC.mkDerivation {
 
     for command in "$out"/bin/*; do
       wrapProgram "$command" \
-        --prefix PATH : "${
+        --suffix PATH : "${
           lib.makeBinPath [
             bash
             bc
