@@ -31,6 +31,7 @@ let
   repo-sync-src = ../packages/repo-sync;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
+  zide-src = ../packages/zide;
   zellij-tab-name-src = ../packages/zellij-tab-name;
   hyprpolkitagent-src = ../packages/hyprpolkitagent;
   write-polkit-theme-src = ../packages/write-polkit-theme;
@@ -84,6 +85,7 @@ in
     ks = final.callPackage ks-src { };
     pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
+    zide = final.callPackage zide-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };
     hyprpolkitagent = final.callPackage hyprpolkitagent-src { };
     write-polkit-theme = final.callPackage write-polkit-theme-src { };

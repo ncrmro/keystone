@@ -522,6 +522,13 @@
               home-manager
               ;
           };
+          terminalZide = import ./tests/module/terminal-zide.nix {
+            inherit
+              pkgs
+              self
+              home-manager
+              ;
+          };
           agentTaskLoopHashRegression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
@@ -570,6 +577,7 @@
           agentctl-regression = agentctlRegression;
           binary-cache-client-merge = binaryCacheClientMerge;
           zellij-tab-prompt = zellijTabPrompt;
+          terminal-zide = terminalZide;
           agent-task-loop-hash-regression = agentTaskLoopHashRegression;
           agent-task-loop-ping-pong = agentTaskLoopPingPong;
           agent-runtime-coherence = agentRuntimeCoherence;
@@ -637,6 +645,7 @@
             ln -s ${agentQueueMigration} "$out/agent-queue-migration"
             ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
             ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
+            ln -s ${terminalZide} "$out/terminal-zide"
           '';
         };
 
@@ -666,6 +675,7 @@
             ks
             pz
             cfait
+            zide
             zellij-tab-name
             write-polkit-theme
             chrome-devtools-mcp
