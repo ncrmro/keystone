@@ -132,12 +132,14 @@ pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
     let mut blockers = Vec::new();
 
     // Machine-wide blockers
-    if matches!(report.machine.secure_boot, SecureBootState::Disabled) {
-        blockers.push(
-            "Secure Boot is DISABLED. TPM PCR-7 binding provides no integrity guarantee. \
-             Enable Secure Boot in firmware before running `ks hardware setup`."
-                .into(),
-        );
+    if !matches!(report.machine.secure_boot, SecureBootState::Enrolled) {
+        blockers.push(format!(
+            "Secure Boot is not enrolled (current state: {:?}). \
+             TPM PCR-7 binding provides no integrity guarantee unless Secure Boot is \
+             active with enrolled keys. Enroll Secure Boot keys in firmware before \
+             running `ks hardware setup`.",
+            report.machine.secure_boot
+        ));
     }
 
     // Per-volume steps. TPM and FIDO2 enrollment depend on the
@@ -310,9 +312,17 @@ pub async fn execute<P: SetupPrompts>(
                 enroll::enroll_fido2().await.context("enrolling FIDO2")?;
             }
             SetupStep::EnrollFingerprint => {
-                enroll::enroll_fingerprint()
-                    .await
-                    .context("enrolling fingerprint")?;
+                // Fingerprint enrollment is best-effort: fprintd may be
+                // enabled by default even on systems without a reader, so a
+                // failure here should not abort the whole setup chain.
+                if let Err(e) = enroll::enroll_fingerprint().await {
+                    prompts
+                        .say(&format!(
+                            "⚠ Fingerprint enrollment skipped ({}); continuing setup.",
+                            e
+                        ))
+                        .await;
+                }
             }
             SetupStep::Skip { .. } => {}
         }
@@ -454,6 +464,30 @@ mod tests {
         r.machine.secure_boot = SecureBootState::Disabled;
         let p = plan(&r, &SetupOptions::default());
         assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+    }
+
+    #[test]
+    fn plan_blocks_when_secure_boot_setup_mode() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::SetupMode;
+        let p = plan(&r, &SetupOptions::default());
+        assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+    }
+
+    #[test]
+    fn plan_blocks_when_secure_boot_unknown() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::Unknown;
+        let p = plan(&r, &SetupOptions::default());
+        assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+    }
+
+    #[test]
+    fn plan_does_not_block_when_secure_boot_enrolled() {
+        // Verify the happy path: Enrolled does NOT trigger the blocker.
+        let r = fresh_install_report(); // uses SecureBootState::Enrolled
+        let p = plan(&r, &SetupOptions::default());
+        assert!(p.blockers.is_empty());
     }
 
     #[test]

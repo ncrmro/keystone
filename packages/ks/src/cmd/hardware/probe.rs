@@ -16,8 +16,28 @@ use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 /// The credstore zvol on `rpool` — keystone's canonical root-disk LUKS
-/// volume. Holds the rootfs encryption keys.
+/// volume on ZFS installs. Holds the rootfs encryption keys.
 pub const ROOT_CREDSTORE: &str = "/dev/zvol/rpool/credstore";
+
+/// Root LUKS device on non-ZFS (plain ext4/btrfs) installs, where the
+/// disk layout uses `disk-root-root` as the LUKS container label.
+pub const NON_ZFS_CREDSTORE: &str = "/dev/disk/by-partlabel/disk-root-root";
+
+/// Discover the root credstore device at runtime.
+///
+/// Checks the ZFS zvol path first (common case), then falls back to the
+/// by-partlabel path used on non-ZFS installs. Returns the ZFS path as
+/// a last resort so callers that only print the path still see a useful
+/// string.
+pub fn credstore_device() -> &'static Path {
+    if Path::new(ROOT_CREDSTORE).exists() {
+        Path::new(ROOT_CREDSTORE)
+    } else if Path::new(NON_ZFS_CREDSTORE).exists() {
+        Path::new(NON_ZFS_CREDSTORE)
+    } else {
+        Path::new(ROOT_CREDSTORE)
+    }
+}
 
 /// The default LUKS slot 0 passphrase shipped by the installer. The
 /// install flow uses this as a temporary placeholder; `ks hardware
@@ -584,11 +604,12 @@ fn fprintd_hw_seen() -> bool {
 }
 
 async fn probe_luks_volumes() -> Vec<LuksVolume> {
-    // v1.1 scope: only the canonical root credstore zvol is enumerated.
+    // v1.1 scope: only the canonical root credstore is enumerated.
+    // Dynamic discovery covers ZFS (`/dev/zvol/rpool/credstore`) and
+    // non-ZFS (`/dev/disk/by-partlabel/disk-root-root`) installs.
     // Reading /etc/crypttab + scanning rpool zvols for additional
-    // LUKS-protected zvols is a v1.2 expansion (see plan §
-    // "Not in scope").
-    let device = PathBuf::from(ROOT_CREDSTORE);
+    // LUKS-protected zvols is a v1.2 expansion.
+    let device = PathBuf::from(credstore_device());
     if !device.exists() {
         return Vec::new();
     }

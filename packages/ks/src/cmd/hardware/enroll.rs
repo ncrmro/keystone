@@ -24,7 +24,7 @@ use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use super::probe::{self, Method, DEFAULT_PASSWORD, ROOT_CREDSTORE};
+use super::probe::{self, credstore_device, Method, DEFAULT_PASSWORD, ROOT_CREDSTORE};
 
 /// PCRs that `keystone.os.tpm.pcrs` defaults to. The orchestrator does
 /// not currently override these per-host — that's tracked as a v1.2
@@ -85,7 +85,7 @@ pub async fn enroll_password() -> Result<()> {
     println!("\nRotating slot 0 to the new passphrase...");
     let status = Command::new("cryptsetup")
         .arg("luksChangeKey")
-        .arg(Path::new(ROOT_CREDSTORE))
+        .arg(credstore_device())
         .arg("--key-file")
         .arg(old_keyfile.path())
         .arg(new_keyfile.path())
@@ -110,7 +110,7 @@ pub async fn enroll_recovery() -> Result<()> {
     println!("=== Keystone enrollment: recovery key + TPM2 ===\n");
     preflight(PreflightSpec::TPM_ENROLLMENT).await?;
     let keyfile = current_passphrase_keyfile().await?;
-    let device = Path::new(ROOT_CREDSTORE);
+    let device = credstore_device();
     let device_str = device.to_string_lossy().to_string();
     let unlock_arg = format!("--unlock-key-file={}", keyfile.path().display());
     let pcrs_arg = format!("--tpm2-pcrs={}", TPM_PCRS);
@@ -144,7 +144,7 @@ pub async fn enroll_tpm() -> Result<()> {
     println!("=== Keystone enrollment: TPM2 (standalone) ===\n");
     preflight(PreflightSpec::TPM_ENROLLMENT).await?;
     let keyfile = current_passphrase_keyfile().await?;
-    let device = Path::new(ROOT_CREDSTORE);
+    let device = credstore_device();
     let device_str = device.to_string_lossy().to_string();
     let unlock_arg = format!("--unlock-key-file={}", keyfile.path().display());
     let pcrs_arg = format!("--tpm2-pcrs={}", TPM_PCRS);
@@ -177,7 +177,7 @@ pub async fn enroll_fido2() -> Result<()> {
     println!("Detected FIDO2 device: {}", devices[0].label);
 
     let keyfile = current_passphrase_keyfile().await?;
-    let device = Path::new(ROOT_CREDSTORE);
+    let device = credstore_device();
     let device_str = device.to_string_lossy().to_string();
     let unlock_arg = format!("--unlock-key-file={}", keyfile.path().display());
 
@@ -251,11 +251,14 @@ async fn preflight(spec: PreflightSpec) -> Result<()> {
     let report = probe::probe().await;
 
     if spec.require_secure_boot
-        && matches!(report.machine.secure_boot, probe::SecureBootState::Disabled)
+        && !matches!(report.machine.secure_boot, probe::SecureBootState::Enrolled)
     {
         bail!(
-            "Secure Boot is DISABLED. TPM PCR-7 binding has no integrity anchor. \
-             Enable Secure Boot in firmware before enrolling TPM-bound credentials."
+            "Secure Boot is not fully enrolled (current state: {:?}). \
+             TPM PCR-7 binding requires Secure Boot to be active with enrolled keys for a \
+             meaningful integrity anchor. Enroll Secure Boot keys in firmware before \
+             enrolling TPM-bound credentials.",
+            report.machine.secure_boot
         );
     }
     if spec.require_secure_boot {
@@ -269,10 +272,15 @@ async fn preflight(spec: PreflightSpec) -> Result<()> {
         println!("[OK] TPM2 device present");
     }
 
-    if !Path::new(ROOT_CREDSTORE).exists() {
-        bail!("credstore device not found: {}", ROOT_CREDSTORE);
+    let credstore = credstore_device();
+    if !credstore.exists() {
+        bail!(
+            "credstore device not found (tried {} and {})",
+            ROOT_CREDSTORE,
+            probe::NON_ZFS_CREDSTORE
+        );
     }
-    println!("[OK] Credstore device: {}\n", ROOT_CREDSTORE);
+    println!("[OK] Credstore device: {}\n", credstore.display());
     Ok(())
 }
 
@@ -283,7 +291,7 @@ async fn preflight(spec: PreflightSpec) -> Result<()> {
 /// unlock, prompts the user interactively (no echo) for their current
 /// passphrase and verifies it via `cryptsetup --test-passphrase`.
 async fn current_passphrase_keyfile() -> Result<NamedTempFile> {
-    let device = Path::new(ROOT_CREDSTORE);
+    let device = credstore_device();
 
     if test_passphrase(device, DEFAULT_PASSWORD).await? {
         return write_tempfile(DEFAULT_PASSWORD.as_bytes());

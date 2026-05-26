@@ -117,8 +117,9 @@ in
           | [!] WARNING: HARDWARE ENROLLMENT NOT CONFIGURED                          |
           +--------------------------------------------------------------------------+
           |                                                                          |
-          | Your system is using the default LUKS password "keystone" which is      |
-          | publicly known and provides NO security.                                 |
+          | TPM auto-unlock has not yet been enrolled on this system. Without       |
+          | TPM enrollment, you will need to enter your LUKS passphrase at every    |
+          | boot, and the default installer password may still be active.           |
           |                                                                          |
           | To secure your encrypted disk, run the one-shot enrollment:             |
           |                                                                          |
