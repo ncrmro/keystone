@@ -180,6 +180,7 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
     verify_all_repos_lock_ready(repo_root).await?;
 
     let deploy_session = cmd::switch::prepare_deploy_session(repo_root, hosts).await?;
+    let deployed_local = deploy_session.has_local_hosts();
     let build_result =
         cmd::build::execute(Some(&hosts.join(",")), true, None, false, Some(repo_root)).await?;
     cmd::switch::deploy_paths_with_session(
@@ -190,6 +191,13 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
         &build_result.store_paths,
     )
     .await?;
+
+    // First-time populate of agent assets (only when the tree is empty) so a
+    // locked fleet update leaves this host's skill symlinks resolving to
+    // content. Runs before the push so a fresh consumer flake is populated for
+    // the user to review/commit; the populate itself never commits. See
+    // conventions/tool.cli-coding-agents.md rule 14.
+    cmd::sync_agent_assets::populate_after_deploy(repo_root, deployed_local);
 
     let push_status = tokio::process::Command::new("git")
         .args(["-C"])

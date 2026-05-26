@@ -67,8 +67,12 @@ entire upgrade history of a single skill. Rollback is `git revert`; user
 override is just editing the file and committing — keystone's regen will
 overwrite on next run, the user's `git checkout` restores their version.
 
-The regen is **manual** (`ks sync-agent-assets`). Home-manager activation
-never silently rewrites the user's git tree.
+Home-manager activation never rewrites the user's git tree — it only manages
+symlink topology. On a fresh host, `ks switch` / `ks update` auto-populate the
+tree **once** (when `agents/skills/` is empty) so the symlinks resolve to
+content instead of nothing. Refreshing an already-populated tree stays
+**manual** (`ks sync-agent-assets`); the deploy wrappers never rewrite a
+populated, committed tree.
 
 ## L1 → L2 inheritance
 

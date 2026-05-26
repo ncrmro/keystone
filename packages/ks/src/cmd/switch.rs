@@ -24,6 +24,15 @@ pub struct DeploySession {
     ssh: SshSessionManager,
 }
 
+impl DeploySession {
+    /// Whether this deploy session activates the current machine's profile.
+    /// `false` for a remote-only deploy, where there are no local symlinks to
+    /// populate.
+    pub fn has_local_hosts(&self) -> bool {
+        !self.local_hosts.is_empty()
+    }
+}
+
 /// Guard that keeps sudo credentials alive by refreshing every 60 seconds.
 /// Dropping the guard cancels the background refresh task.
 pub struct SudoKeepAlive {
@@ -555,7 +564,14 @@ pub async fn execute(
     let session = prepare_deploy_session(&repo_root, &hosts).await?;
     let store_paths = build_targets(&repo_root, &hosts).await?;
 
+    let deployed_local = session.has_local_hosts();
     deploy_paths_with_session(&repo_root, &session, mode, &hosts, &store_paths).await?;
+
+    // Workflow automation over the manual-only sync model: a fresh host ends a
+    // switch with a populated skill tree instead of empty symlink targets.
+    // Only fills an *empty* tree, so a committed/populated tree is never
+    // rewritten — see conventions/tool.cli-coding-agents.md rule 14.
+    crate::cmd::sync_agent_assets::populate_after_deploy(&repo_root, deployed_local);
 
     Ok(SwitchResult {
         hosts,

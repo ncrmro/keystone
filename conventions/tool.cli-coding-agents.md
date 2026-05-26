@@ -282,9 +282,18 @@ can review them.
     always returns the wrong value). A `KEYSTONE_CONSUMER_FLAKE` env var
     MUST be honoured as an override for testing and ad-hoc invocations.
 14. The `ks sync-agent-assets` command MUST be the only writer to the
-    consumer-flake `agents/` directory. It MUST be run manually — home-manager
-    activation MUST NOT auto-trigger it. This guarantees the user's git tree
-    is never silently rewritten during `ks switch` / `ks update --dev`.
+    consumer-flake `agents/` directory. Home-manager *activation* MUST NOT
+    auto-trigger it — activation manages symlink topology only and never
+    writes content. The user-facing `ks switch` / `ks update` wrappers MAY
+    auto-populate the tree, but ONLY when `<consumer-flake>/agents/skills/`
+    is absent or empty, and only after a deploy that activated a local host.
+    A populated tree (the user's committed git working tree) MUST NOT be
+    rewritten by the deploy wrappers — that guarantees a steady-state switch
+    never produces a spurious diff and never silently clobbers reviewed
+    content. The first-time populate exists so a fresh host does not end a
+    rebuild with empty `~/.agents/skills` / `~/.claude/skills` symlink
+    targets; manual `ks sync-agent-assets` remains the way to refresh an
+    already-populated tree.
 15. `ks sync-agent-assets` MUST unconditionally overwrite keystone-generated
     files. The user's override mechanism is git: review the diff, `git checkout`
     to restore a previous version, then commit. No in-file markers, no skip-if-exists.
@@ -342,13 +351,20 @@ per-tool dirs in the consumer flake** — every agent reads from a home-dir
 symlink resolved at activation time. First-time setup on a fresh host:
 
 ```
-ks sync-agent-assets       # writes _shared/ and skills/
+ks switch                  # activation creates home-dir symlinks AND, because
+                           # agents/skills/ is empty, auto-populates _shared/
+                           # and skills/ once via sync-agent-assets
 cd <consumer-flake>
-git status                 # _shared/ and skills/ should show as untracked
+git status                 # _shared/ and skills/ now show as untracked
 git add agents/_shared agents/skills
 git commit -m "feat: add keystone agent assets"
-ks switch                  # activation creates home-dir symlinks
 ```
+
+`ks switch` only auto-populates when the tree is empty. To refresh an
+already-populated (committed) tree — e.g. after editing `archetypes.yaml` or
+`_shared/skills.yaml` — run `ks sync-agent-assets` explicitly, then review
+and commit the diff. The deploy wrappers will not rewrite a populated tree
+for you.
 
 Migrating from the PR #539 or pre-spec PR #542 shape:
 
