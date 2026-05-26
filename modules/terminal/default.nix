@@ -49,6 +49,7 @@ in
     ../shared/repos.nix
     ../shared/update.nix
     ./shell.nix
+    ./zide.nix
     ./editor.nix
     ./conventions.nix
     ./agents
