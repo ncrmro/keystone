@@ -595,6 +595,8 @@ tasks: # REQUIRED: only top-level key
     project: "project-name" # MAY: from PROJECTS.yaml
     source: "email" # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
     source_ref: "email-42-u@h" # MAY: unique ID for deduplication
+    repo: "ncrmro/keystone" # REQUIRED for OS-agent executable tasks; MAY be owner/name or URL
+    branch_name: "feat/task-name" # REQUIRED for OS-agent executable tasks
     profile: "fast" # MAY: semantic profile override (embedding|fast|medium|max or custom)
     provider: "gemini" # MAY: claude|gemini|codex — task execution provider override
     model: "sonnet" # MAY: provider-specific model override
@@ -613,6 +615,14 @@ tasks: # REQUIRED: only top-level key
 4. Status MUST be one of: `pending`, `in_progress`, `completed`, `blocked`
 5. Field names MUST match exactly — no `id`, `priority`, `urgency`, `depends_on`
 6. Validate after every write: `yq e '.' TASKS.yaml`
+
+**OS-agent executable task contract:**
+
+- Tasks intended for OS-agent execution MUST set `repo` and `branch_name`
+- `repo` identifies the repository the agent should work in; prefer `owner/name` for GitHub repositories and a full URL for non-GitHub remotes
+- `branch_name` is the exact branch the agent should create or reuse for the task
+- `provider`, `profile`, and `model` are optional per-task execution overrides; when omitted, the task loop uses stage and agent defaults
+- Human-only, imported, completed, or otherwise non-executable tasks MAY omit `repo` and `branch_name` for backwards compatibility
 
 **Source ref formats:**
 
@@ -683,6 +693,8 @@ tasks:
     status: pending
     source: manual
     source_ref: "manual-review-agent-provider-docs"
+    repo: ncrmro/keystone
+    branch_name: docs/review-agent-provider-docs
     profile: "medium"
     provider: claude
     model: sonnet
