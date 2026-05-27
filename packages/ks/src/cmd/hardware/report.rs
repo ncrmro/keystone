@@ -118,9 +118,7 @@ async fn write_status(report: &HardwareReport, path: &std::path::Path) -> Result
     }
     let root = report.volumes.iter().find(|v| v.id == "root");
     let default_device = probe::credstore_device();
-    let device = root
-        .map(|v| v.device.as_path())
-        .unwrap_or(default_device);
+    let device = root.map(|v| v.device.as_path()).unwrap_or(default_device);
     let body = serde_json::to_string_pretty(&LegacyStatus {
         checked_at: chrono::Utc::now().to_rfc3339(),
         device: device.to_str().unwrap_or(probe::ROOT_CREDSTORE),
