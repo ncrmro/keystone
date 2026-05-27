@@ -183,6 +183,31 @@ systemctl --user status agent-{name}-notes-sync.service
 journalctl --user -u agent-{name}-notes-sync -n 20
 ```
 
+## Experimental dispatcher units
+
+`keystone.os.agents.<name>.dispatcher` declares disabled-by-default systemd
+user units for a future dispatcher binary. This only wires Linux-native
+activation; it does not implement dispatcher logic or change the existing task
+CLI.
+
+```nix
+keystone.os.agents.drago.dispatcher = {
+  enable = true;
+  command = "/run/current-system/sw/bin/ks-dispatcher";
+  args = [ "--once" ];
+};
+```
+
+When enabled for a local agent, Keystone creates:
+
+- `agent-{name}-dispatcher.path` — watches `/home/agent-{name}/TASKS.yaml` by default
+- `agent-{name}-dispatcher.timer` — fallback trigger, defaulting to every five minutes
+- `agent-{name}-dispatcher.service` — oneshot execution in the `agent-{name}` user manager
+
+The service exports `KS_AGENT_NAME`, `KS_TASKS_FILE`, and `KS_PROJECTS_FILE`.
+All three units are guarded with `ConditionUser = "agent-{name}"` so they only
+activate in the intended agent user manager.
+
 ## What Each Agent Gets
 
 | Feature        | Service/Config                     | Details                                      |
@@ -198,6 +223,7 @@ journalctl --user -u agent-{name}-notes-sync -n 20
 | Contacts       | cardamum CLI                       | Stalwart CardDAV (auto-configured from mail) |
 | Bitwarden      | `bw` CLI                           | Configured for Vaultwarden instance          |
 | Workspace      | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot            |
+| Dispatcher     | `agent-{name}-dispatcher.*`        | Experimental opt-in path/timer/service units |
 
 ## Debugging
 
