@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import subprocess
+import sys
+import tempfile
+
+import yaml
+
+
+def die(message: str, code: int = 1) -> None:
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def now_utc() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def load_tasks(path: Path) -> dict:
+    if not path.exists():
+        die(f"tasks file does not exist: {path}")
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        die("TASKS.yaml must contain a mapping at the top level")
+    tasks = data.get("tasks")
+    if not isinstance(tasks, list):
+        die("TASKS.yaml must contain a top-level tasks list")
+    return data
+
+
+def write_tasks(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        yaml.safe_dump(data, handle, sort_keys=False)
+        tmp_name = handle.name
+    os.replace(tmp_name, path)
+
+
+def task_name(task: dict, index: int) -> str:
+    value = task.get("name") or task.get("id") or f"task-{index}"
+    return str(value)
+
+
+def completed_names(tasks: list[dict]) -> set[str]:
+    names = set()
+    for index, task in enumerate(tasks):
+        if isinstance(task, dict) and task.get("status") == "completed":
+            names.add(task_name(task, index))
+    return names
+
+
+def is_executable(task: dict, done: set[str]) -> bool:
+    if task.get("status") != "pending":
+        return False
+    if not task.get("repo") or not task.get("branch_name"):
+        return False
+    needs = task.get("needs") or []
+    if not isinstance(needs, list):
+        return False
+    return all(str(need) in done for need in needs)
+
+
+def select_task(data: dict) -> tuple[int, dict] | tuple[None, None]:
+    tasks = data["tasks"]
+    done = completed_names(tasks)
+    for index, task in enumerate(tasks):
+        if isinstance(task, dict) and is_executable(task, done):
+            return index, task
+    return None, None
+
+
+def split_repo(repo: str) -> tuple[str, str]:
+    parts = repo.split("/")
+    if len(parts) != 2 or not all(parts):
+        die(f"repo must be OWNER/REPO: {repo}")
+    return parts[0], parts[1]
+
+
+def worktree_path(home: Path, repo: str, branch_name: str) -> Path:
+    owner, name = split_repo(repo)
+    return home / "repos" / owner / "worktree" / name / branch_name
+
+
+def main_checkout_path(home: Path, repo: str) -> Path:
+    owner, name = split_repo(repo)
+    return home / "repos" / owner / name
+
+
+def run(cmd: list[str], *, cwd: Path | None = None) -> None:
+    subprocess.run(cmd, cwd=cwd, check=True, stdout=subprocess.DEVNULL)
+
+
+def git_branch_exists(repo_dir: Path, branch_name: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", branch_name],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def ensure_worktree(home: Path, repo: str, branch_name: str) -> Path:
+    path = worktree_path(home, repo, branch_name)
+    if (path / ".git").exists() or path.joinpath(".git").is_file():
+        return path
+
+    source = main_checkout_path(home, repo)
+    if not (source / ".git").exists():
+        die(f"main checkout does not exist: {source}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["git", "-C", str(source), "worktree", "add"]
+    if not git_branch_exists(source, branch_name):
+        cmd.extend(["-b", branch_name])
+    cmd.append(str(path))
+    if git_branch_exists(source, branch_name):
+        cmd.append(branch_name)
+    run(cmd)
+    return path
+
+
+def slug(value: str) -> str:
+    clean = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value).strip("-")
+    return clean[:48] or "task"
+
+
+def provider_command(executor: str, task: dict) -> list[str]:
+    repo = str(task["repo"])
+    branch_name = str(task["branch_name"])
+    description = str(task.get("description") or task_name(task, 0))
+    provider = str(task.get("provider") or "claude")
+    command = [
+        executor,
+        "--repo",
+        repo,
+        "--branch",
+        branch_name,
+        "--provider",
+        provider,
+        "--task",
+        description,
+    ]
+    model = task.get("model")
+    if model:
+        command.extend(["--model", str(model)])
+    return command
+
+
+def systemd_run_command(unit: str, worktree: Path, command: list[str]) -> list[str]:
+    return [
+        "systemd-run",
+        "--user",
+        "--unit",
+        unit,
+        "--collect",
+        "--working-directory",
+        str(worktree),
+        *command,
+    ]
+
+
+def claim(args: argparse.Namespace) -> tuple[int | None, dict | None]:
+    lock_path = args.tasks_file.with_suffix(args.tasks_file.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = load_tasks(args.tasks_file)
+        index, task = select_task(data)
+        if index is None:
+            return None, None
+        if not args.dry_run:
+            claimed = dict(task)
+            claimed["status"] = "in_progress"
+            claimed["started_at"] = now_utc()
+            claimed["claimed_by"] = args.claimed_by
+            data["tasks"][index] = claimed
+            write_tasks(args.tasks_file, data)
+            task = claimed
+        return index, task
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Dispatch one pending executable TASKS.yaml item.")
+    parser.add_argument("--tasks-file", type=Path, default=Path("TASKS.yaml"))
+    parser.add_argument("--dry-run", action="store_true", help="select and report a task without claiming or launching")
+    parser.add_argument("--test-mode", action="store_true", help="claim and ensure worktree, but do not run systemd-run")
+    parser.add_argument("--home", type=Path, default=Path.home(), help="home directory used for repo/worktree layout")
+    parser.add_argument("--executor", default="agent.coding-agent", help="provider executor launched under systemd-run")
+    parser.add_argument("--claimed-by", default=os.environ.get("KS_AGENT_NAME") or socket.gethostname())
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    args.tasks_file = args.tasks_file.expanduser().resolve()
+    args.home = args.home.expanduser().resolve()
+
+    index, task = claim(args)
+    if task is None:
+        print(json.dumps({"status": "idle", "reason": "no pending executable task"}))
+        raise SystemExit(2)
+
+    worktree = worktree_path(args.home, str(task["repo"]), str(task["branch_name"]))
+    if not args.dry_run:
+        worktree = ensure_worktree(args.home, str(task["repo"]), str(task["branch_name"]))
+
+    command = provider_command(args.executor, task)
+    unit = f"keystone-task-{slug(task_name(task, index))}"
+    launch = systemd_run_command(unit, worktree, command)
+    result = {
+        "status": "selected",
+        "task_index": index,
+        "task": task_name(task, index),
+        "repo": task["repo"],
+        "branch_name": task["branch_name"],
+        "worktree": str(worktree),
+        "command": command,
+        "systemd_run": launch,
+    }
+    print(json.dumps(result, sort_keys=True))
+
+    if args.dry_run or args.test_mode:
+        return
+    run(launch)
+
+
+if __name__ == "__main__":
+    main()
