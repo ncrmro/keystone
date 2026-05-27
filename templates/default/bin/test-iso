@@ -417,6 +417,68 @@ verify_imagemagick_available() {
     fi
 }
 
+# Validate the post-install hardware CLI surface over SSH.
+#
+# This intentionally runs the installed system's `ks`, not the host copy,
+# because the goal is to prove the new-user VM journey exposes the expected
+# hardware-enrollment commands after first boot.
+run_e2e_hardware_validation() {
+    local failed=0
+    local report_json=""
+    local setup_output=""
+
+    log_info "E2E: validating ks hardware commands"
+
+    if report_json="$(ssh_cmd "sudo -n ks hardware report --json" 2>&1)"; then
+        if grep -F '"machine"' <<<"$report_json" >/dev/null \
+            && grep -F '"volumes"' <<<"$report_json" >/dev/null \
+            && grep -F '"warnings"' <<<"$report_json" >/dev/null \
+            && grep -F '"id": "root"' <<<"$report_json" >/dev/null; then
+            log_ok "E2E: ks hardware report --json returned the root-disk schema"
+        else
+            log_error "E2E: ks hardware report --json returned unexpected output"
+            printf '%s\n' "$report_json" >&2
+            failed=1
+        fi
+    else
+        log_error "E2E: ks hardware report --json failed"
+        printf '%s\n' "$report_json" >&2
+        failed=1
+    fi
+
+    if setup_output="$(ssh_cmd "sudo -n ks hardware setup --dry-run" 2>&1)"; then
+        if grep -F "would execute the following plan:" <<<"$setup_output" >/dev/null \
+            && grep -F "root" <<<"$setup_output" >/dev/null; then
+            log_ok "E2E: ks hardware setup --dry-run produced a root-disk plan"
+        else
+            log_error "E2E: ks hardware setup --dry-run succeeded without a recognizable plan"
+            printf '%s\n' "$setup_output" >&2
+            failed=1
+        fi
+    else
+        # The current VM flow still stops before Secure Boot enrollment, so
+        # dry-run is expected to block there. Accept that specific shape
+        # because it still proves the command reached the real planner on the
+        # installed system. Any other failure remains a regression.
+        if grep -F "Setup blocked" <<<"$setup_output" >/dev/null \
+            && grep -F "Secure Boot" <<<"$setup_output" >/dev/null; then
+            log_ok "E2E: ks hardware setup --dry-run reached the expected Secure Boot blocker"
+        else
+            log_error "E2E: ks hardware setup --dry-run failed unexpectedly"
+            printf '%s\n' "$setup_output" >&2
+            failed=1
+        fi
+    fi
+
+    if (( failed )); then
+        log_error "E2E: hardware CLI validation FAILED"
+        return 1
+    fi
+
+    log_ok "E2E: hardware CLI validation passed"
+    return 0
+}
+
 # Validate the rebooted installed system: screenshots, LUKS unlock, SSH.
 # Expects E2E_MONITOR_SOCK, E2E_SCREENSHOT_DIR, and SSH_PORT to be set.
 # The VM must already be running (started via --post-install-reboot).
@@ -476,6 +538,9 @@ run_e2e_reboot_validation() {
 
     if [[ "$ssh_ok" == "true" ]]; then
         log_ok "E2E: SSH to installed system succeeded"
+        if ! run_e2e_hardware_validation; then
+            failed=1
+        fi
     else
         log_error "E2E: SSH to installed system failed"
         failed=1

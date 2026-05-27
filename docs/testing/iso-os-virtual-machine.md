@@ -554,7 +554,8 @@ Stages (current status):
 | 7 | Screenshot capture at boot stages | Working (PPM via `screendump`) | — |
 | 8 | Desktop validation (Hyprland + hyprlock) | Working — virgl + egl-headless + grim | REQ-002 |
 | 9 | SSH validation with dev key | Working | — |
-| 10 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
+| 10 | Hardware CLI validation (`ks hardware report`, `setup --dry-run`) | Working — accepts the current Secure Boot blocker until enrollment is added | REQ-008.20 |
+| 11 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
 
 ### Future stages (separate issues)
 
