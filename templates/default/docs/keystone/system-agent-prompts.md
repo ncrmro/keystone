@@ -87,9 +87,10 @@ placeholders, paste into your agent, and iterate from there.
 
 > The installer USB is booted on the target. Walk me through `ks install`
 > with the temporary credentials (`admin/keystone` login, LUKS password
-> `keystone`), then guide me through Steps 6–8 of `onboarding.md` to
-> replace the temporary credentials with per-host SSH key, TPM unlock,
-> and agenix.
+> `keystone`), then guide me through Steps 6–8 of `onboarding.md`. When we
+> reach Step 7, switch to `docs/keystone/hardware-enrollment.md` and walk me
+> through `ks hardware report`, `ks hardware setup --dry-run`, and the real
+> `ks hardware setup` run with exact commands and expected output.
 
 ---
 
