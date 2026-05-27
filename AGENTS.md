@@ -79,6 +79,25 @@ The **keystone config repo** is `nixos-config` — the consumer flake that impor
 modules and declares per-host/per-user configuration. All keystone-managed repos live
 under `~/.keystone/repos/OWNER/REPO/`.
 
+## Template docs are a primary product surface
+
+Docs under `templates/default/docs/keystone/` are a primary output of Keystone
+development. They ship into every scaffolded `keystone-config`, remain there as
+long-lived user documentation, and flow through the root `docs/keystone/`
+symlink surface that is published to `ks.system`.
+
+When behavior changes affect setup, enrollment, recovery, or daily operations,
+update these docs with the same seriousness as code and tests. Optimize for two
+reads:
+
+- First read: succinct, progressive, and easy to scan.
+- Live follow-along: exact commands, expected output, and explicit verification.
+- Walkthrough steps should stand alone and, when the format fits, follow Goal →
+  Edit → Run → Verify → If it fails.
+- Edit the canonical file in `templates/default/docs/keystone/` and keep the
+  matching root `docs/keystone/` symlink in sync per
+  [`CONTRIBUTOR.md` § Consumer-flake docs sync](CONTRIBUTOR.md#consumer-flake-docs-sync).
+
 ## Pull request workflow
 
 PR mechanics — draft → Copilot review → merge queue, plus issue and
