@@ -1,4 +1,4 @@
-# AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode)
+# AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode, Pi)
 #
 # Gated by keystone.terminal.ai.enable (default: true) so environments
 # like the installer ISO can opt out of heavy AI tooling while still
@@ -23,7 +23,7 @@ in
     enable = mkOption {
       type = types.bool;
       default = true;
-      description = "Enable AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode)";
+      description = "Enable AI coding assistants (Claude Code, Gemini CLI, Codex, OpenCode, Pi)";
     };
 
     ollama = {
@@ -59,6 +59,9 @@ in
 
       # OpenCode - Open-source AI coding agent
       pkgs.keystone.opencode
+
+      # Pi - tool-using coding assistant from llm-agents
+      pkgs.keystone.pi
 
     ]
     ++ optionals cfg.deepwork.enable [

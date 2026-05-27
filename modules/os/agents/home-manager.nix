@@ -214,6 +214,8 @@ in
                 # path, but agents may also invoke the binary directly (e.g. diagnostics,
                 # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
                 home.packages = [
+                  sysPkgs.keystone.agent-coding-agent
+                  sysPkgs.keystone.linux-task-dispatcher
                   sysPkgs.keystone.slidev
                 ]
                 ++ optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [

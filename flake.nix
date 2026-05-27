@@ -675,6 +675,7 @@
             zesh
             agents-e2e
             agent-coding-agent
+            pi
             agent-mail
             fetch-email-source
             fetch-forgejo-sources

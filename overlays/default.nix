@@ -126,6 +126,7 @@ in
     gemini-cli = llm-agents.packages.${system}.gemini-cli;
     codex = llm-agents.packages.${system}.codex;
     opencode = llm-agents.packages.${system}.opencode;
+    pi = llm-agents.packages.${system}.pi;
     # Browsers from browser-previews
     google-chrome = browser-previews-flake.packages.${system}.google-chrome;
     # Desktop tools from flake inputs
