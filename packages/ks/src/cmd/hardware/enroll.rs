@@ -523,6 +523,12 @@ mod tests {
     }
 
     #[test]
+    fn validate_passphrase_counts_unicode_characters() {
+        assert!(validate_passphrase(&"🙂".repeat(MIN_PASSPHRASE_LEN - 1)).is_err());
+        assert!(validate_passphrase(&"🙂".repeat(MIN_PASSPHRASE_LEN)).is_ok());
+    }
+
+    #[test]
     fn validate_passphrase_rejects_default_keystone() {
         assert!(validate_passphrase("keystone").is_err());
         assert!(validate_passphrase("KEYSTONE").is_err());

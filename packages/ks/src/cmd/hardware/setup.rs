@@ -125,6 +125,42 @@ fn require_root_volume(volume_id: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EnrollmentAction {
+    RotatePassword,
+    EnrollRecoveryAndTpm2,
+    EnrollTpm2Only,
+    EnrollFido2,
+    EnrollFingerprint,
+}
+
+fn action_for_step(step: &SetupStep) -> Result<Option<EnrollmentAction>> {
+    match step {
+        SetupStep::RotateDefaultPassword { volume_id } => {
+            require_root_volume(volume_id)?;
+            Ok(Some(EnrollmentAction::RotatePassword))
+        }
+        SetupStep::EnrollRecoveryAndTpm2 {
+            volume_id,
+            already_recovery,
+            already_tpm2: _,
+        } => {
+            require_root_volume(volume_id)?;
+            if *already_recovery {
+                Ok(Some(EnrollmentAction::EnrollTpm2Only))
+            } else {
+                Ok(Some(EnrollmentAction::EnrollRecoveryAndTpm2))
+            }
+        }
+        SetupStep::EnrollFido2 { volume_id, .. } => {
+            require_root_volume(volume_id)?;
+            Ok(Some(EnrollmentAction::EnrollFido2))
+        }
+        SetupStep::EnrollFingerprint => Ok(Some(EnrollmentAction::EnrollFingerprint)),
+        SetupStep::Skip { .. } => Ok(None),
+    }
+}
+
 /// Compute the plan for a given probed report. Pure — no IO, no
 /// process spawning. Unit-testable.
 pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
@@ -279,39 +315,28 @@ pub async fn execute<P: SetupPrompts>(
 
     for step in &full_plan.steps {
         prompts.say(&format!("→ {}", step.label())).await;
-        match step {
-            SetupStep::RotateDefaultPassword { volume_id } => {
-                require_root_volume(volume_id)?;
+        match action_for_step(step)? {
+            Some(EnrollmentAction::RotatePassword) => {
                 enroll::enroll_password()
                     .await
                     .context("rotating default password")?;
             }
-            SetupStep::EnrollRecoveryAndTpm2 {
-                volume_id,
-                already_recovery,
-                already_tpm2: _,
-            } => {
-                require_root_volume(volume_id)?;
+            Some(EnrollmentAction::EnrollRecoveryAndTpm2) => {
+                enroll::enroll_recovery()
+                    .await
+                    .context("enrolling recovery + TPM2")?;
+            }
+            Some(EnrollmentAction::EnrollTpm2Only) => {
                 // If the recovery key is already enrolled but TPM2 is
                 // missing, don't run the full enroll_recovery (which
                 // would generate a *new* recovery key and overwrite
                 // the user's existing one). Fall back to the
                 // standalone TPM2 enrollment instead.
-                if *already_recovery {
-                    enroll::enroll_tpm()
-                        .await
-                        .context("enrolling TPM2 (recovery already present)")?;
-                } else {
-                    enroll::enroll_recovery()
-                        .await
-                        .context("enrolling recovery + TPM2")?;
-                }
+                enroll::enroll_tpm()
+                    .await
+                    .context("enrolling TPM2 (recovery already present)")?;
             }
-            SetupStep::EnrollFido2 { volume_id, .. } => {
-                require_root_volume(volume_id)?;
-                enroll::enroll_fido2().await.context("enrolling FIDO2")?;
-            }
-            SetupStep::EnrollFingerprint => {
+            Some(EnrollmentAction::EnrollFingerprint) => {
                 // Fingerprint enrollment is best-effort: fprintd may be
                 // enabled by default even on systems without a reader, so a
                 // failure here should not abort the whole setup chain.
@@ -324,7 +349,10 @@ pub async fn execute<P: SetupPrompts>(
                         .await;
                 }
             }
-            SetupStep::Skip { .. } => {}
+            Some(EnrollmentAction::EnrollFido2) => {
+                enroll::enroll_fido2().await.context("enrolling FIDO2")?;
+            }
+            None => {}
         }
     }
 
@@ -512,5 +540,31 @@ mod tests {
         };
         assert!(s.label().contains("Rotate"));
         assert!(s.label().contains("root"));
+    }
+
+    #[test]
+    fn action_for_step_preserves_existing_recovery_key() {
+        let step = SetupStep::EnrollRecoveryAndTpm2 {
+            volume_id: "root".into(),
+            already_recovery: true,
+            already_tpm2: false,
+        };
+        assert_eq!(
+            action_for_step(&step).expect("valid step"),
+            Some(EnrollmentAction::EnrollTpm2Only)
+        );
+    }
+
+    #[test]
+    fn action_for_step_uses_full_recovery_flow_when_recovery_missing() {
+        let step = SetupStep::EnrollRecoveryAndTpm2 {
+            volume_id: "root".into(),
+            already_recovery: false,
+            already_tpm2: false,
+        };
+        assert_eq!(
+            action_for_step(&step).expect("valid step"),
+            Some(EnrollmentAction::EnrollRecoveryAndTpm2)
+        );
     }
 }

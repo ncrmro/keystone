@@ -63,14 +63,7 @@ pub async fn execute(
 
     let mut report = unfiltered;
     if let Some(ref id) = disk_filter {
-        report.volumes.retain(|v| &v.id == id);
-        // Warnings must follow the same filter: drop per-volume
-        // findings that aren't for the focused disk, but keep all
-        // machine-wide warnings (Secure Boot disabled, etc.).
-        report.warnings.retain(|w| match &w.scope {
-            probe::WarningScope::Machine => true,
-            probe::WarningScope::Volume { id: warn_id } => warn_id == id,
-        });
+        apply_disk_filter(&mut report, id);
     }
 
     if json {
@@ -155,6 +148,17 @@ async fn set_world_readable(path: &std::path::Path) -> Result<()> {
 #[cfg(not(unix))]
 async fn set_world_readable(_path: &std::path::Path) -> Result<()> {
     Ok(())
+}
+
+fn apply_disk_filter(report: &mut HardwareReport, id: &str) {
+    report.volumes.retain(|v| v.id == id);
+    // Warnings must follow the same filter: drop per-volume
+    // findings that aren't for the focused disk, but keep all
+    // machine-wide warnings (Secure Boot disabled, etc.).
+    report.warnings.retain(|w| match &w.scope {
+        probe::WarningScope::Machine => true,
+        probe::WarningScope::Volume { id: warn_id } => warn_id == id,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -433,5 +437,41 @@ mod tests {
             .find(|l| l.contains("password"))
             .expect("password row");
         assert!(pw_line.contains("⚠"), "expected ⚠ in {:?}", pw_line);
+    }
+
+    #[test]
+    fn disk_filter_keeps_machine_and_matching_volume_warnings_only() {
+        let mut r = sample_report();
+        r.volumes.push(LuksVolume {
+            id: "data".into(),
+            device: PathBuf::from("/dev/disk/by-id/data"),
+            role: VolumeRole::Secondary,
+            boot_stage: BootStage::AfterRoot,
+            holds: "bulk storage".into(),
+            slots: SlotMap::default(),
+        });
+        r.warnings.push(Warning {
+            severity: Severity::Info,
+            scope: WarningScope::Volume { id: "data".into() },
+            message: "Volume `data` is not enrolled with TPM2.".into(),
+            remediation: Some("Run `sudo ks hardware enroll tpm --disk=data`.".into()),
+        });
+
+        apply_disk_filter(&mut r, "root");
+
+        assert_eq!(r.volumes.len(), 1);
+        assert_eq!(r.volumes[0].id, "root");
+        assert!(r
+            .warnings
+            .iter()
+            .any(|w| matches!(w.scope, WarningScope::Machine)));
+        assert!(r
+            .warnings
+            .iter()
+            .any(|w| matches!(&w.scope, WarningScope::Volume { id } if id == "root")));
+        assert!(!r
+            .warnings
+            .iter()
+            .any(|w| matches!(&w.scope, WarningScope::Volume { id } if id == "data")));
     }
 }
