@@ -86,11 +86,12 @@ in
     upload = {
       enable = mkOption {
         type = types.bool;
-        default = true;
+        default = false;
         description = ''
           Forward this host's journal to the fleet's journal-remote server.
-          Set to false to opt out (e.g., for ephemeral VMs or test boxes).
-          Has no effect if no serverHost is configured.
+          This is experimental and defaults off so a remote journal outage cannot
+          make switch-to-configuration fail an otherwise valid system update.
+          Set to true on hosts that should opt into journal forwarding.
         '';
       };
 
