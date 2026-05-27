@@ -19,6 +19,7 @@ agents/
   tailscale.nix      -- per-agent Tailscale (currently disabled)
   ssh.nix            -- ssh-agent + assertions
   notes.nix          -- notes-sync, task-loop, scheduler services + timers
+  dispatcher.nix     -- experimental dispatcher service + TASKS.yaml path/timer units
   home-manager.nix   -- home-manager terminal integration
   scripts/
     agent-svc.sh     -- per-agent service helper
@@ -120,6 +121,14 @@ keystone.os.agents.drago = {
     };
     scheduler.onCalendar = "*-*-* 05:00:00";
   };
+  dispatcher = {
+    enable = false;                # Experimental; requires explicit opt-in
+    command = null;                # Absolute dispatcher binary path when enabled
+    args = [];
+    tasksFile = "/home/agent-drago/TASKS.yaml";
+    onCalendar = "*:0/5";          # Timer fallback for missed path events
+    timeout = "1h";
+  };
 };
 ```
 
@@ -133,6 +142,21 @@ keystone.os.agents.drago = {
 AND the mail server's host (Stalwart provisioning). Missing either breaks auth silently.
 
 SSH keys are managed via `keystone.keys."agent-{name}"`.
+
+## Experimental dispatcher units
+
+`dispatcher.nix` only declares systemd integration for a future dispatcher
+binary. It does not implement task dispatch logic and does not depend on
+`packages/ks` task CLI code. For each local agent with
+`dispatcher.enable = true`, it creates:
+
+- `agent-{name}-dispatcher.service` — oneshot user service running the configured dispatcher command as `agent-{name}`
+- `agent-{name}-dispatcher.path` — watches `/home/agent-{name}/TASKS.yaml` by default
+- `agent-{name}-dispatcher.timer` — fallback trigger, defaulting to every five minutes
+
+All three units set `ConditionUser = "agent-{name}"` so the shared user-unit
+declarations only activate in the intended agent's user manager. Keep this
+integration disabled by default until the dispatcher binary contract is stable.
 
 ## agentctl CLI (`agentctl.nix`)
 
