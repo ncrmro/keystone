@@ -481,6 +481,9 @@
           keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
+          keystoneHardwareMenu = import ./tests/module/keystone-hardware-menu.nix {
+            inherit pkgs lib;
+          };
           keystoneFingerprintMenu = import ./tests/module/keystone-fingerprint-menu.nix {
             inherit pkgs lib;
           };
@@ -566,6 +569,7 @@
           pz-project-menu = pzProjectMenu;
           pz-host-launcher-state = pzHostLauncherState;
           keystone-secrets-menu = keystoneSecretsMenu;
+          keystone-hardware-menu = keystoneHardwareMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
           keystone-update-menu-wiring = keystoneUpdateMenuWiring;
           keystone-update-approve-flow = keystoneUpdateApproveFlow;
@@ -629,6 +633,7 @@
             ln -s ${pzProjectMenu} "$out/pz-project-menu"
             ln -s ${pzHostLauncherState} "$out/pz-host-launcher-state"
             ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
+            ln -s ${keystoneHardwareMenu} "$out/keystone-hardware-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${keystoneUpdateMenuWiring} "$out/keystone-update-menu-wiring"
             ln -s ${keystoneUpdateApproveFlow} "$out/keystone-update-approve-flow"

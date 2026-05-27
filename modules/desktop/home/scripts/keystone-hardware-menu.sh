@@ -279,10 +279,9 @@ launch_enroll_terminal() {
   local ks_cmd ghostty_cmd shell_cmd
   ks_cmd="$(keystone_cmd ks)"
   ghostty_cmd="$(keystone_cmd ghostty)"
-  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec %q approve --reason %q -- %q hardware enroll fido2' \
+  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec %q approve --reason %q -- ks hardware enroll fido2' \
     "$ks_cmd" \
-    "Enroll a hardware key for disk unlock." \
-    "$ks_cmd"
+    "Enroll a hardware key for disk unlock."
   detach "$ghostty_cmd" -e bash -lc "$shell_cmd"
 }
 
