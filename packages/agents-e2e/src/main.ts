@@ -14,12 +14,14 @@ interface Config {
   engineerAgent: string;
   platform: string;
   provider: string;
+  models: string[];
   forgejoUrl: string;
   forgejoToken: string;
   templateRepo: string;
   domain: string;
   timeoutMs: number;
   smoke: boolean;
+  notificationLoopEval: boolean;
   dryRun: boolean;
   print: boolean;
 }
@@ -43,6 +45,7 @@ function parseConfig(): Config | null {
       engineer: { type: "string" },
       platform: { type: "string", default: "forgejo" },
       provider: { type: "string", default: "claude" },
+      models: { type: "string", default: Bun.env.KS_AGENT_EVAL_MODELS ?? "" },
       "forgejo-url": {
         type: "string",
         default: Bun.env.FORGEJO_URL ?? "https://git.ncrmro.com",
@@ -55,6 +58,7 @@ function parseConfig(): Config | null {
       domain: { type: "string", default: Bun.env.AGENT_DOMAIN ?? "" },
       timeout: { type: "string", default: "30" },
       smoke: { type: "boolean", default: false },
+      "notification-loop-eval": { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       print: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -68,13 +72,29 @@ function parseConfig(): Config | null {
   }
 
   const isSmoke = values.smoke ?? false;
-  if (!values.product) {
+  const isNotificationLoopEval = values["notification-loop-eval"] ?? false;
+  const models = (values.models ?? "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+
+  if (isNotificationLoopEval && models.length === 0) {
+    console.error(
+      "Error: --notification-loop-eval requires --models MODEL[,MODEL...] or KS_AGENT_EVAL_MODELS.",
+    );
+    printHelp();
+    process.exit(1);
+  }
+
+  if (!values.product && !isNotificationLoopEval) {
     console.error("Error: --product is required.");
     printHelp();
     process.exit(1);
   }
-  if (!isSmoke && !values.engineer) {
-    console.error("Error: --engineer is required (unless --smoke).");
+  if (!isSmoke && !isNotificationLoopEval && !values.engineer) {
+    console.error(
+      "Error: --engineer is required (unless --smoke or --notification-loop-eval).",
+    );
     printHelp();
     process.exit(1);
   }
@@ -83,13 +103,16 @@ function parseConfig(): Config | null {
   const rawDomain = values.domain || "";
   const domain = rawDomain || extractAgentDomain(forgejoUrl);
   const timeoutMinutes = Number.parseInt(values.timeout ?? "30", 10);
-  const resolvedTimeoutMinutes = Number.isNaN(timeoutMinutes) ? 30 : timeoutMinutes;
+  const resolvedTimeoutMinutes = Number.isNaN(timeoutMinutes)
+    ? 30
+    : timeoutMinutes;
 
   return {
-    productAgent: values.product,
+    productAgent: values.product ?? "eval",
     engineerAgent: values.engineer ?? "",
     platform: values.platform ?? "forgejo",
     provider: values.provider ?? "claude",
+    models,
     forgejoUrl,
     forgejoToken: values["forgejo-token"] ?? "",
     templateRepo:
@@ -97,6 +120,7 @@ function parseConfig(): Config | null {
     domain,
     timeoutMs: resolvedTimeoutMinutes * 60 * 1000,
     smoke: values.smoke ?? false,
+    notificationLoopEval: isNotificationLoopEval,
     dryRun: values["dry-run"] ?? false,
     print: values.print ?? false,
   };
@@ -116,12 +140,15 @@ Options:
   --engineer NAME       Engineering agent name (required)
   --platform NAME       Platform for repos/issues (default: forgejo)
   --provider MODEL      AI model provider (default: claude)
+  --models LIST         Comma-separated models for notification loop eval
   --forgejo-url URL     Forgejo instance URL (default: $FORGEJO_URL or https://git.ncrmro.com)
   --forgejo-token TOK   Forgejo API token (default: $FORGEJO_TOKEN)
   --template-repo REPO  Template repo owner/name (default: ks-testing/agent-e2e-bun-template)
   --domain DOMAIN       Agent email domain (default: $AGENT_DOMAIN or derived from --forgejo-url)
   --timeout MINUTES     Polling timeout in minutes (default: 30)
   --smoke               Send ping email and wait for pong reply (pipeline smoke test)
+  --notification-loop-eval
+                        Compare models on the ping/pong notification tool-use task
   --dry-run             Validate configuration without executing the workflow
   --print               Render final report with formatting when complete
   --help                Show this help`);
@@ -153,6 +180,14 @@ async function main() {
   if (config.smoke) {
     emit("info", "smoke mode -- ping-pong email pipeline test");
     await checks.pingPong(config, report);
+    report.finalize();
+    report.print(config.print);
+    process.exit(report.failed ? 1 : 0);
+  }
+
+  if (config.notificationLoopEval) {
+    emit("info", "notification-loop eval mode -- comparing model behavior");
+    await checks.notificationLoopEval(config, report);
     report.finalize();
     report.print(config.print);
     process.exit(report.failed ? 1 : 0);
