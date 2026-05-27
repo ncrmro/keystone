@@ -55,6 +55,65 @@ import shutil
 import glob
 import re
 
+def swtpm_state_dir(vm_name, disk_path):
+    """Return the per-VM swtpm state directory next to the disk image."""
+    vm_dir = os.path.dirname(os.path.abspath(disk_path))
+    return os.path.join(vm_dir, f"{vm_name}-swtpm")
+
+
+def ensure_swtpm(vm_name, disk_path):
+    """
+    Start (or restart) the swtpm daemon for a VM and return its socket path.
+
+    The post-install reboot path redefines the libvirt domain and starts QEMU
+    again, but the swtpm process from the install boot is transient user-space
+    state. Recreate it here so QEMU never points at a stale socket.
+    """
+    swtpm_dir = swtpm_state_dir(vm_name, disk_path)
+    swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
+
+    if shutil.which("swtpm") is None:
+        print("⚠ swtpm not found — VM will have no TPM (add swtpm to devShell)")
+        return False, None
+
+    os.makedirs(swtpm_dir, exist_ok=True)
+
+    if not os.listdir(swtpm_dir):
+        subprocess.run(
+            ["swtpm_setup", "--tpmstate", swtpm_dir, "--tpm2", "--createek", "--create-ek-cert"],
+            capture_output=True,
+        )
+
+    subprocess.run(["pkill", "-f", f"swtpm.*{swtpm_sock}"], capture_output=True)
+    if os.path.exists(swtpm_sock):
+        os.remove(swtpm_sock)
+
+    swtpm_proc = subprocess.Popen(
+        [
+            "swtpm",
+            "socket",
+            "--tpmstate",
+            f"dir={swtpm_dir}",
+            "--ctrl",
+            f"type=unixio,path={swtpm_sock}",
+            "--tpm2",
+            "--daemon",
+        ],
+    )
+    swtpm_proc.wait()  # --daemon forks, parent exits immediately
+
+    import time
+
+    for _ in range(50):
+        if os.path.exists(swtpm_sock):
+            print(f"✓ swtpm started: {swtpm_sock}")
+            return True, swtpm_sock
+        time.sleep(0.1)
+
+    print(f"ERROR: swtpm socket did not appear at {swtpm_sock}")
+    sys.exit(1)
+
+
 def validate_nvram_setup_mode(nvram_path):
     """
     Check if NVRAM file appears to be in setup mode (no pre-enrolled keys)
@@ -272,24 +331,7 @@ def create_uefi_secureboot_vm(
     print(f"✓ Secure Boot enabled")
 
     # Start swtpm in user mode for TPM 2.0 (session-mode compatible)
-    swtpm_dir = os.path.join(vm_dir, "swtpm")
-    swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
-    has_swtpm = shutil.which("swtpm") is not None
-    if has_swtpm:
-        os.makedirs(swtpm_dir, exist_ok=True)
-        subprocess.run(
-            ["swtpm_setup", "--tpmstate", swtpm_dir, "--tpm2", "--createek", "--create-ek-cert"],
-            capture_output=True,
-        )
-        swtpm_proc = subprocess.Popen(
-            ["swtpm", "socket", "--tpmstate", f"dir={swtpm_dir}",
-             "--ctrl", f"type=unixio,path={swtpm_sock}",
-             "--tpm2", "--daemon"],
-        )
-        swtpm_proc.wait()  # --daemon forks, parent exits immediately
-        print(f"✓ swtpm started: {swtpm_sock}")
-    else:
-        print("⚠ swtpm not found — VM will have no TPM (add swtpm to devShell)")
+    has_swtpm, swtpm_sock = ensure_swtpm(vm_name, disk_path)
 
     # Network interface: bridge when no ssh_port, user-mode via qemu:commandline when set
     if ssh_port is None:
@@ -540,6 +582,9 @@ def post_install_reboot(conn, vm_name, headless=False, monitor_socket=None):
         else:
             print("⚠ No qemu:commandline in redefined XML — SSH may not work")
 
+        if "chrtpm" in new_xml:
+            ensure_swtpm(vm_name, disk_path)
+
         dom.create()
         print(f"✓ VM '{vm_name}' started")
         print("\nPost-installation setup complete!")
@@ -661,7 +706,7 @@ def reset_vm(conn, vm_name):
 
         # Kill swtpm and clean up state directory
         for disk_path in disk_paths:
-            swtpm_dir = os.path.join(os.path.dirname(disk_path), "swtpm")
+            swtpm_dir = swtpm_state_dir(vm_name, disk_path)
             swtpm_sock = os.path.join(swtpm_dir, "swtpm.sock")
             if os.path.exists(swtpm_sock):
                 # Find and kill the swtpm process using this socket
