@@ -110,7 +110,11 @@ pkgs.runCommand "test-ks-approve"
 
     WAYLAND_DISPLAY=wayland-1 ks hardware setup >"$PWD/logs/stdout-auto-graphical.log"
 
-    grep -F "Approval request: Allowlisted hardware flow" "$PWD/logs/stdout-auto-graphical.log" >/dev/null
+    grep -F "Requesting approval to configure hardware-backed disk unlock..." "$PWD/logs/stdout-auto-graphical.log" >/dev/null
+    if grep -F "Approval request:" "$PWD/logs/stdout-auto-graphical.log" >/dev/null; then
+      echo "self-brokered hardware setup must not print the verbose approval banner" >&2
+      exit 1
+    fi
     grep -F -- "--reason Configure hardware-backed disk enrollment and unlock methods. -- ks hardware setup" "$PWD/logs/pkexec.log" >/dev/null
     [[ ! -e "$PWD/logs/sudo.log" ]]
     grep -F "exec|Configure hardware-backed disk enrollment and unlock methods.|ks hardware setup" "$PWD/logs/helper.log" >/dev/null
@@ -119,6 +123,11 @@ pkgs.runCommand "test-ks-approve"
 
     ks hardware enroll recovery --disk=root >"$PWD/logs/stdout-auto-terminal.log"
 
+    grep -F "Requesting approval to generate a recovery key and enroll TPM-backed disk unlock..." "$PWD/logs/stdout-auto-terminal.log" >/dev/null
+    if grep -F "Approval request:" "$PWD/logs/stdout-auto-terminal.log" >/dev/null; then
+      echo "self-brokered hardware enroll must not print the verbose approval banner" >&2
+      exit 1
+    fi
     grep -F -- "--reason Generate a recovery key and enroll TPM-backed disk unlock on this host. -- ks hardware enroll recovery" "$PWD/logs/sudo.log" >/dev/null
     if grep -F -- "--disk=root" "$PWD/logs/sudo.log" >/dev/null; then
       echo "auto-brokered hardware enroll must canonicalize away the redundant --disk=root flag" >&2

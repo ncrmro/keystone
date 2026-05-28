@@ -61,6 +61,9 @@ pkgs.runCommand "test-keystone-hardware-menu"
     printf '%s\n' "$preview_enroll" \
       | grep -F 'ks hardware enroll fido2' >/dev/null \
       || fail "preview must show the canonical ks hardware enroll command"
+    if printf '%s\n' "$preview_enroll" | grep -F 'ks approve' >/dev/null; then
+      fail "preview must not expose the approval broker"
+    fi
 
     keystone-hardware-menu dispatch $'enroll-fido2\tEnroll hardware key\t'
 

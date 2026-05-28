@@ -26,6 +26,12 @@ use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalOutputMode {
+    Verbose,
+    Quiet,
+}
+
 #[derive(Debug, Deserialize)]
 struct ApprovalMatch {
     #[serde(rename = "displayName")]
@@ -121,7 +127,11 @@ fn exec_command(program: PathBuf, args: Vec<OsString>) -> Result<()> {
 /// Common pre-flight: validate inputs, resolve helper, validate against
 /// policy, print the dialog header, and build the helper argv. Shared
 /// by both [`execute`] (exec-replace) and [`run_and_wait`] (spawn-wait).
-fn prepare_invocation(reason: &str, requested_argv: &[String]) -> Result<(PathBuf, Vec<OsString>)> {
+fn prepare_invocation(
+    reason: &str,
+    requested_argv: &[String],
+    output_mode: ApprovalOutputMode,
+) -> Result<(PathBuf, Vec<OsString>)> {
     if reason.trim().is_empty() {
         anyhow::bail!("--reason is required")
     }
@@ -132,9 +142,11 @@ fn prepare_invocation(reason: &str, requested_argv: &[String]) -> Result<(PathBu
     let helper = resolve_approval_helper()?;
     let matched = validate_request(&helper, reason, requested_argv)?;
 
-    println!("Approval request: {}", matched.display_name);
-    println!("Requested reason: {}", reason);
-    println!("Policy reason: {}", matched.reason);
+    if matches!(output_mode, ApprovalOutputMode::Verbose) {
+        println!("Approval request: {}", matched.display_name);
+        println!("Requested reason: {}", reason);
+        println!("Policy reason: {}", matched.reason);
+    }
 
     let mut args = vec![
         OsString::from("--reason"),
@@ -144,6 +156,16 @@ fn prepare_invocation(reason: &str, requested_argv: &[String]) -> Result<(PathBu
     args.extend(requested_argv.iter().map(OsString::from));
 
     Ok((helper, args))
+}
+
+fn execute_with_mode(
+    reason: &str,
+    requested_argv: &[String],
+    output_mode: ApprovalOutputMode,
+) -> Result<()> {
+    let (helper, helper_args) = prepare_invocation(reason, requested_argv, output_mode)?;
+    let (program, argv) = select_program(helper, helper_args)?;
+    exec_command(program, argv)
 }
 
 /// Choose the program + argv that should be run for the approval flow,
@@ -166,9 +188,14 @@ fn select_program(helper: PathBuf, helper_args: Vec<OsString>) -> Result<(PathBu
 }
 
 pub fn execute(reason: &str, requested_argv: &[String]) -> Result<()> {
-    let (helper, helper_args) = prepare_invocation(reason, requested_argv)?;
-    let (program, argv) = select_program(helper, helper_args)?;
-    exec_command(program, argv)
+    execute_with_mode(reason, requested_argv, ApprovalOutputMode::Verbose)
+}
+
+/// Quiet exec-replace variant of [`execute`]. Used by commands that own
+/// their public UX and only need the approval broker for the privileged
+/// transition, not for verbose broker-oriented narration.
+pub fn execute_quiet(reason: &str, requested_argv: &[String]) -> Result<()> {
+    execute_with_mode(reason, requested_argv, ApprovalOutputMode::Quiet)
 }
 
 /// Spawn-and-wait variant of [`execute`]. Returns the helper's
@@ -182,7 +209,8 @@ pub fn execute(reason: &str, requested_argv: &[String]) -> Result<()> {
 /// difference is that this returns control to the caller instead of
 /// `exec()`-replacing the process.
 pub fn run_and_wait(reason: &str, requested_argv: &[String]) -> Result<ExitStatus> {
-    let (helper, helper_args) = prepare_invocation(reason, requested_argv)?;
+    let (helper, helper_args) =
+        prepare_invocation(reason, requested_argv, ApprovalOutputMode::Verbose)?;
     let (program, argv) = select_program(helper, helper_args)?;
     let status = Command::new(&program)
         .args(&argv)

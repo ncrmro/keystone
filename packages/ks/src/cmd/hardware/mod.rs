@@ -59,6 +59,7 @@ pub async fn execute(command: HardwareCommand, flake: Option<&Path>) -> Result<(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ApprovalRequest {
     reason: &'static str,
+    status_line: &'static str,
     argv: Vec<String>,
 }
 
@@ -71,7 +72,8 @@ fn maybe_execute_via_approval(command: &HardwareCommand) -> Result<()> {
         return Ok(());
     };
 
-    approve::execute(request.reason, &request.argv)
+    println!("{}", request.status_line);
+    approve::execute_quiet(request.reason, &request.argv)
 }
 
 fn already_elevated() -> bool {
@@ -85,10 +87,12 @@ fn approval_request_for_command(command: &HardwareCommand) -> Option<ApprovalReq
     match command {
         HardwareCommand::Setup { dry_run: false } => Some(ApprovalRequest {
             reason: "Configure hardware-backed disk enrollment and unlock methods.",
+            status_line: "Requesting approval to configure hardware-backed disk unlock...",
             argv: vec!["ks".into(), "hardware".into(), "setup".into()],
         }),
         HardwareCommand::Setup { dry_run: true } => Some(ApprovalRequest {
             reason: "Inspect the planned hardware enrollment flow on this host.",
+            status_line: "Requesting approval to inspect the hardware enrollment plan...",
             argv: vec![
                 "ks".into(),
                 "hardware".into(),
@@ -114,12 +118,16 @@ fn approval_request_for_enroll(method: &str, disk: Option<&str>) -> Option<Appro
     let method = method.parse::<probe::Method>().ok()?;
     let mut argv = vec!["ks".into(), "hardware".into(), "enroll".into()];
 
-    let (reason, canonical_method) = match method {
+    let (reason, status_line, canonical_method) = match method {
         probe::Method::Password => {
             if !matches!(disk, None | Some("root")) {
                 return None;
             }
-            ("Rotate the disk unlock password on this host.", "password")
+            (
+                "Rotate the disk unlock password on this host.",
+                "Requesting approval to rotate the disk unlock password...",
+                "password",
+            )
         }
         probe::Method::Recovery => {
             if !matches!(disk, None | Some("root")) {
@@ -127,6 +135,7 @@ fn approval_request_for_enroll(method: &str, disk: Option<&str>) -> Option<Appro
             }
             (
                 "Generate a recovery key and enroll TPM-backed disk unlock on this host.",
+                "Requesting approval to generate a recovery key and enroll TPM-backed disk unlock...",
                 "recovery",
             )
         }
@@ -136,6 +145,7 @@ fn approval_request_for_enroll(method: &str, disk: Option<&str>) -> Option<Appro
             }
             (
                 "Enroll or re-bind TPM-backed disk unlock on this host.",
+                "Requesting approval to enroll TPM-backed disk unlock...",
                 "tpm2",
             )
         }
@@ -143,16 +153,25 @@ fn approval_request_for_enroll(method: &str, disk: Option<&str>) -> Option<Appro
             if !matches!(disk, None | Some("root")) {
                 return None;
             }
-            ("Enroll a FIDO2 hardware key for disk unlock.", "fido2")
+            (
+                "Enroll a FIDO2 hardware key for disk unlock.",
+                "Requesting approval to enroll a hardware key for disk unlock...",
+                "fido2",
+            )
         }
         probe::Method::Fingerprint => (
             "Enroll a fingerprint for sudo and login on this host.",
+            "Requesting approval to enroll a fingerprint for sudo and login...",
             "fingerprint",
         ),
     };
 
     argv.push(canonical_method.into());
-    Some(ApprovalRequest { reason, argv })
+    Some(ApprovalRequest {
+        reason,
+        status_line,
+        argv,
+    })
 }
 
 /// `ks hardware disks [<id> [fde <verb> [args]]]`.
@@ -223,10 +242,18 @@ mod tests {
         let setup = approval_request_for_command(&HardwareCommand::Setup { dry_run: false })
             .expect("setup should require approval");
         assert_eq!(setup.argv, vec!["ks", "hardware", "setup"]);
+        assert_eq!(
+            setup.status_line,
+            "Requesting approval to configure hardware-backed disk unlock..."
+        );
 
         let dry_run = approval_request_for_command(&HardwareCommand::Setup { dry_run: true })
             .expect("setup --dry-run should require approval");
         assert_eq!(dry_run.argv, vec!["ks", "hardware", "setup", "--dry-run"]);
+        assert_eq!(
+            dry_run.status_line,
+            "Requesting approval to inspect the hardware enrollment plan..."
+        );
     }
 
     #[test]
@@ -237,6 +264,10 @@ mod tests {
         })
         .expect("root-disk enroll should require approval");
         assert_eq!(request.argv, vec!["ks", "hardware", "enroll", "tpm2"]);
+        assert_eq!(
+            request.status_line,
+            "Requesting approval to enroll TPM-backed disk unlock..."
+        );
     }
 
     #[test]
