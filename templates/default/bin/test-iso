@@ -318,6 +318,15 @@ ssh_cmd() {
         "${ADMIN_USERNAME}@localhost" "$@"
 }
 
+ssh_root_cmd() {
+    ssh "${SSH_IDENTITY_ARGS[@]}" \
+        -p "$SSH_PORT" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        -o ConnectTimeout=5 \
+        root@localhost "$@"
+}
+
 # Run the headless installer via `ks install --host --disk` and feed the
 # required destructive confirmation token over stdin.
 run_e2e_installer() {
@@ -332,7 +341,7 @@ run_e2e_installer() {
 
 E2E_SCREENSHOT_DIR=""
 E2E_MONITOR_SOCK=""
-E2E_REBOOT_TIMEOUT=180    # seconds to wait for SSH after unlock
+E2E_REBOOT_TIMEOUT=300    # seconds to wait for SSH after unlock/reboot
 E2E_DISK_PASSWORD="keystone"
 E2E_DISK_DEVICE="${E2E_DISK_DEVICE:-/dev/disk/by-id/virtio-keystone-test-disk}"
 
@@ -395,7 +404,99 @@ ssh_installed_cmd() {
 
 ssh_target_root_cmd() {
     local cmd="$1"
+    if ssh_root_cmd "$cmd" 2>/dev/null; then
+        return 0
+    fi
     ssh_cmd "sudo -n $cmd"
+}
+
+install_e2e_root_authorized_keys() {
+    if [[ -z "$SSH_KEYS_LIST" ]]; then
+        log_error "E2E: cannot install root SSH keys without SSH_KEYS_LIST"
+        return 1
+    fi
+
+    log_info "E2E: installing root authorized_keys on the mounted target"
+    if ssh_cmd \
+        "sudo -n sh -c 'install -d -m 700 /mnt/root/.ssh && cat > /mnt/root/.ssh/authorized_keys && chmod 600 /mnt/root/.ssh/authorized_keys'" \
+        <<<"$SSH_KEYS_LIST"; then
+        log_ok "E2E: root authorized_keys installed on the mounted target"
+        return 0
+    fi
+
+    log_error "E2E: failed to install root authorized_keys on the mounted target"
+    return 1
+}
+
+wait_for_guest_ssh() {
+    local context="$1"
+    local timeout="$2"
+    local start_time now elapsed
+    local active_user=""
+    start_time="$(date +%s)"
+
+    log_info "E2E: polling for SSH on port $SSH_PORT (${context})..."
+    while true; do
+        now="$(date +%s)"
+        elapsed=$(( now - start_time ))
+        if (( elapsed >= timeout )); then
+            log_error "E2E: SSH did not come up within ${timeout}s (${context})"
+            return 1
+        fi
+        if [[ "$(ssh_root_cmd 'echo ok' 2>/dev/null || true)" == "ok" ]]; then
+            active_user="root"
+        elif [[ "$(ssh_cmd 'echo ok' 2>/dev/null || true)" == "ok" ]]; then
+            active_user="$ADMIN_USERNAME"
+        fi
+        if [[ -n "$active_user" ]]; then
+            log_ok "E2E: SSH to installed system succeeded as ${active_user} (${context})"
+            return 0
+        fi
+        sleep 5
+    done
+}
+
+wait_for_guest_shutdown() {
+    local context="$1"
+    local timeout="${2:-60}"
+    local start_time now elapsed
+    start_time="$(date +%s)"
+
+    while true; do
+        now="$(date +%s)"
+        elapsed=$(( now - start_time ))
+        if (( elapsed >= timeout )); then
+            log_warn "E2E: guest never dropped SSH during reboot (${context})"
+            return 0
+        fi
+        if [[ "$(ssh_cmd 'echo still-up' 2>/dev/null || true)" != "still-up" ]]; then
+            log_ok "E2E: guest shutdown detected (${context})"
+            return 0
+        fi
+        sleep 2
+    done
+}
+
+wait_for_vm_shutdown() {
+    local vm_name="$1"
+    local timeout="${2:-120}"
+    local start_time now elapsed state
+    start_time="$(date +%s)"
+
+    while true; do
+        now="$(date +%s)"
+        elapsed=$(( now - start_time ))
+        if (( elapsed >= timeout )); then
+            log_error "E2E: VM '${vm_name}' did not shut down within ${timeout}s"
+            return 1
+        fi
+        state="$(virsh -c qemu:///session domstate "$vm_name" 2>/dev/null || true)"
+        if [[ "$state" == "shut off" ]]; then
+            log_ok "E2E: VM '${vm_name}' reached the shut off state"
+            return 0
+        fi
+        sleep 2
+    done
 }
 
 # Send a string to the VM keyboard via QEMU monitor sendkey.
@@ -436,19 +537,18 @@ verify_imagemagick_available() {
     fi
 }
 
-# Validate the post-install hardware CLI surface over SSH.
+# Validate the post-install hardware report surface over SSH.
 #
 # This intentionally runs the installed system's `ks`, not the host copy,
 # because the goal is to prove the new-user VM journey exposes the expected
-# hardware-enrollment commands after first boot.
-run_e2e_hardware_validation() {
+# hardware-enrollment commands after install and after reboot.
+run_e2e_report_validation() {
     local context="$1"
     local runner="$2"
     local failed=0
     local report_json=""
-    local setup_output=""
 
-    log_info "E2E: validating ks hardware commands (${context})"
+    log_info "E2E: validating ks hardware report (${context})"
 
     if report_json="$("$runner" "ks hardware report --json" 2>&1)"; then
         if grep -F '"machine"' <<<"$report_json" >/dev/null \
@@ -467,21 +567,37 @@ run_e2e_hardware_validation() {
         failed=1
     fi
 
+    if (( failed )); then
+        log_error "E2E: hardware report validation FAILED (${context})"
+        return 1
+    fi
+
+    log_ok "E2E: hardware report validation passed (${context})"
+    return 0
+}
+
+run_e2e_setup_dry_run_validation() {
+    local context="$1"
+    local runner="$2"
+    local expectation="$3"
+    local setup_output=""
+    local failed=0
+
+    log_info "E2E: validating ks hardware setup --dry-run (${context})"
+
     if setup_output="$("$runner" "ks hardware setup --dry-run" 2>&1)"; then
-        if grep -F "would execute the following plan:" <<<"$setup_output" >/dev/null \
+        if [[ "$expectation" == "plan" ]] \
+            && grep -F "would execute the following plan:" <<<"$setup_output" >/dev/null \
             && grep -F "root" <<<"$setup_output" >/dev/null; then
             log_ok "E2E: ks hardware setup --dry-run produced a root-disk plan"
         else
-            log_error "E2E: ks hardware setup --dry-run succeeded without a recognizable plan"
+            log_error "E2E: ks hardware setup --dry-run returned unexpected success output"
             printf '%s\n' "$setup_output" >&2
             failed=1
         fi
     else
-        # The current VM flow still stops before Secure Boot enrollment, so
-        # dry-run is expected to block there. Accept that specific shape
-        # because it still proves the command reached the real planner on the
-        # installed system. Any other failure remains a regression.
-        if grep -F "Setup blocked" <<<"$setup_output" >/dev/null \
+        if [[ "$expectation" == "secure-boot-blocker" ]] \
+            && grep -F "Setup blocked" <<<"$setup_output" >/dev/null \
             && grep -F "Secure Boot" <<<"$setup_output" >/dev/null; then
             log_ok "E2E: ks hardware setup --dry-run reached the expected Secure Boot blocker"
         else
@@ -492,81 +608,199 @@ run_e2e_hardware_validation() {
     fi
 
     if (( failed )); then
-        log_error "E2E: hardware CLI validation FAILED (${context})"
+        log_error "E2E: setup dry-run validation FAILED (${context})"
         return 1
     fi
 
-    log_ok "E2E: hardware CLI validation passed (${context})"
+    log_ok "E2E: setup dry-run validation passed (${context})"
     return 0
 }
 
-# Validate the rebooted installed system: screenshots, LUKS unlock, SSH.
-# Expects E2E_MONITOR_SOCK, E2E_SCREENSHOT_DIR, and SSH_PORT to be set.
-# The VM must already be running (started via --post-install-reboot).
-run_e2e_reboot_validation() {
-    local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
-    local failed=0
+run_e2e_secure_boot_enrollment() {
+    local enroll_output=""
 
-    log_info "E2E: validating rebooted installed system"
-
-    # Stage 1: LUKS prompt
-    log_info "E2E: waiting for LUKS prompt..."
-    sleep 15
-    e2e_screenshot "01-luks-prompt"
-
-    # Stage 2: unlock disk
-    log_info "E2E: sending disk unlock password"
-    e2e_sendkeys "$E2E_DISK_PASSWORD"
-    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
-    sleep 20
-    e2e_screenshot "02-post-unlock"
-
-    # Req 2: wait for desktop/login — screenshot must show hyprlock
-    log_info "E2E: waiting for desktop/login surface..."
-    sleep 30
-    e2e_screenshot "03-hyprlock"
-
-    # Stage 4: unlock hyprlock by typing the user password + Enter
-    log_info "E2E: unlocking hyprlock with user password"
-    e2e_sendkeys "changeme"
-    echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
-    sleep 10
-    e2e_screenshot "04-desktop"
-
-    # Req 1: SSH validation post-reboot must succeed
-    log_info "E2E: polling for SSH on port $SSH_PORT..."
-    local start_time now elapsed
-    start_time="$(date +%s)"
-    local ssh_ok=false
-    while true; do
-        now="$(date +%s)"
-        elapsed=$(( now - start_time - 65 ))  # offset for the sleeps above
-        if (( elapsed >= E2E_REBOOT_TIMEOUT )); then
-            break
-        fi
-        if ssh "${SSH_IDENTITY_ARGS[@]}" \
-            -p "$SSH_PORT" \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=5 \
-            -o BatchMode=yes \
-            "${ADMIN_USERNAME}@localhost" 'echo ok' 2>/dev/null; then
-            ssh_ok=true
-            break
-        fi
-        sleep 5
-    done
-
-    if [[ "$ssh_ok" == "true" ]]; then
-        log_ok "E2E: SSH to installed system succeeded"
-        if ! run_e2e_hardware_validation "rebooted installed system" ssh_target_root_cmd; then
-            failed=1
-        fi
-    else
-        log_warn "E2E: SSH to installed system failed (hardware CLI was already validated pre-reboot)"
+    log_info "E2E: enrolling Secure Boot keys on the installer-mounted target"
+    if ! ssh_installed_cmd "test -f /var/lib/sbctl/keys/db/db.pem" 2>/dev/null; then
+        log_error "E2E: Secure Boot signing keys are missing from the installed system"
+        return 1
     fi
 
-    e2e_screenshot "05-final-state"
+    if enroll_output="$(
+        ssh_installed_cmd "sbctl enroll-keys --yes-this-might-brick-my-machine" 2>&1
+    )"; then
+        log_ok "E2E: Secure Boot keys enrolled into firmware"
+        return 0
+    fi
+
+    log_error "E2E: Secure Boot enrollment failed"
+    printf '%s\n' "$enroll_output" >&2
+    return 1
+}
+
+ensure_e2e_boot_fallback() {
+    local fallback_output=""
+    local remote_script=""
+    local quoted_script=""
+
+    log_info "E2E: ensuring the installed ESP and EFI boot entry are prepared"
+    remote_script=$(cat <<EOF
+set -eo pipefail
+
+esp=/mnt/boot
+disk=$(printf '%q' "$E2E_DISK_DEVICE")
+label='Keystone E2E Boot'
+loader_abs=""
+
+if [ -f "\$esp/EFI/BOOT/BOOTX64.EFI" ]; then
+    loader_abs="\$esp/EFI/BOOT/BOOTX64.EFI"
+else
+    loader_abs="\$(find "\$esp/EFI/Linux" -maxdepth 1 -type f -name '*.efi' | sort | head -n1)"
+fi
+
+[ -n "\$loader_abs" ]
+[ -f "\$loader_abs" ]
+
+loader_rel="\${loader_abs#\$esp}"
+loader_efi="\$(printf '%s' "\$loader_rel" | sed 's#/#\\\\#g')"
+loader_efi="\\\\\${loader_efi#\\\\}"
+
+entry="\$(efibootmgr | awk '
+    /Keystone E2E Boot/ {
+        boot = \$1
+        sub(/^Boot/, "", boot)
+        sub(/\\*.*/, "", boot)
+        print boot
+        exit
+    }
+')"
+
+if [ -z "\$entry" ]; then
+    efibootmgr --create --disk "\$disk" --part 1 \
+        --label "\$label" \
+        --loader "\$loader_efi" >/tmp/e2e-efibootmgr.log 2>&1
+    entry="\$(efibootmgr | awk '
+        /Keystone E2E Boot/ {
+            boot = \$1
+            sub(/^Boot/, "", boot)
+            sub(/\\*.*/, "", boot)
+            print boot
+            exit
+        }
+    ')"
+fi
+
+[ -n "\$entry" ]
+efibootmgr --bootnext "\$entry" >/tmp/e2e-efibootmgr.log 2>&1 || true
+printf 'entry:%s loader:%s\n' "\$entry" "\$loader_efi"
+EOF
+)
+    printf -v quoted_script '%q' "$remote_script"
+
+    if fallback_output="$(
+        ssh_cmd "sudo -n bash -lc $quoted_script" 2>&1
+    )"; then
+        log_ok "E2E: EFI boot target prepared (${fallback_output})"
+        return 0
+    fi
+
+    log_error "E2E: failed to prepare the EFI boot target"
+    printf '%s\n' "$fallback_output" >&2
+    return 1
+}
+
+validate_secure_boot_active() {
+    local report_json=""
+
+    log_info "E2E: verifying Secure Boot is active on the rebooted system"
+    if ! report_json="$(ssh_target_root_cmd "ks hardware report --json" 2>&1)"; then
+        log_error "E2E: could not fetch hardware report after Secure Boot reboot"
+        printf '%s\n' "$report_json" >&2
+        return 1
+    fi
+
+    if grep -F '"secure_boot": "enrolled"' <<<"$report_json" >/dev/null; then
+        log_ok "E2E: Secure Boot is active after reboot"
+        return 0
+    fi
+
+    log_error "E2E: Secure Boot did not reach the enrolled state after reboot"
+    printf '%s\n' "$report_json" >&2
+    return 1
+}
+
+run_e2e_tpm_enrollment() {
+    local enroll_output=""
+    local report_json=""
+
+    log_info "E2E: enrolling recovery key + TPM2 via ks hardware"
+    # `setup` still needs an interactive new password. This recovery primitive
+    # matches the old auto-enrollment path while staying non-interactive enough
+    # for e2e SSH execution.
+    if ! enroll_output="$(
+        ssh_target_root_cmd "ks hardware enroll recovery --disk=root" 2>&1
+    )"; then
+        log_error "E2E: ks hardware enroll recovery --disk=root failed"
+        printf '%s\n' "$enroll_output" >&2
+        return 1
+    fi
+
+    if ! ssh_target_root_cmd "test -f /var/lib/keystone/tpm-enrollment-complete" 2>/dev/null; then
+        log_error "E2E: TPM enrollment marker file is missing"
+        return 1
+    fi
+
+    if ! report_json="$(ssh_target_root_cmd "ks hardware report --json" 2>&1)"; then
+        log_error "E2E: could not fetch hardware report after TPM enrollment"
+        printf '%s\n' "$report_json" >&2
+        return 1
+    fi
+
+    if grep -F '"secure_boot": "enrolled"' <<<"$report_json" >/dev/null \
+        && grep -A3 '"recovery": {' <<<"$report_json" | grep -F '"enrolled": true' >/dev/null \
+        && grep -A3 '"tpm2": {' <<<"$report_json" | grep -F '"enrolled": true' >/dev/null; then
+        log_ok "E2E: hardware report shows Secure Boot, recovery key, and TPM2 enrollment"
+        return 0
+    fi
+
+    log_error "E2E: hardware report did not reflect recovery + TPM enrollment"
+    printf '%s\n' "$report_json" >&2
+    return 1
+}
+
+run_e2e_boot_validation() {
+    local context="$1"
+    local unlock_mode="$2"
+    local screenshot_prefix="$3"
+
+    log_info "E2E: validating boot cycle (${context})"
+
+    sleep 15
+    e2e_screenshot "${screenshot_prefix}-01-boot"
+
+    if [[ "$unlock_mode" == "manual" ]]; then
+        log_info "E2E: sending disk unlock password"
+        e2e_sendkeys "$E2E_DISK_PASSWORD"
+        echo "sendkey ret" | socat - "UNIX-CONNECT:${E2E_MONITOR_SOCK}" > /dev/null 2>&1
+        sleep 20
+        e2e_screenshot "${screenshot_prefix}-02-post-unlock"
+    else
+        log_info "E2E: waiting for TPM-based auto-unlock"
+        sleep 20
+        e2e_screenshot "${screenshot_prefix}-02-auto-unlock"
+    fi
+
+    if ! wait_for_guest_ssh "$context" "$E2E_REBOOT_TIMEOUT"; then
+        e2e_screenshot "${screenshot_prefix}-03-ssh-timeout"
+        return 1
+    fi
+
+    e2e_screenshot "${screenshot_prefix}-03-ssh-ready"
+    return 0
+}
+
+compare_e2e_screenshots() {
+    local ref_dir="${PROJECT_DIR}/tests/e2e/screenshots"
+    local failed=0
 
     # Req 5: compare screenshots against LFS baselines (SHA-256 in pointer files)
     local has_baselines=false
@@ -610,11 +844,11 @@ run_e2e_reboot_validation() {
     rm -f "$E2E_MONITOR_SOCK"
 
     if (( failed )); then
-        log_error "E2E: reboot validation FAILED — one or more checks failed"
+        log_error "E2E: screenshot comparison FAILED"
         return 1
     fi
 
-    log_ok "E2E: reboot validation passed"
+    log_ok "E2E: screenshot comparison passed"
     return 0
 }
 
@@ -1266,7 +1500,6 @@ cleanup_vm() {
         "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
     fi
     rm -f "$ISO_RESULT" "$VM_DISK_PATH"
-    rm -rf "${E2E_SCREENSHOT_DIR:-}"
 }
 
 trap 'cleanup_vm; cleanup_project_snapshot' EXIT
@@ -1330,12 +1563,21 @@ if [[ "$E2E_MODE" == "true" ]]; then
     configure_vm_substituter
     run_e2e_installer || { cleanup_vm; exit 1; }
     run_e2e_checkpoints || { cleanup_vm; exit 1; }
-    run_e2e_hardware_validation "installer-mounted target" ssh_installed_cmd || { cleanup_vm; exit 1; }
+    install_e2e_root_authorized_keys || { cleanup_vm; exit 1; }
+    run_e2e_report_validation "installer-mounted target" ssh_installed_cmd || { cleanup_vm; exit 1; }
+    run_e2e_setup_dry_run_validation \
+        "installer-mounted target" \
+        ssh_installed_cmd \
+        "secure-boot-blocker" || { cleanup_vm; exit 1; }
+    run_e2e_secure_boot_enrollment || { cleanup_vm; exit 1; }
+    ensure_e2e_boot_fallback || { cleanup_vm; exit 1; }
 
-    # Layer 2: reboot validation with screenshots
-    log_info "E2E: stopping install VM for reboot validation..."
-    "$VM_SCRIPT" --destroy "$VM_NAME" 2>/dev/null || true
-    sleep 2
+    # Layer 2: first reboot with manual LUKS unlock, now that Secure Boot keys
+    # are enrolled in firmware. Use a guest poweroff so OVMF flushes NVRAM.
+    log_info "E2E: powering off install VM for first installed-system reboot..."
+    ssh_cmd "sudo -n nohup sh -c 'sleep 2; poweroff' >/dev/null 2>&1 &" >/dev/null 2>&1 || true
+    wait_for_guest_shutdown "installer poweroff" 60 || true
+    wait_for_vm_shutdown "$VM_NAME" 120 || { cleanup_vm; exit 1; }
 
     E2E_MONITOR_SOCK="/tmp/qemu-e2e-monitor-$$.sock"
     E2E_SCREENSHOT_DIR="/tmp/keystone-e2e-screenshots"
@@ -1356,17 +1598,54 @@ if [[ "$E2E_MODE" == "true" ]]; then
     # Req 4: check imagemagick before screenshot capture
     verify_imagemagick_available
 
-    if run_e2e_reboot_validation; then
+    if ! run_e2e_boot_validation \
+        "installed system after Secure Boot enrollment" \
+        "manual" \
+        "01-secure-boot-reboot"; then
+        log_error "E2E: first reboot validation failed."
+        cleanup_vm
+        exit 1
+    fi
+
+    validate_secure_boot_active || { cleanup_vm; exit 1; }
+    run_e2e_report_validation \
+        "installed system after Secure Boot enrollment" \
+        ssh_target_root_cmd || { cleanup_vm; exit 1; }
+    run_e2e_setup_dry_run_validation \
+        "installed system after Secure Boot enrollment" \
+        ssh_target_root_cmd \
+        "plan" || { cleanup_vm; exit 1; }
+    run_e2e_tpm_enrollment || { cleanup_vm; exit 1; }
+
+    log_info "E2E: rebooting installed system to verify TPM auto-unlock..."
+    ssh_target_root_cmd "nohup sh -c 'sleep 2; reboot' >/dev/null 2>&1 &" >/dev/null 2>&1 \
+        || { log_error "E2E: failed to trigger TPM verification reboot"; cleanup_vm; exit 1; }
+    wait_for_guest_shutdown "TPM verification reboot" 60 || true
+
+    if ! run_e2e_boot_validation \
+        "installed system after TPM enrollment" \
+        "auto" \
+        "02-tpm-auto-unlock"; then
+        log_error "E2E: TPM auto-unlock validation failed."
+        cleanup_vm
+        exit 1
+    fi
+
+    run_e2e_report_validation \
+        "installed system after TPM enrollment" \
+        ssh_target_root_cmd || { cleanup_vm; exit 1; }
+
+    if compare_e2e_screenshots; then
         log_ok "E2E: all layers passed."
         # TODO(ci): In CI, cleanup_vm unconditionally. For local dev, consider
         # preserving the VM for debugging (--keep-vm flag).
         cleanup_vm
         exit 0
-    else
-        log_error "E2E: reboot validation failed."
-        cleanup_vm
-        exit 1
     fi
+
+    log_error "E2E: screenshot validation failed."
+    cleanup_vm
+    exit 1
 fi
 
 log_warn "VM '$VM_NAME' is running. Press Ctrl-C to shut it down."
