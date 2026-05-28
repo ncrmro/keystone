@@ -80,19 +80,23 @@ What to look for:
 
 - Before enrollment, `report` usually shows the password slot as default and
   TPM2 / recovery / FIDO2 as missing.
-- The dry-run should show a short plan, not blockers.
+- The dry-run should show either the full enrollment plan or the Secure Boot
+  staging work that must happen before TPM enrollment can continue.
 - The interactive setup should rotate the default password first, then show
   the recovery key once, then enroll TPM2, then optionally enroll FIDO2 or
   fingerprint if the hardware is present.
+- If Secure Boot is not active yet, `ks hardware setup` now stages that work
+  too: it can generate keys or enroll them in Setup Mode, then stop cleanly
+  for the required firmware change or reboot before you rerun it.
 - After reboot, `report` should show the default password warning gone.
 
 ## Preconditions and common blockers
 
 - You must run enrollment on the installed system, not the live ISO.
-- Secure Boot must be enrolled, not merely present in firmware.
+- Secure Boot must end up enrolled, not merely present in firmware.
 - TPM2 auto-unlock requires a visible TPM device.
-- `ks hardware setup` currently ships only `--dry-run`. There is no
-  non-interactive mode in v1.1.
+- `ks hardware setup` is interactive in v1.1. There is still no
+  non-interactive mode.
 
 If a machine does not meet those conditions, `ks hardware report` will usually
 tell you why before you change anything.
@@ -131,6 +135,8 @@ methods.
 
 ```text
 (dry run — would execute the following plan:)
+  • Enroll Secure Boot keys
+  • Reboot and re-run setup: Secure Boot keys will be active after reboot. Re-run `ks hardware setup` to continue TPM enrollment.
   • Rotate default password on `root`
   • Generate recovery key + enroll TPM2 on `root`
   • Skip: no fingerprint reader detected
@@ -140,6 +146,14 @@ If a FIDO2 key is plugged in, you should also see a step like:
 
 ```text
   • Enroll FIDO2 (Yubico YubiKey OTP+FIDO+CCID) on `root`
+```
+
+On a host where Secure Boot is disabled entirely, the dry-run will instead
+start with a staging step like:
+
+```text
+  • Generate Secure Boot keys
+  • Pause for firmware action: Enter firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.
 ```
 
 </details>
