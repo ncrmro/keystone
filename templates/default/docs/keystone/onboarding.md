@@ -328,58 +328,51 @@ repo over, or wait until `ks update` is wired up).
 
 ---
 
-## Step 7 — Enroll TPM unlock + replace the `keystone` LUKS password
+## Step 7 — Enroll hardware-backed disk unlock
 
 **Goal:** Move from "anyone with the literal string `keystone` can unlock your
 disk" to "the TPM unlocks the disk automatically when Secure Boot, kernel, and
 initrd match expected measurements, and a user-chosen password is the fallback."
+
+Before you run anything, read
+[`hardware-enrollment.md`](hardware-enrollment.md). It is the dedicated
+post-install guide for this step: the layered model, exact commands,
+representative output, and when to use `ks hardware setup` versus the
+single-method `ks hardware enroll ...` commands.
 
 **Edit:** Nothing in the repo. The enrollment is a one-shot on the target.
 
 **Run:** On the target, as your owner user:
 
 ```bash
-sudo keystone-enroll-password
+sudo ks hardware report
+sudo ks hardware setup --dry-run
+sudo ks hardware setup
 ```
 
-This script:
+The normal first-time flow is:
 
-1. Prompts you for a new LUKS password (cannot be `keystone`).
-2. Adds your new password to a LUKS keyslot.
-3. Enrolls the TPM with the current PCR measurements so future boots
-   auto-unlock without prompting (unless boot integrity changes).
-4. **Removes the default `keystone` keyslot.**
-
-For TPM-only enrollment (no password fallback — advanced; rescue media required
-if the TPM ever fails) or recovery-key enrollment, see `keystone-enroll-tpm`
-and `keystone-enroll-recovery`.
+1. `ks hardware report` shows the current state.
+2. `ks hardware setup --dry-run` shows the exact plan.
+3. `ks hardware setup` rotates the default password if needed, generates a
+   recovery key, enrolls TPM2, and opportunistically enrolls FIDO2 and
+   fingerprint if the hardware is present.
 
 **Verify:**
 
 ```bash
-# Reboot
-sudo systemctl reboot
+sudo reboot
+sudo ks hardware report
 ```
 
-After reboot, the disk should unlock without prompting for a password. The
-shell login prompts for your *user* password (set in Step 6), not the LUKS
-password.
+After reboot, the disk should unlock automatically on a healthy machine, and
+the post-reboot `ks hardware report` should no longer show the default
+installer-password warning.
 
-To prove the `keystone` slot is gone:
-
-```bash
-sudo cryptsetup luksDump /dev/disk/by-partlabel/disk-root-root | grep -A1 'Keyslot'
-```
-
-Should not show the slot that was tied to `keystone`. (Slot indices differ by
-disko config — the key signal is that `cryptsetup open --test-passphrase` with
-input `keystone` fails.)
-
-**If it fails:** TPM enrollment can fail if the system was booted without
-Secure Boot enabled or with mismatched PCRs. The script tells you which. If
-you can't recover, the `keystone` slot is still active until the script
-explicitly removes it (read the script's output carefully — it confirms before
-deleting).
+**If it fails:** The most common blockers are Secure Boot not being enrolled,
+no TPM2 device present, or trying to do the work from the live ISO instead of
+the installed system. `hardware-enrollment.md` has the per-method recovery
+commands and example output for each case.
 
 ---
 

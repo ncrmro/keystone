@@ -515,6 +515,65 @@ impl DesktopCheck {
     }
 }
 
+/// Hardware Auth section — surfaces Secure Boot, TPM, FIDO2, fingerprint,
+/// and per-LUKS-volume enrollment state. Delegates to the shared
+/// `cmd::hardware::probe::probe()` routine so this section stays in
+/// sync with `ks hardware report` without duplicating detection logic.
+async fn gather_hardware_status() -> (String, Vec<DiagnosticCheck>) {
+    let report = super::hardware::probe::probe().await;
+    let body = super::hardware::report::format_text(
+        &report,
+        super::hardware::report::Context_::PostInstall,
+    );
+    let mut md = String::from("## Hardware Auth\n\n```\n");
+    md.push_str(&body);
+    md.push_str("```\n\n");
+
+    let mut checks = Vec::new();
+    // Surface a single boolean check per machine-wide concern so the
+    // doctor JSON view captures the high-bits of the hardware report.
+    let sb_status = match report.machine.secure_boot {
+        super::hardware::probe::SecureBootState::Enrolled => "ok",
+        super::hardware::probe::SecureBootState::Disabled => "error",
+        _ => "warning",
+    };
+    checks.push(DiagnosticCheck {
+        name: "secure-boot".to_string(),
+        status: sb_status.to_string(),
+        detail: format!("{:?}", report.machine.secure_boot),
+    });
+    let tpm_status = matches!(
+        report.machine.tpm2,
+        super::hardware::probe::TpmDeviceState::Present
+    );
+    checks.push(DiagnosticCheck {
+        name: "tpm2-device".to_string(),
+        status: if tpm_status { "ok" } else { "warning" }.to_string(),
+        detail: if tpm_status {
+            "/dev/tpmrm0 present".into()
+        } else {
+            "no TPM device".into()
+        },
+    });
+    for w in &report.warnings {
+        let status = match w.severity {
+            super::hardware::probe::Severity::Critical => "error",
+            super::hardware::probe::Severity::Warning => "warning",
+            super::hardware::probe::Severity::Info => "ok",
+        };
+        let scope = match &w.scope {
+            super::hardware::probe::WarningScope::Machine => "machine".to_string(),
+            super::hardware::probe::WarningScope::Volume { id } => format!("volume:{}", id),
+        };
+        checks.push(DiagnosticCheck {
+            name: format!("hardware-warning:{}", scope),
+            status: status.to_string(),
+            detail: w.message.clone(),
+        });
+    }
+    (md, checks)
+}
+
 async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
     let is_desktop = systemctl_user_unit_exists("hyprpolkitagent.service").await;
     if !is_desktop {
@@ -564,6 +623,10 @@ async fn gather_desktop_triggers() -> (String, Vec<DiagnosticCheck>) {
     (md, checks)
 }
 
+/// Sequential gather of independent diagnostic sections. Cognitive
+/// complexity is inherent to the aggregator shape — splitting each
+/// section call into its own helper just adds indirection.
+#[allow(clippy::cognitive_complexity)]
 pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
     let hostname = hostname::get()
         .context("Failed to get hostname")?
@@ -649,6 +712,11 @@ pub async fn gather_report(repo_root: &Path) -> Result<DoctorReport> {
         markdown.push_str(&desktop_md);
     }
     checks.extend(desktop_checks);
+
+    doctor_progress("checking hardware credentials");
+    let (hw_md, hw_checks) = gather_hardware_status().await;
+    markdown.push_str(&hw_md);
+    checks.extend(hw_checks);
 
     Ok(DoctorReport {
         hostname,

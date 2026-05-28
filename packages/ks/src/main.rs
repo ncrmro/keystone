@@ -41,7 +41,7 @@ mod tui;
 mod widgets;
 
 use app::{App, AppScreen};
-use cli::{Cli, Command, HardwareKeyCommand};
+use cli::{Cli, Command};
 use components::first_boot::FirstBootConfig;
 use components::install::InstallerConfig;
 
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
             Command::Agents(args) => run_agents_command(args).await,
             Command::Docs { topic_or_path } => run_docs_command(topic_or_path).await,
             Command::Photos { command } => run_photos_command(command).await,
-            Command::HardwareKey { command } => run_hardware_key_command(command, flake).await,
+            Command::Hardware { command } => cmd::hardware::execute(command, flake).await,
             Command::Screenshots { command } => run_screenshots_command(command).await,
             Command::SyncAgentAssets => run_sync_agent_assets_command().await,
             Command::SyncHostKeys => run_sync_host_keys_command(flake).await,
@@ -591,50 +591,6 @@ async fn run_docs_command(topic_or_path: Option<String>) -> Result<()> {
 
 async fn run_photos_command(command: cmd::photos::PhotosCommand) -> Result<()> {
     cmd::photos::execute_command(command).await
-}
-
-async fn run_hardware_key_command(
-    command: HardwareKeyCommand,
-    flake: Option<&std::path::Path>,
-) -> Result<()> {
-    match command {
-        HardwareKeyCommand::Doctor { selector, json } => {
-            match cmd::hardware_key::execute_doctor(selector.as_deref(), flake).await {
-                Ok(report) => {
-                    if json {
-                        print_json_success(&report)
-                    } else {
-                        cmd::hardware_key::render_doctor(&report)
-                    }
-                }
-                Err(e) => {
-                    if json {
-                        print_json_error(&e)
-                    } else {
-                        Err(e)
-                    }
-                }
-            }
-        }
-        HardwareKeyCommand::Secrets { json } => {
-            match cmd::hardware_key::execute_secrets_todo(flake).await {
-                Ok(todo) => {
-                    if json {
-                        print_json_success(&todo)
-                    } else {
-                        cmd::hardware_key::render_secrets_todo(&todo)
-                    }
-                }
-                Err(e) => {
-                    if json {
-                        print_json_error(&e)
-                    } else {
-                        Err(e)
-                    }
-                }
-            }
-        }
-    }
 }
 
 async fn run_screenshots_command(command: cmd::screenshots::ScreenshotsCommand) -> Result<()> {

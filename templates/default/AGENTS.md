@@ -22,6 +22,10 @@ reasoning from scratch when a question falls in their scope:
 - [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
   walkthrough from `nix flake new` to a fully secured first host. Numbered
   steps, each with Goal → Edit → Run → Verify → If-it-fails.
+- [`docs/keystone/hardware-enrollment.md`](docs/keystone/hardware-enrollment.md)
+  — the post-install disk-unlock hardening guide: what the layered model is,
+  when to use `ks hardware setup` versus `ks hardware enroll <method>`, and
+  representative command output for first-time enrollment.
 - [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
   `keystone.lib.mkSystemFlake`: every argument it accepts (`admin`,
   `defaults`, `hostsRoot`, `shared.*`, `keystoneServices`, `hosts`) and every

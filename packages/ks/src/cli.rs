@@ -171,10 +171,11 @@ pub enum Command {
         command: PhotosCommand,
     },
 
-    /// Diagnose and manage hardware-key integrations.
-    HardwareKey {
+    /// Manage hardware-resident credentials for the encrypted disk and
+    /// hardware-backed identity (LUKS enrollment + YubiKey/age identities).
+    Hardware {
         #[command(subcommand)]
-        command: HardwareKeyCommand,
+        command: HardwareCommand,
     },
 
     /// Manage local screenshots.
@@ -351,4 +352,132 @@ pub enum HardwareKeyCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+/// `ks hardware <subcommand>` — covers both LUKS enrollment surface
+/// (`report`, `setup`, `disks`, `enroll`, `rotate`, `remove`) and the
+/// hardware-backed identity surface (`key`).
+#[derive(Subcommand)]
+pub enum HardwareCommand {
+    /// Show current hardware-credential state across the machine.
+    ///
+    /// Probes Secure Boot, TPM2, FIDO2 devices, fingerprint reader, and
+    /// per-LUKS-volume enrollment slots. Machine-wide warnings (e.g.,
+    /// Secure Boot disabled) render regardless of disk filter.
+    Report {
+        /// Emit structured JSON instead of the human-readable table.
+        #[arg(long)]
+        json: bool,
+
+        /// Render hints assuming this is the live installer (not yet installed).
+        #[arg(long, conflicts_with = "post_install")]
+        pre_install: bool,
+
+        /// Render hints assuming this is the installed system.
+        #[arg(long, conflicts_with = "pre_install")]
+        post_install: bool,
+
+        /// Write the probed state to `/var/lib/keystone/disk-unlock-status.json`
+        /// (or the given path). Used by the `keystone-tpm-check` systemd
+        /// service to refresh status after boot.
+        #[arg(long, value_name = "PATH", num_args = 0..=1, default_missing_value = "/var/lib/keystone/disk-unlock-status.json")]
+        write_status_file: Option<std::path::PathBuf>,
+
+        /// Focus the report on one LUKS volume by id (e.g., `root`).
+        #[arg(long, value_name = "ID")]
+        disk: Option<String>,
+    },
+
+    /// One-shot enrollment: detect hardware, replace default password,
+    /// generate recovery key, enroll TPM/FIDO2/fingerprint where present.
+    ///
+    /// Run with no flags for the interactive chain. `--dry-run` shows
+    /// the plan without executing.
+    ///
+    /// Non-interactive mode and `--allow-no-sb` are tracked as v1.2
+    /// follow-ups — the per-method primitives prompt interactively
+    /// for the new passphrase. If Secure Boot is not yet active,
+    /// setup now stages as much of that work as Linux userspace can
+    /// do behind the scenes, then stops cleanly for any required
+    /// firmware change or reboot before TPM enrollment continues.
+    Setup {
+        /// Compute and print the plan, then exit without changing state.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// List or focus LUKS volumes. With no `<id>`, lists. With an `<id>`,
+    /// runs the nested `fde` subcommands for that volume.
+    Disks {
+        /// Volume id (e.g., `root`). Omit to list all detected volumes.
+        id: Option<String>,
+
+        #[command(subcommand)]
+        command: Option<DisksCommand>,
+    },
+
+    /// (Sugar) Enroll a single method on a LUKS volume. Equivalent to
+    /// `ks hardware disks <id> fde enroll <method>`; defaults `--disk` to
+    /// `root`. `fingerprint` is machine-level (no `--disk`).
+    Enroll {
+        /// One of: password, recovery, tpm2, fido2, fingerprint.
+        method: String,
+
+        #[arg(long, value_name = "ID")]
+        disk: Option<String>,
+    },
+
+    /// Re-key an existing enrolled slot without running the full setup
+    /// chain. Use case: TPM PCR drift after a kernel upgrade.
+    Rotate {
+        method: String,
+
+        #[arg(long, value_name = "ID")]
+        disk: Option<String>,
+    },
+
+    /// Drop an enrolled slot. Refuses if it would leave fewer than two
+    /// unlock methods on the target volume.
+    Remove {
+        method: String,
+
+        #[arg(long, value_name = "ID")]
+        disk: Option<String>,
+    },
+
+    /// Manage hardware-backed SSH and agenix identities (YubiKey FIDO2
+    /// SSH keys, age-yubikey recipients).
+    Key {
+        #[command(subcommand)]
+        command: HardwareKeyCommand,
+    },
+}
+
+/// Subcommands under `ks hardware disks <id>` (post-`<id>` operations).
+#[derive(Subcommand)]
+pub enum DisksCommand {
+    /// FDE (full-disk encryption) operations on the selected volume.
+    Fde {
+        #[command(subcommand)]
+        command: FdeCommand,
+    },
+}
+
+/// `ks hardware disks <id> fde <verb>` — the canonical enrollment path.
+#[derive(Subcommand)]
+pub enum FdeCommand {
+    /// Show enrollment state for this volume.
+    Report {
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Enroll a single method on this volume.
+    Enroll { method: String },
+
+    /// Re-key an enrolled slot on this volume.
+    Rotate { method: String },
+
+    /// Drop an enrolled slot on this volume.
+    Remove { method: String },
 }

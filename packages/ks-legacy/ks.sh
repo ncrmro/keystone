@@ -144,7 +144,7 @@ Behavior:
   Rejects commands that are not in the Keystone approval allowlist.
 
 Examples:
-  ks approve --reason "Enroll a hardware key for disk unlock." -- keystone-enroll-fido2 --auto
+  ks approve --reason "Enroll a hardware key for disk unlock." -- ks hardware enroll fido2
   ks approve --reason "Deploy the current local state." -- ks switch
 EOF
 }

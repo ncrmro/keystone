@@ -280,7 +280,11 @@ ISO rebuild required — the binary is baked into the live environment:
 
 ### After changing only the test-iso script
 
-Copy the updated script, no rebuild:
+When you run through `bin/test-e2e`, the wrapper syncs `templates/default/bin/`
+into the cached fixture automatically, so no manual copy is needed.
+
+If you are running inside the fixture directly, copy the updated script and
+reuse the ISO:
 
 ```bash
 cp <worktree>/templates/default/bin/test-iso bin/test-iso
@@ -362,7 +366,8 @@ This loop takes 2-3 minutes instead of 15+ minutes for a full reinstall.
 
 | Situation | Strategy | Time |
 |-----------|----------|------|
-| NixOS module change (storage, TPM, boot) | `test-iso --direct laptop --headless` | 2-10 min |
+| `ks hardware`, Secure Boot, TPM, installer handoff, post-install reboot | `test-iso --headless --e2e` | 20-30 min |
+| NixOS module change (storage, TPM, boot) without installer or enrollment flow changes | `test-iso --direct laptop --headless` | 2-10 min |
 | Module change, install known good | Restore `post-install` → `nixos-rebuild switch` | 2-3 min |
 | Boot/LUKS issues | Restore `post-install` → re-boot | 30 sec |
 | Installer change (`ks` binary) | Full reinstall (rebuild ISO) | 15-20 min |
@@ -541,6 +546,33 @@ The unified e2e pipeline validates the full new-user journey. One command:
 ./bin/test-iso --dev --headless --e2e --port 12260 --memory 12288
 ```
 
+### Full hardware enrollment e2e
+
+Use this path for changes to `ks hardware`, Secure Boot, TPM, installer
+handoff, or post-install reboot logic. It is the only automated path that
+proves the full enrollment journey:
+
+- installer-mounted `ks hardware report --json`
+- installer-mounted `ks hardware setup --dry-run`
+- Secure Boot enrollment on the target ESP
+- reboot from the installed disk, manual LUKS unlock, and SSH return
+- post-reboot `ks hardware setup --dry-run` plan generation
+- `ks hardware enroll recovery --disk=root`
+- reboot with TPM auto-unlock and SSH return
+
+Operational invariants for this path:
+
+- Power the installer guest off cleanly before `--post-install-reboot`. Do not
+  destroy the VM immediately after writing EFI variables or boot entries; OVMF
+  NVRAM writes can be lost.
+- On lanzaboote systems, do not reinstall live-installer `bootctl` onto the
+  target ESP as a reboot workaround. Reboot must use the signed EFI artifact
+  already installed on the target ESP.
+- Post-boot privileged validation should use direct root SSH. Do not assume the
+  admin user has passwordless `sudo` after first boot.
+- Preserve failure screenshots under `/tmp/keystone-e2e-screenshots`. The
+  harness may fall back between QEMU `screendump` and guest-side `grim`.
+
 Stages (current status):
 
 | # | Stage | Status | Requirement |
@@ -549,17 +581,17 @@ Stages (current status):
 | 2 | ISO build + artifact verification | Working | REQ-003 |
 | 3 | Headless install (`ks install --host`) | Working | REQ-008.12-18 |
 | 4 | Install checkpoint verification | Working | REQ-003 |
-| 5 | Reboot from installed disk | Pending — OVMF boot discovery (#339) | REQ-008.20 |
-| 6 | LUKS unlock via QEMU `sendkey` | Working (when boot succeeds) | — |
-| 7 | Screenshot capture at boot stages | Working (PPM via `screendump`) | — |
-| 8 | Desktop validation (Hyprland + hyprlock) | Working — virgl + egl-headless + grim | REQ-002 |
-| 9 | SSH validation with dev key | Working | — |
-| 10 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
+| 5 | Installer-mounted hardware report + setup dry run | Working | REQ-008.20 |
+| 6 | Secure Boot enrollment on the mounted target | Working | REQ-001 |
+| 7 | Clean poweroff + reboot from installed disk | Working | REQ-001 |
+| 8 | Manual LUKS unlock + SSH return | Working | REQ-008.20 |
+| 9 | Post-reboot Secure Boot + setup-plan validation | Working | REQ-008.20 |
+| 10 | Recovery-key + TPM2 enrollment | Working | REQ-001 |
+| 11 | TPM auto-unlock reboot + SSH return | Working | REQ-001 |
+| 12 | SHA-to-SHA screenshot comparison | Working (LFS baselines) | — |
 
 ### Future stages (separate issues)
 
-- SecureBoot enrollment (sbctl + lanzaboote) — #283
-- TPM enrollment (systemd-cryptenroll) — #283
 - First-boot wizard completion — REQ-008.20-23
 - Service provisioning — #228
 
@@ -568,9 +600,9 @@ Stages (current status):
 | Requirement | What it covers | Where tested |
 |------------|----------------|--------------|
 | REQ-003 | Build and e2e validation: template eval, ISO, VM test matrix | `test-iso --e2e` stages 1-4 |
-| REQ-008 | Onboarding journey: template → install → first boot → services | `test-iso --e2e` stages 1-9 |
+| REQ-008 | Onboarding journey: template → install → first boot → hardware enrollment | `test-iso --e2e` stages 1-11 |
 | REQ-001 | Config generation: flake.nix, hosts, hardware.nix | `nix flake check` (eval tests) |
-| REQ-002 | Template data model: storage, security, desktop | Desktop screenshot validation |
+| REQ-002 | Template data model: storage, security, desktop | Desktop and screenshot validation |
 
 ## Screenshot standardization
 

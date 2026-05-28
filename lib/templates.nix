@@ -526,14 +526,22 @@ let
                 };
                 # Welcome banner on tty1. The keystone terminal module's
                 # starship + zsh config already handles colors, prompt,
-                # aliases, etc.; this just adds the install-time hint that
-                # used to live in the retired installer-admin-zshrc service.
+                # aliases, etc.; this just adds the install-time hint plus
+                # a hardware-credential preflight readout so the user
+                # sees whether Secure Boot, TPM, FIDO2, and fingerprint
+                # are ready before kicking off `ks install`.
+                #
+                # `|| true` on the preflight call: a probe failure must
+                # never block login on the live installer.
                 programs.zsh.initExtra = ''
                   tty_path="$(tty 2>/dev/null || true)"
                   if [[ "$tty_path" == "/dev/tty1" || "''${TERM:-}" == "linux" ]]; then
                     ${pkgs.util-linux}/bin/setterm --clear all --cursor on > /dev/tty1 2>/dev/null || true
                     clear >/dev/null 2>&1 || true
                     echo 'Keystone installer live environment'
+                    echo
+                    ks hardware report --pre-install 2>/dev/null || true
+                    echo
                     echo 'Run `ks install` to choose a host from the embedded repo and install it.'
                     echo 'SSH is available if keys were embedded in the ISO.'
                     print

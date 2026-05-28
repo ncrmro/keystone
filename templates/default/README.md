@@ -57,6 +57,10 @@ to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
   install programs, when to drop down to vanilla Nix.
 - [`docs/keystone/onboarding.md`](docs/keystone/onboarding.md) — progressive
   walkthrough from `nix flake new` to a fully secured first host.
+- [`docs/keystone/hardware-enrollment.md`](docs/keystone/hardware-enrollment.md)
+  — why the fresh install starts with a temporary disk-unlock posture, the
+  recommended `ks hardware setup` flow, and exact per-method commands when
+  you want to enroll or re-enroll one layer manually.
 - [`docs/keystone/flake.md`](docs/keystone/flake.md) — reference for
   `keystone.lib.mkSystemFlake`: every argument it accepts and every output
   it produces.

@@ -1,4 +1,10 @@
-//! `ks hardware-key` command family.
+//! `ks hardware key` — hardware-backed SSH and agenix identity tooling.
+//!
+//! Diagnoses YubiKey FIDO2 SSH keys and age-yubikey agenix recipients
+//! registered in the keystone-config repo. Sibling to the LUKS-unlock
+//! surface (`ks hardware report`/`setup`/`enroll`) in the parent
+//! module — both gate access to the same machine but operate on
+//! different credentials.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -8,7 +14,9 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::util;
+use crate::cli::HardwareKeyCommand;
+use crate::cmd::util;
+use crate::cmd::{JsonError, JsonOutput};
 use crate::repo;
 
 const DISK_UNLOCK_STATUS_FILE: &str = "/var/lib/keystone/disk-unlock-status.json";
@@ -988,6 +996,56 @@ pub fn render_secrets_todo(todo: &HardwareKeySecretsTodo) -> Result<()> {
     render_markdown(&todo.markdown)
 }
 
+/// Dispatch `ks hardware key <subcommand>`.
+pub async fn execute(command: HardwareKeyCommand, flake: Option<&Path>) -> Result<()> {
+    match command {
+        HardwareKeyCommand::Doctor { selector, json } => {
+            match execute_doctor(selector.as_deref(), flake).await {
+                Ok(report) => {
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&JsonOutput::ok(report))?);
+                        Ok(())
+                    } else {
+                        render_doctor(&report)
+                    }
+                }
+                Err(e) => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&JsonError::new(e.to_string()))?
+                        );
+                        Ok(())
+                    } else {
+                        Err(e)
+                    }
+                }
+            }
+        }
+        HardwareKeyCommand::Secrets { json } => match execute_secrets_todo(flake).await {
+            Ok(todo) => {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&JsonOutput::ok(todo))?);
+                    Ok(())
+                } else {
+                    render_secrets_todo(&todo)
+                }
+            }
+            Err(e) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&JsonError::new(e.to_string()))?
+                    );
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1028,5 +1086,147 @@ AGE-PLUGIN-YUBIKEY-BBBB
         let temp = tempfile::tempdir().unwrap();
         fs::write(temp.path().join("secrets.nix"), "{}").unwrap();
         assert!(detect_same_repo_secrets_layout(temp.path(), None));
+    }
+
+    fn sample_doctor_report() -> HardwareKeyDoctorReport {
+        HardwareKeyDoctorReport {
+            repo_root: "/home/ncrmro/.keystone/repos/ncrmro/keystone-config".into(),
+            host: "ncrmro-workstation".into(),
+            current_user: Some("ncrmro".into()),
+            selector: Some("ncrmro".into()),
+            checks: vec![
+                HardwareKeyCheck {
+                    name: "ykman".into(),
+                    status: "ok".into(),
+                    detail: "ykman 5.7.0".into(),
+                },
+                HardwareKeyCheck {
+                    name: "age-plugin-yubikey".into(),
+                    status: "ok".into(),
+                    detail: "age-plugin-yubikey 0.5.0".into(),
+                },
+            ],
+            registered_keys: vec![RegisteredHardwareKeyStatus {
+                user: "ncrmro".into(),
+                name: "yubi-black".into(),
+                description: "primary YubiKey 5C".into(),
+                public_key_kind: "sk-ssh-ed25519@openssh.com".into(),
+                public_key_comment: Some("ncrmro@workstation".into()),
+                root_access: true,
+                age_identity: Some("AGE-PLUGIN-YUBIKEY-AAAAA".into()),
+                current_user_age_identity_configured: true,
+                current_user_age_serial: Some("36854515".into()),
+                live_presence: "present".into(),
+            }],
+            configured_age_identities: vec![ConfiguredAgeIdentityStatus {
+                serial: "36854515".into(),
+                identity: "AGE-PLUGIN-YUBIKEY-AAAAA".into(),
+                present_in_identity_file: true,
+                connected: true,
+            }],
+            notes: vec!["live presence is best-effort".into()],
+            markdown: String::new(),
+        }
+    }
+
+    #[test]
+    fn doctor_markdown_includes_all_canonical_sections() {
+        let report = sample_doctor_report();
+        let md = markdown_for_doctor(&report, None);
+        assert!(md.starts_with("## Hardware Key Doctor"));
+        assert!(md.contains("### Checks"));
+        assert!(md.contains("### Registered SSH Hardware Keys"));
+        assert!(md.contains("### Configured Age Identities"));
+        assert!(md.contains("### Disk Unlock"));
+        assert!(md.contains("### Notes"));
+    }
+
+    #[test]
+    fn doctor_markdown_renders_empty_collections_as_none() {
+        let mut report = sample_doctor_report();
+        report.registered_keys.clear();
+        report.configured_age_identities.clear();
+        report.notes.clear();
+        let md = markdown_for_doctor(&report, None);
+        // Each empty section renders the "_None_" placeholder.
+        let none_count = md.matches("_None_").count();
+        assert_eq!(none_count, 2, "expected 2 _None_ markers, got: {}", md);
+        // Notes section should be omitted entirely when empty.
+        assert!(!md.contains("### Notes"));
+    }
+
+    #[test]
+    fn doctor_markdown_includes_disk_unlock_when_status_present() {
+        let report = sample_doctor_report();
+        let status = DiskUnlockStatus {
+            device: "/dev/zvol/rpool/credstore".into(),
+            tpm_enrolled: true,
+            fido2_enrolled: false,
+        };
+        let md = markdown_for_doctor(&report, Some(&status));
+        assert!(md.contains("device: `/dev/zvol/rpool/credstore`"));
+        assert!(md.contains("TPM enrolled: true"));
+        assert!(md.contains("FIDO2 enrolled: false"));
+    }
+
+    #[test]
+    fn doctor_markdown_omits_disk_unlock_when_status_missing() {
+        let report = sample_doctor_report();
+        let md = markdown_for_doctor(&report, None);
+        assert!(md.contains("_No world-readable disk unlock status file found._"));
+    }
+
+    #[test]
+    fn doctor_markdown_marks_root_access_explicitly() {
+        let report = sample_doctor_report();
+        let md = markdown_for_doctor(&report, None);
+        assert!(md.contains("root access: yes"));
+        assert!(md.contains("age identity configured: yes"));
+    }
+
+    #[test]
+    fn doctor_report_is_serializable_for_json_mode() {
+        let report = sample_doctor_report();
+        let json = serde_json::to_string(&report).expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        // Sanity: the top-level fields round-trip as expected. Fields
+        // use snake_case in JSON since the struct has no `rename_all`.
+        assert_eq!(parsed["host"], "ncrmro-workstation");
+        assert_eq!(parsed["current_user"], "ncrmro");
+        assert_eq!(parsed["checks"][0]["name"], "ykman");
+    }
+
+    fn sample_secrets_todo() -> HardwareKeySecretsTodo {
+        HardwareKeySecretsTodo {
+            repo_root: "/home/ncrmro/.keystone/repos/ncrmro/keystone-config".into(),
+            host: "ncrmro-workstation".into(),
+            current_user: Some("ncrmro".into()),
+            implemented: false,
+            detected_layouts: vec!["same-repo".into()],
+            plans: vec![
+                "Initialize agenix secrets directory at repo/secrets/.".into(),
+                "Add a user.age recipient for ncrmro/yubi-black.".into(),
+            ],
+            markdown: String::new(),
+        }
+    }
+
+    #[test]
+    fn secrets_todo_markdown_lists_plans() {
+        let todo = sample_secrets_todo();
+        let md = markdown_for_secrets(&todo);
+        assert!(md.contains("ncrmro-workstation"));
+        for plan in &todo.plans {
+            assert!(md.contains(plan), "missing plan {:?} in: {}", plan, md);
+        }
+    }
+
+    #[test]
+    fn secrets_todo_markdown_renders_when_layouts_empty() {
+        let mut todo = sample_secrets_todo();
+        todo.detected_layouts.clear();
+        let md = markdown_for_secrets(&todo);
+        // Should not panic, should still include the host header.
+        assert!(md.contains("ncrmro-workstation"));
     }
 }

@@ -132,13 +132,15 @@ in
       type = types.listOf commandSubmodule;
       default = [
         {
-          name = "keystone-enroll-fido2-auto";
+          name = "ks-hardware-enroll-fido2";
           displayName = "Enroll hardware key for disk unlock";
           reason = "Enroll a FIDO2 hardware key for disk unlock.";
           match = "exact";
           argv = [
-            "keystone-enroll-fido2"
-            "--auto"
+            "ks"
+            "hardware"
+            "enroll"
+            "fido2"
           ];
         }
         {

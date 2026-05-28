@@ -29,7 +29,7 @@ join_argv_json() {
   #      with "jq: error: ks/0 is not defined".
   #   2. `--args` only consumes non-option-shaped tokens as positionals; any
   #      `--flag` after `--args` (e.g. `ks update --approve`,
-  #      `keystone-enroll-fido2 --auto`) is parsed as a jq option unless a
+  #      `ks update --approve`) is parsed as a jq option unless a
   #      `--` separator immediately follows `--args`.
   # Both bites only manifest in non-tty contexts (e.g. ks-update.service
   # invoking `ks update --approve`); interactive callers historically went

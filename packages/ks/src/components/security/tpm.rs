@@ -62,12 +62,13 @@ pub async fn check_status() -> Status {
 /// TPM enrollment requires interactive password input via systemd-cryptenroll,
 /// so we return instructions rather than attempting auto-enrollment from the TUI.
 pub fn enroll_instructions() -> String {
-    "To enroll TPM for automatic disk unlock:\n\n\
-     Option 1 (recommended): Generate recovery key + enroll TPM\n\
-       $ sudo keystone-enroll-recovery\n\n\
-     Option 2: Set custom password + enroll TPM\n\
-       $ sudo keystone-enroll-password\n\n\
-     Option 3: Standalone TPM enrollment (advanced)\n\
-       $ sudo keystone-enroll-tpm --auto"
+    "To enroll TPM and the rest of the hardware-credential chain:\n\n\
+     Recommended: one-shot enrollment\n\
+       $ sudo ks hardware setup\n\n\
+     Per-method primitives:\n\
+       $ sudo ks hardware enroll recovery   # paper key + TPM2\n\
+       $ sudo ks hardware enroll password   # rotate slot 0\n\
+       $ sudo ks hardware enroll tpm2       # re-bind TPM after PCR drift\n\
+       $ sudo ks hardware enroll fido2      # enroll a YubiKey"
         .into()
 }
