@@ -19,7 +19,6 @@ fn resolve_docs_target(docs_root: &Path, query: &str) -> Result<PathBuf> {
         "terminal" => docs_root.join("terminal/terminal.md"),
         "desktop" => docs_root.join("desktop.md"),
         "agents" => docs_root.join("agents/agents.md"),
-        "projects" => docs_root.join("terminal/projects.md"),
         other => {
             let direct = docs_root.join(other);
             if direct.is_file() {
@@ -200,7 +199,6 @@ mod tests {
         fs::create_dir_all(docs_root.join("os")).unwrap();
         fs::create_dir_all(docs_root.join("agents")).unwrap();
         fs::write(docs_root.join("terminal/terminal.md"), "").unwrap();
-        fs::write(docs_root.join("terminal/projects.md"), "").unwrap();
         fs::write(docs_root.join("os/installation.md"), "").unwrap();
         fs::write(docs_root.join("desktop.md"), "").unwrap();
         fs::write(docs_root.join("agents/agents.md"), "").unwrap();
@@ -208,10 +206,6 @@ mod tests {
         assert_eq!(
             resolve_docs_target(docs_root, "terminal").unwrap(),
             docs_root.join("terminal/terminal.md")
-        );
-        assert_eq!(
-            resolve_docs_target(docs_root, "projects").unwrap(),
-            docs_root.join("terminal/projects.md")
         );
     }
 }

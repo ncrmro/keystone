@@ -1,6 +1,6 @@
 # REQ-018: Keystone Home Directory and Repo Management
 
-Standardize all keystone-managed local state under `~/.keystone/`. Replace
+Standardize all keystone-managed repo checkouts under `~/repos/`. Replace
 the fragile git-submodule pattern with a declarative repo registry
 (`keystone.repos`) and a convention-based directory layout. Unify notes
 paths for both human users and OS agents under the canonical `notes/` path in
@@ -15,20 +15,18 @@ MAY, REQUIRED, OPTIONAL).
 - `packages/ks/ks.sh` — repo discovery, pull, push, override-input, lock
 - `modules/notes/default.nix` — user notes path default
 - `modules/os/agents/types.nix` — agent notes path default
-- `modules/terminal/projects.nix` — project repo resolution (REQ-010)
 - New: `modules/repos.nix` — `keystone.repos` option declaration
 
 ## Directory Layout
 
 ```
-~/.keystone/
-├── repos/
-│   ├── ncrmro/
-│   │   ├── nixos-config/        # flakeInput: (self — the consumer flake)
-│   │   ├── keystone/            # flakeInput: "keystone"
-│   │   └── agenix-secrets/      # flakeInput: "agenix-secrets"
-│   └── Unsupervisedcom/
-│       └── deepwork/            # flakeInput: "deepwork" (via keystone)
+~/repos/
+├── ncrmro/
+│   ├── ks-config/               # flakeInput: (self — the consumer flake)
+│   ├── keystone/                # flakeInput: "keystone"
+│   └── agenix-secrets/          # flakeInput: "agenix-secrets"
+└── Unsupervisedcom/
+    └── deepwork/                # flakeInput: "deepwork" (via keystone)
 
 $HOME/code/
 └── owner/
@@ -36,7 +34,7 @@ $HOME/code/
 
 ~/notes/                         # user's notes repo (synced via cron)
 
-/home/agent-{name}/.keystone/
+/home/agent-{name}/repos/
 
 /home/agent-{name}/code/
 └── owner/
@@ -49,20 +47,18 @@ $HOME/code/
 
 ### Keystone Home
 
-**REQ-018.1** `~/.keystone/` MUST be the root directory for all
-keystone-managed local state (repos, notes). The path MUST be derivable
-from the user's home directory, not hardcoded as an absolute path in
-scripts.
+**REQ-018.1** `~/repos/` MUST be the root directory for all
+keystone-managed local repo checkouts. The path MUST be derivable from the
+user's home directory, not hardcoded as an absolute path in scripts.
 
 **REQ-018.2** The keystone home convention MUST apply equally to human
-users and OS agents. For agent `drago`, the keystone home is
-`/home/agent-drago/.keystone/`.
+users and OS agents. For agent `drago`, the repo root is
+`/home/agent-drago/repos/`.
 
 **REQ-018.2a** Home Manager activation MUST ensure the standard workspace
 directories exist for both humans and agents:
 
-- `~/.keystone/`
-- `~/.keystone/repos/`
+- `~/repos/`
 - the configured notes path (`~/notes` by default)
 - `$HOME/code/`
 - `$HOME/.worktrees/`
@@ -87,11 +83,11 @@ repositories as an attrset keyed by `owner/repo` (e.g.,
 - `branch` (string, default `"main"`) — default branch for pull/push
 
 **REQ-018.4** All managed repos MUST be cloned to
-`~/.keystone/repos/{owner}/{repo}/` following the `owner/repo` key
+`~/repos/{owner}/{repo}/` following the `owner/repo` key
 structure.
 
-**REQ-018.4a** `~/.keystone/repos/{owner}/{repo}/` is reserved for
-keystone-managed repositories only, such as `nixos-config`, `keystone`,
+**REQ-018.4a** `~/repos/{owner}/{repo}/` is reserved for
+keystone-managed repositories only, such as `ks-config`, `keystone`,
 `agenix-secrets`, `deepwork`, and other repos explicitly declared in
 `keystone.repos`.
 
@@ -106,14 +102,14 @@ for OS agents.
 **REQ-018.6** The following repos MUST be declared for core keystone
 operation:
 
-- `ncrmro/nixos-config` — the consumer NixOS configuration
+- `ncrmro/ks-config` — the consumer NixOS configuration
 - `ncrmro/agenix-secrets` — encrypted secrets (`flakeInput: "agenix-secrets"`)
 - `ncrmro/keystone` — keystone modules (`flakeInput: "keystone"`)
 
 ### Dev Mode
 
 **REQ-018.7** When dev mode is active (`ks build` without `--lock`,
-`ks update --dev`), `ks` MUST use local `~/.keystone/repos/{owner}/{repo}/`
+`ks update --dev`), `ks` MUST use local `~/repos/{owner}/{repo}/`
 directories as `--override-input` for every repo that has a non-null
 `flakeInput`, without requiring clean or pushed state.
 

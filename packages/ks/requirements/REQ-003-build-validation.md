@@ -75,10 +75,10 @@ selects the install flow when `/etc/keystone/install-config/` is present.
 
 **REQ-003.16** The installer-mode test MUST verify that the install flow
 copies `flake.nix`, `configuration.nix`, and `hardware.nix` into
-`~/.keystone/repos/nixos-config/` for the installed user.
+`~/repos/<user>/keystone-config/` for the installed user.
 
 **REQ-003.17** The installer-mode test MUST verify that the install flow
-creates `~/.keystone/repos/nixos-config/.first-boot-pending`.
+creates `~/repos/<user>/keystone-config/.first-boot-pending`.
 
 **REQ-003.18** The installer-mode test MUST verify that the copied repo
 content is owned by the installed user.
@@ -97,7 +97,7 @@ the staged config copy rather than the embedded
 
 **REQ-003.21** The automated validation contract MUST include a post-install
 test that verifies first-boot mode is selected when
-`~/.keystone/repos/nixos-config/.first-boot-pending` exists.
+`~/repos/<user>/keystone-config/.first-boot-pending` exists.
 
 **REQ-003.22** The first-boot validation MUST verify that the TUI can
 generate a hardware reconciliation plan before writing any files.

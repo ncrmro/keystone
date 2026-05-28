@@ -182,11 +182,6 @@ in
           theme = "robbyrussell";
         };
         initContent = ''
-          # Register pz completion
-          if command -v pz >/dev/null 2>&1; then
-            eval "$(pz completion)"
-          fi
-
           _keystone_zellij_effective_cwd() {
             local cwd="''${PWD:-$HOME}"
 

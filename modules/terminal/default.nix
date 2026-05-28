@@ -68,7 +68,6 @@ in
     ./forgejo.nix
     ./github-token-nix.nix
     ./grafana.nix
-    ./projects.nix
   ];
 
   options.keystone.terminal = {

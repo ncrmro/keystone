@@ -23,16 +23,8 @@ to store personal writing.
 Active hub notes in `~/notes/index/` are the source of truth for project
 discovery.
 
-That project metadata is used by:
-
-- [`pz`](terminal/projects.md) to discover valid projects and launch
-  project-aware Zellij sessions,
-- Keystone Desktop to populate the Walker project menu, and
-- related project tooling that needs repo URLs, summaries, and current state.
-
-If the hub notes are stale, the `pz` project list and the Walker project menu
-are stale too. For the session and desktop workflow, see
-[Projects and pz](terminal/projects.md).
+That project metadata is used by Keystone Desktop and related project tooling
+that needs repo URLs, summaries, and current state.
 
 ### Long-term memory for agents
 
@@ -54,7 +46,7 @@ Keystone automatically fetches and pushes the notes repo on a timer.
 - OS agents use `agent-{name}-notes-sync` for `/home/agent-{name}/notes`
 
 This makes the notes repo usable as shared state between the human operator,
-desktop project navigation, `pz`, and agent workflows.
+desktop project navigation and agent workflows.
 
 When `keystone.notes.daily.enable = true`, the same sync path also keeps
 `daily.md` pointed at today's dated journal note (for example

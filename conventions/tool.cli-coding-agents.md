@@ -192,7 +192,7 @@ populated by `ks sync-agent-assets`):
 `~/.keystone/AGENTS.md`, `~/.keystone/repos/AGENTS.md`, and
 `~/.config/opencode/AGENTS.md` remain immutable Nix-store-backed writes via
 `home.file.text` in `modules/terminal/conventions.nix`. They are not tool
-discovery paths; they are reference material keystone reads itself.
+discovery paths; they are legacy/reference material keystone reads itself.
 
 ### Skill schema
 

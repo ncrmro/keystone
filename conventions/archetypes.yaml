@@ -70,9 +70,9 @@ archetypes:
       - process.vcs-context-continuity
 
   # Archetype for working directly on keystone platform repos:
-  # ncrmro/keystone, ncrmro/nixos-config, Unsupervisedcom/deepwork.
+  # ncrmro/keystone, ncrmro/ks-config, Unsupervisedcom/deepwork.
   keystone-developer:
-    description: "Keystone platform developer — editing nixos-config, keystone modules, and deepwork jobs"
+    description: "Keystone platform developer — editing ks-config, keystone modules, and deepwork jobs"
     inlined_conventions:
       - process.version-control
       - process.privileged-approval

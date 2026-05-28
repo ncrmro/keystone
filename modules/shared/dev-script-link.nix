@@ -1,5 +1,19 @@
 { lib }:
 let
+  checkoutCandidates =
+    homeDir: repoEntry:
+    let
+      parts = lib.splitString "/" repoEntry;
+      repoName = lib.last parts;
+    in
+    [
+      "${homeDir}/repos/${repoEntry}"
+      "${homeDir}/repos/${lib.head parts}/${repoName}"
+      "${homeDir}/repos/${lib.head parts}/ks-config/../${repoName}"
+      "${homeDir}/repos/${lib.head parts}/ks-config/${repoName}"
+      "${homeDir}/.keystone/repos/${repoEntry}"
+    ];
+
   resolveRepoCheckout =
     config: repoFlakeInput:
     let
@@ -10,7 +24,7 @@ let
       );
     in
     if (config.keystone.development or false) && repoEntry != null then
-      "${homeDir}/.keystone/repos/${repoEntry}"
+      lib.head (checkoutCandidates homeDir repoEntry)
     else
       null;
 
@@ -30,7 +44,7 @@ let
       );
     in
     if (config.keystone.development or false) && repoEntry != null && homeDir != null then
-      "${homeDir}/.keystone/repos/${repoEntry}"
+      lib.head (checkoutCandidates homeDir repoEntry)
     else
       null;
 
@@ -100,14 +114,25 @@ in
     }:
     let
       repoCheckout = resolveRepoCheckout config repoFlakeInput;
-      liveScript = "${repoCheckout}/${relativePath}";
+      repos = config.keystone.repos or { };
+      repoEntry = lib.findFirst (name: (repos.${name}.flakeInput or null) == repoFlakeInput) null (
+        lib.attrNames repos
+      );
+      candidateScripts = lib.optionals (repoEntry != null) (
+        map (candidate: "${candidate}/${relativePath}") (
+          checkoutCandidates config.home.homeDirectory repoEntry
+        )
+      );
+      candidateScriptArray = lib.concatStringsSep " " (map lib.escapeShellArg candidateScripts);
       runtimePath = lib.makeBinPath runtimeInputs;
       commandWrapper = pkgs.writeShellScript "hm_${commandName}.sh" ''
         export PATH="${runtimePath}:$PATH"
         ${extraEnvSetup}
-        if [ -f "${liveScript}" ]; then
-          exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
-        fi
+        for live_script in ${candidateScriptArray}; do
+          if [ -f "$live_script" ]; then
+            exec ${pkgs.bash}/bin/bash "$live_script" "$@"
+          fi
+        done
 
         exec "${package}/bin/${commandName}" "$@"
       '';
@@ -149,15 +174,32 @@ in
     }:
     let
       liveCheckout = resolveNixOSRepoCheckout config repoFlakeInput;
-      liveScript = if liveCheckout != null then "${liveCheckout}/${relativePath}" else "";
+      repos = config.keystone.repos or { };
+      keystoneUsers = config.keystone.os.users or { };
+      userNames = lib.attrNames keystoneUsers;
+      mainUserName = if userNames != [ ] then lib.head userNames else null;
+      homeDir = if mainUserName != null then "/home/${mainUserName}" else null;
+      repoEntry = lib.findFirst (name: (repos.${name}.flakeInput or null) == repoFlakeInput) null (
+        lib.attrNames repos
+      );
+      candidateScripts =
+        if homeDir != null && repoEntry != null then
+          map (candidate: "${candidate}/${relativePath}") (checkoutCandidates homeDir repoEntry)
+        else
+          [ ];
+      candidateScriptArray = lib.concatStringsSep " " (map lib.escapeShellArg candidateScripts);
       runtimePath = lib.makeBinPath runtimeInputs;
     in
     pkgs.writeShellScriptBin commandName ''
       export PATH="${runtimePath}:$PATH"
       ${extraEnvSetup}
-      if [ -f "${liveScript}" ]; then
-        exec ${pkgs.bash}/bin/bash "${liveScript}" "$@"
-      fi
+      ${lib.optionalString (liveCheckout != null) ''
+        for live_script in ${candidateScriptArray}; do
+          if [ -f "$live_script" ]; then
+            exec ${pkgs.bash}/bin/bash "$live_script" "$@"
+          fi
+        done
+      ''}
 
       exec ${pkgs.bash}/bin/bash "${nixStorePath}" "$@"
     '';

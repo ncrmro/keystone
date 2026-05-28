@@ -21,6 +21,17 @@ keystone.os.agents.drago = {
 keystone.keys."agent-atlas".hosts.myhost.publicKey = "ssh-ed25519 AAAAC3...";
 ```
 
+After the host is switched and the agent mailbox is provisioned, validate the
+installed notification path:
+
+```bash
+os-agents-e2e drago email
+```
+
+This sends email to the agent, starts the Pi task runner service, waits for the
+agent's pong reply in the human inbox, and verifies email notifications are
+acknowledged. See [OS agent e2e validation](os-agent-e2e.md).
+
 ## Architecture Overview
 
 ```mermaid
@@ -716,7 +727,7 @@ Agent and human notes should use the same repo declarations. The active hub
 note is the source of truth, `repos:` entries should be full remote URLs, and
 non-keystone local worktrees should resolve to `$HOME/code/{owner}/{repo}`.
 Repos explicitly managed by `keystone.repos` continue to live under
-`~/.keystone/repos/{owner}/{repo}`.
+`~/repos/{owner}/{repo}`.
 
 ### SCHEDULES.yaml
 

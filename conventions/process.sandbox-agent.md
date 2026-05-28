@@ -28,7 +28,7 @@ what is and isn't available inside the sandbox.
 - **systemctl / systemd**: no init system inside the container
 - **sudo**: containers run as root but have no host-level privilege
 - **Host filesystem**: only the working directory and explicitly mounted paths are visible
-- **nixos-config / keystone repo**: MUST NOT be mounted — use `ks agent` or `ks doctor` for infrastructure work
+- **ks-config / keystone repo**: MUST NOT be mounted — use `ks agent` or `ks doctor` for infrastructure work
 - **D-Bus**: no session or system bus
 - **Desktop / display**: no Wayland compositor (VNC is host-side only)
 - **agenix secrets**: `/run/agenix/` is not mounted — secrets are passed via env vars or CLI args
@@ -49,6 +49,6 @@ For host-bound services, use `--chrome` flag to run Chromium inside the containe
 | Use Case                           | Path                                                |
 | ---------------------------------- | --------------------------------------------------- |
 | Agent coding tasks (default)       | `agentctl <agent> claude` (sandbox)                 |
-| Infrastructure work (nixos-config) | `ks agent` or `ks doctor` (bare-metal, full repo)   |
+| Infrastructure work (ks-config) | `ks agent` or `ks doctor` (bare-metal, full repo)   |
 | Debugging sandbox issues           | `agentctl <agent> claude --nosandbox` (bare-metal)  |
 | Interactive diagnostics            | `agentctl <agent> shell` (bare-metal as agent user) |

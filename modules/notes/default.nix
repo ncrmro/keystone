@@ -462,7 +462,6 @@ in
           "SSH_AUTH_SOCK=${sshAuthSock}"
         ];
         ExecStart = "${notesSyncScript}";
-        ExecStartPost = "${pkgs.bash}/bin/bash -lc 'if command -v pz >/dev/null 2>&1; then pz export-menu-cache --write-state >/dev/null 2>&1 || true; fi'";
       };
     };
 

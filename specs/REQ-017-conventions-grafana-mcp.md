@@ -63,8 +63,8 @@ tool sessions (claude, gemini, codex, opencode):
 3. Project AGENTS.md (project-specific context, if working in a project)
 4. Role composition via `--role`/`--roles` (appended on top)
 
-**REQ-017.7** The `--role` and `--roles` flags in `agentctl` and
-`pz agent` MUST continue to work exactly as today, appending
+**REQ-017.7** The `--role` and `--roles` flags in `agentctl` MUST continue
+to work exactly as today, appending
 role-specific content after the base layers.
 
 ### Part B: Grafana MCP

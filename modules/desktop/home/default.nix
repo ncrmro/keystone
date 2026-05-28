@@ -81,13 +81,6 @@ in
       description = "Show the Agents entry in the Mod+Escape Walker main menu.";
     };
 
-    contexts.enable = mkOption {
-      type = types.bool;
-      default = config.keystone.experimental;
-      defaultText = literalExpression "config.keystone.experimental";
-      description = "Show the Contexts entry in the Mod+Escape Walker main menu.";
-    };
-
     startupLockCommand = mkOption {
       type = types.str;
       default = "keystone-startup-lock";

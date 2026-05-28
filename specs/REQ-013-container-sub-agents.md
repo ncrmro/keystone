@@ -15,7 +15,7 @@ MAY, REQUIRED, OPTIONAL).
 
 - `packages/podman-agent/podman-agent.sh` — extend with archetype-based AGENTS.md generation
 - `modules/os/containers.nix` — Podman runtime configuration
-- `modules/terminal/projects.nix` — sub-agent configuration options
+- `modules/os/agents/` — sub-agent configuration options
 - `modules/os/agents/` — archetype definitions and agent provisioning patterns (reference)
 - `flake.nix` — updated overlay if new packages are needed
 
@@ -62,7 +62,7 @@ Runtime state of a running sub-agent container.
 
 ## CLI Contract
 
-### `pz agent start <role_slug> [options]`
+### `agentctl agent start <role_slug> [options]`
 
 Launch a sub-agent in a Podman container.
 
@@ -93,7 +93,7 @@ Launch a sub-agent in a Podman container.
 - `1` — configuration error (missing role, archetype, or project)
 - Passthrough — agent exit code in interactive mode
 
-### `pz agent list`
+### `agentctl agent list`
 
 List running sub-agent containers for the current project.
 
@@ -111,7 +111,7 @@ frontend    engineer     running    obs-myapp-frontend
 tests       reviewer     exited     obs-myapp-tests
 ```
 
-### `pz agent stop <role_slug>`
+### `agentctl agent stop <role_slug>`
 
 Stop a running sub-agent container.
 
@@ -121,7 +121,7 @@ Stop a running sub-agent container.
 2. The command MUST stop the container gracefully (SIGTERM, then SIGKILL after timeout)
 3. If the container is not running, the command MUST print a warning and exit `0`
 
-### `pz agent remove <role_slug>`
+### `agentctl agent remove <role_slug>`
 
 Remove a sub-agent container.
 
@@ -131,7 +131,7 @@ Remove a sub-agent container.
 2. The command MUST remove the container
 3. The command SHOULD NOT remove worktrees (managed separately via `process.git-repos`)
 
-### `pz agent logs <role_slug>`
+### `agentctl agent logs <role_slug>`
 
 View logs from a sub-agent container.
 
@@ -157,7 +157,7 @@ View logs from a sub-agent container.
 ### Sandbox Scope
 
 6. Podman sandboxing MUST only apply to automated sub-agents launched via
-   `pz agent start`. Interactive sessions launched via `agentctl <agent>
+   `agentctl agent start`. Interactive sessions launched via `agentctl <agent>
 claude` (and other AI tool commands) MUST run directly as the agent
    user without Podman, since the human operator is present and the agent
    has its own OS-level user isolation.
@@ -189,7 +189,7 @@ claude` (and other AI tool commands) MUST run directly as the agent
 ## Edge Cases
 
 - **Name collision**: If two projects have the same slug (shouldn't happen per REQ-010.2 uniqueness), container names will collide. The command MUST detect and error on container name conflicts.
-- **Orphaned containers**: If the `pz` session is killed while containers are running, containers MUST continue running (they're independent processes). `pz agent list` from a new session MUST still find them.
+- **Orphaned containers**: If the launching terminal session is killed while containers are running, containers MUST continue running (they're independent processes). `agentctl agent list` from a new session MUST still find them.
 - **Missing archetype**: If a role references a non-existent archetype, the command MUST fail with a descriptive error listing available archetypes.
 - **Network access**: Containers inherit the host's network namespace by default in `podman-agent`. Sub-agents SHOULD be restricted to the same network rules as OS agents (SPEC-007 FR-006 firewall rules) when possible.
 - **Credential isolation**: Each container MUST only have access to credentials explicitly mounted. Containers MUST NOT share API keys or tokens between roles unless configured.

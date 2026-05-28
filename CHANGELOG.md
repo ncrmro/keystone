@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `keystone.development` mode, with repo registry support and auto-discovery of managed repositories from flake inputs
 - Smarter deployment workflows in `ks`, including `ks switch`, `ks update`, faster dev updates, and local Ollama diagnostics
 - Zettelkasten note workflows for both humans and agents, including notebook scaffolding, note docs, and VCS-aware note handling
-- Project discovery and session tooling improvements, including standardized repo and worktree paths, `pz` autocomplete, project discovery from zk hubs, and new desktop context launchers
+- Project discovery and session tooling improvements, including standardized repo and worktree paths, project discovery from zk hubs, and desktop context launchers
 - Codex, DeepWork, and slash-command integrations across terminal tooling, including workflow skills and MCP wiring
 - Demo and presentation tooling, including Slidev integration and optional OBS desktop support
 - CalDAV-backed task and calendar support for users and agents

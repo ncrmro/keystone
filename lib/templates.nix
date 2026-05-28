@@ -1106,6 +1106,7 @@ rec {
           ) vmImageHosts;
         in
         {
+          agents-e2e = self.packages.${installerSystem}.agents-e2e;
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
           iso = mkInstallerIsoForFlake {
             system = installerSystem;

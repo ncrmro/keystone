@@ -192,7 +192,7 @@ cmd_dispatch() {
       ;;
     set-host-menu)
       value=$(
-        pz hosts-json | jq -r '.[].hostname' \
+        agentctl list --json | jq -r '[.[].configuredHost] | unique | .[] | select(. != "")' \
           | "$(keystone_cmd keystone-launch-walker)" --dmenu --placeholder "Preferred host" 2>/dev/null \
           | tr -d '\r'
       ) || true

@@ -564,7 +564,7 @@ run_e2e_checkpoints() {
     # Verify all checkpoints
     local failed=0
 
-    local canonical_repo="/mnt/home/${ADMIN_USERNAME}/.keystone/repos/${ADMIN_USERNAME}/${repo_name}"
+    local canonical_repo="/mnt/home/${ADMIN_USERNAME}/repos/${ADMIN_USERNAME}/${repo_name}"
     if ssh_cmd "sudo -n test -f ${canonical_repo}/flake.nix" 2>/dev/null; then
         log_ok "E2E: canonical repo contains flake.nix"
     else
@@ -579,7 +579,7 @@ run_e2e_checkpoints() {
         failed=1
     fi
 
-    local repo_marker="/mnt/home/${ADMIN_USERNAME}/.keystone/repos/${ADMIN_USERNAME}/${repo_name}/.first-boot-pending"
+    local repo_marker="/mnt/home/${ADMIN_USERNAME}/repos/${ADMIN_USERNAME}/${repo_name}/.first-boot-pending"
     if ssh_cmd "sudo -n test -f '${repo_marker}'" 2>/dev/null; then
         log_ok "E2E: first-boot-pending marker exists"
     else

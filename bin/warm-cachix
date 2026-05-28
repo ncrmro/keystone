@@ -34,7 +34,6 @@ CURATED_ATTRS=(
     .#packages.x86_64-linux.ks
     .#packages.x86_64-linux.lfs-s3
     .#packages.x86_64-linux.podman-agent
-    .#packages.x86_64-linux.pz
     .#packages.x86_64-linux.repo-sync
     .#packages.x86_64-linux.slidev
     .#packages.x86_64-linux.zellij-tab-name

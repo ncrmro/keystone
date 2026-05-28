@@ -1,8 +1,7 @@
 # REQ-012: agentctl Project Sessions
 
 Extend agentctl with project context, worktree isolation, sandboxed execution,
-and local model support across all AI tools. Integrates with the `pz agent` wrapper (REQ-010.13/REQ-010.14)
-to provide project-scoped AI agent sessions.
+and local model support across all AI tools.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
@@ -58,8 +57,8 @@ from `process.git-repos` (branch naming, external worktree root,
 repo-root anchored creation flow).
 
 **REQ-012.7a** When project repo metadata comes from a hub note `repos:` list,
-agentctl MUST resolve the selected repo from the same normalized `owner/repo`
-identity used by `pz`.
+agentctl MUST resolve the selected repo from the normalized `owner/repo`
+identity used by Keystone project metadata.
 
 **REQ-012.7b** If a project declares multiple repos, agentctl MUST require an
 explicit repo selection before creating or entering a worktree.

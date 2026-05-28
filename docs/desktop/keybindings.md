@@ -15,7 +15,6 @@ The launcher and desktop workflow center on a small set of bindings:
 
 - `$mod+Return` opens Ghostty
 - `$mod+Space` opens Walker
-- `$mod+D` opens the Keystone project switcher
 - `$mod+Escape` opens the Keystone menu
 - `$mod+K` opens the keybindings menu
 
@@ -54,5 +53,4 @@ Walker and Elephant together provide the backend for these desktop menus. See
 - [Navigation](../navigation.md)
 - [Screenshots](screenshots.md)
 - [Walker](walker.md)
-- [Projects and pz](../terminal/projects.md)
 - [Notes](../notes.md)

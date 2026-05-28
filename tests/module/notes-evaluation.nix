@@ -144,13 +144,6 @@ pkgs.runCommand "notes-evaluation" { } ''
       echo "PASS: timer respects custom OnCalendar"
     fi
 
-    if ! grep -Fq 'pz export-menu-cache --write-state' "$exec_start_post_file"; then
-      echo "FAIL: ExecStartPost no longer refreshes the project menu cache" >&2
-      errors=$((errors + 1))
-    else
-      echo "PASS: ExecStartPost still refreshes the project menu cache"
-    fi
-
     check "${boolString assertionTripped}" \
       "absolute daily symlink paths trip the module assertion"
 
