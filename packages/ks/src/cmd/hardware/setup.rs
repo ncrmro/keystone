@@ -22,11 +22,13 @@ use anyhow::{Context, Result};
 
 use super::enroll;
 use super::probe::{self, HardwareReport, LuksVolume, SecureBootState, Severity, WarningScope};
+use crate::components::security::secure_boot;
 
 /// CLI options that flow into [`plan`] and [`execute`].
 #[derive(Debug, Clone, Default)]
 pub struct SetupOptions {
     pub dry_run: bool,
+    pub secure_boot_status: Option<secure_boot::Status>,
 }
 
 /// What `ks hardware setup` will do, computed from the probe. Render
@@ -42,6 +44,20 @@ pub struct SetupPlan {
 /// run it via the [`enroll`] primitives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupStep {
+    /// Generate Keystone Secure Boot keys in the installed system so a later
+    /// firmware enrollment can happen without shelling out to `sbctl`
+    /// manually.
+    PrepareSecureBootKeys,
+    /// Enroll Secure Boot keys while the firmware is in Setup Mode. This is
+    /// the behind-the-scenes `sbctl` step that lets TPM setup continue after
+    /// the next boot.
+    EnrollSecureBootKeys,
+    /// The setup flow has done all it can from Linux userspace and now needs
+    /// the user to change firmware state before continuing.
+    PauseForSecureBoot { reason: String },
+    /// Secure Boot enrollment has been staged and a reboot is now required
+    /// before TPM-bound unlock can continue.
+    RebootAndResume { reason: String },
     /// Slot 0 currently accepts "keystone" — rotate it before anything
     /// else can touch the volume.
     RotateDefaultPassword { volume_id: String },
@@ -69,6 +85,12 @@ pub enum SetupStep {
 impl SetupStep {
     pub fn label(&self) -> String {
         match self {
+            Self::PrepareSecureBootKeys => "Generate Secure Boot keys".into(),
+            Self::EnrollSecureBootKeys => "Enroll Secure Boot keys".into(),
+            Self::PauseForSecureBoot { reason } => {
+                format!("Pause for firmware action: {}", reason)
+            }
+            Self::RebootAndResume { reason } => format!("Reboot and re-run setup: {}", reason),
             Self::RotateDefaultPassword { volume_id } => {
                 format!("Rotate default password on `{}`", volume_id)
             }
@@ -127,6 +149,7 @@ fn require_root_volume(volume_id: &str) -> Result<()> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EnrollmentAction {
+    ProvisionSecureBoot,
     RotatePassword,
     EnrollRecoveryAndTpm2,
     EnrollTpm2Only,
@@ -136,6 +159,10 @@ enum EnrollmentAction {
 
 fn action_for_step(step: &SetupStep) -> Result<Option<EnrollmentAction>> {
     match step {
+        SetupStep::PrepareSecureBootKeys | SetupStep::EnrollSecureBootKeys => {
+            Ok(Some(EnrollmentAction::ProvisionSecureBoot))
+        }
+        SetupStep::PauseForSecureBoot { .. } | SetupStep::RebootAndResume { .. } => Ok(None),
         SetupStep::RotateDefaultPassword { volume_id } => {
             require_root_volume(volume_id)?;
             Ok(Some(EnrollmentAction::RotatePassword))
@@ -167,13 +194,19 @@ pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
     let mut steps = Vec::new();
     let mut blockers = Vec::new();
 
-    // Machine-wide blockers
-    if !matches!(report.machine.secure_boot, SecureBootState::Enrolled) {
+    steps.extend(plan_secure_boot(
+        report.machine.secure_boot,
+        _opts.secure_boot_status.clone(),
+    ));
+
+    if matches!(
+        report.machine.secure_boot,
+        SecureBootState::NotSupported | SecureBootState::Unknown
+    ) {
         blockers.push(format!(
-            "Secure Boot is not enrolled (current state: {:?}). \
-             TPM PCR-7 binding provides no integrity guarantee unless Secure Boot is \
-             active with enrolled keys. Enroll Secure Boot keys in firmware before \
-             running `ks hardware setup`.",
+            "Secure Boot is unavailable for `ks hardware setup` (current state: {:?}). \
+             TPM PCR-7 binding requires a visible UEFI Secure Boot state. Resolve the \
+             firmware issue or use the per-method enrollment commands instead.",
             report.machine.secure_boot
         ));
     }
@@ -220,6 +253,50 @@ pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
     }
 
     SetupPlan { steps, blockers }
+}
+
+fn plan_secure_boot(
+    state: SecureBootState,
+    sb_status: Option<secure_boot::Status>,
+) -> Vec<SetupStep> {
+    use secure_boot::Status as SbStatus;
+
+    let mut steps = Vec::new();
+    match state {
+        SecureBootState::Enrolled => {}
+        SecureBootState::SetupMode => {
+            steps.push(SetupStep::EnrollSecureBootKeys);
+            steps.push(SetupStep::RebootAndResume {
+                reason: "Secure Boot keys will be active after reboot. Re-run `ks hardware setup` to continue TPM enrollment.".into(),
+            });
+        }
+        SecureBootState::Disabled => match sb_status.unwrap_or(SbStatus::Unknown) {
+            SbStatus::SetupMode => {
+                steps.push(SetupStep::EnrollSecureBootKeys);
+                steps.push(SetupStep::RebootAndResume {
+                    reason: "Secure Boot keys were enrolled in Setup Mode. Reboot, enable Secure Boot if your firmware leaves it off, and re-run `ks hardware setup`.".into(),
+                });
+            }
+            SbStatus::KeysGenerated => {
+                steps.push(SetupStep::PauseForSecureBoot {
+                    reason: "Secure Boot keys already exist. Reboot into firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup`.".into(),
+                });
+            }
+            SbStatus::Enrolled => {
+                steps.push(SetupStep::RebootAndResume {
+                    reason: "Secure Boot keys are already staged. Reboot and re-run `ks hardware setup` if the firmware has not picked them up yet.".into(),
+                });
+            }
+            SbStatus::NotInSetupMode | SbStatus::Unknown => {
+                steps.push(SetupStep::PrepareSecureBootKeys);
+                steps.push(SetupStep::PauseForSecureBoot {
+                    reason: "Enter firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.".into(),
+                });
+            }
+        },
+        SecureBootState::NotSupported | SecureBootState::Unknown => {}
+    }
+    steps
 }
 
 fn is_default_password_warning(w: &probe::Warning) -> bool {
@@ -315,7 +392,29 @@ pub async fn execute<P: SetupPrompts>(
 
     for step in &full_plan.steps {
         prompts.say(&format!("→ {}", step.label())).await;
+        if let SetupStep::PauseForSecureBoot { reason } = step {
+            prompts.say(reason).await;
+            prompts
+                .say("Secure Boot work paused. Re-run `ks hardware setup` after the firmware change.")
+                .await;
+            return Ok(());
+        }
+        if let SetupStep::RebootAndResume { reason } = step {
+            prompts.say(reason).await;
+            prompts
+                .say("Secure Boot work staged. Reboot now, then re-run `ks hardware setup` to continue.")
+                .await;
+            return Ok(());
+        }
         match action_for_step(step)? {
+            Some(EnrollmentAction::ProvisionSecureBoot) => {
+                let result = secure_boot::provision()
+                    .await
+                    .context("provisioning Secure Boot")?;
+                if !result.trim().is_empty() {
+                    prompts.say(&result).await;
+                }
+            }
             Some(EnrollmentAction::RotatePassword) => {
                 enroll::enroll_password()
                     .await
@@ -401,7 +500,20 @@ impl SetupPrompts for CliPrompts {
 /// Top-level CLI entry for `ks hardware setup`.
 pub async fn execute_cli(opts: SetupOptions) -> Result<()> {
     let report = probe::probe().await;
-    execute(&report, opts, &CliPrompts).await
+    let secure_boot_status = if matches!(report.machine.secure_boot, SecureBootState::Enrolled) {
+        opts.secure_boot_status.clone()
+    } else {
+        Some(secure_boot::check_status().await)
+    };
+    execute(
+        &report,
+        SetupOptions {
+            secure_boot_status,
+            ..opts
+        },
+        &CliPrompts,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -490,8 +602,18 @@ mod tests {
     fn plan_blocks_when_secure_boot_disabled() {
         let mut r = fresh_install_report();
         r.machine.secure_boot = SecureBootState::Disabled;
-        let p = plan(&r, &SetupOptions::default());
-        assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+        let p = plan(
+            &r,
+            &SetupOptions {
+                secure_boot_status: Some(secure_boot::Status::Unknown),
+                ..SetupOptions::default()
+            },
+        );
+        assert!(p.steps.contains(&SetupStep::PrepareSecureBootKeys));
+        assert!(p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::PauseForSecureBoot { .. })));
     }
 
     #[test]
@@ -499,13 +621,43 @@ mod tests {
         let mut r = fresh_install_report();
         r.machine.secure_boot = SecureBootState::SetupMode;
         let p = plan(&r, &SetupOptions::default());
-        assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+        assert!(p.steps.contains(&SetupStep::EnrollSecureBootKeys));
+        assert!(p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::RebootAndResume { .. })));
     }
 
     #[test]
     fn plan_blocks_when_secure_boot_unknown() {
         let mut r = fresh_install_report();
         r.machine.secure_boot = SecureBootState::Unknown;
+        let p = plan(&r, &SetupOptions::default());
+        assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
+    }
+
+    #[test]
+    fn plan_skips_key_generation_when_secure_boot_keys_already_exist() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::Disabled;
+        let p = plan(
+            &r,
+            &SetupOptions {
+                secure_boot_status: Some(secure_boot::Status::KeysGenerated),
+                ..SetupOptions::default()
+            },
+        );
+        assert!(!p.steps.contains(&SetupStep::PrepareSecureBootKeys));
+        assert!(p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::PauseForSecureBoot { .. })));
+    }
+
+    #[test]
+    fn plan_blocks_when_secure_boot_not_supported() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::NotSupported;
         let p = plan(&r, &SetupOptions::default());
         assert!(p.blockers.iter().any(|b| b.contains("Secure Boot")));
     }

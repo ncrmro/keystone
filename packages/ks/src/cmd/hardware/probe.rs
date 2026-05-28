@@ -420,15 +420,16 @@ pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
             scope: WarningScope::Machine,
             message: "Secure Boot is DISABLED.".into(),
             remediation: Some(
-                "Enable Secure Boot in firmware so TPM PCR-7 binding has an integrity anchor."
-                    .into(),
+                "Run `sudo ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware so TPM PCR-7 binding has an integrity anchor.".into(),
             ),
         }),
         SecureBootState::SetupMode => out.push(Warning {
             severity: Severity::Info,
             scope: WarningScope::Machine,
             message: "UEFI in Setup Mode — Secure Boot keys ready to enroll.".into(),
-            remediation: Some("Run `sudo sbctl enroll-keys --microsoft && reboot`.".into()),
+            remediation: Some(
+                "Run `sudo ks hardware setup` to enroll Secure Boot keys and stage the required reboot.".into(),
+            ),
         }),
         SecureBootState::NotSupported => out.push(Warning {
             severity: Severity::Info,

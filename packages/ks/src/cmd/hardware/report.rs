@@ -387,7 +387,9 @@ mod tests {
                     severity: Severity::Warning,
                     scope: WarningScope::Machine,
                     message: "Secure Boot is DISABLED.".into(),
-                    remediation: Some("Enable Secure Boot in firmware.".into()),
+                    remediation: Some(
+                        "Run `sudo ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware.".into(),
+                    ),
                 },
                 Warning {
                     severity: Severity::Critical,

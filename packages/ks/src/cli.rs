@@ -396,9 +396,10 @@ pub enum HardwareCommand {
     ///
     /// Non-interactive mode and `--allow-no-sb` are tracked as v1.2
     /// follow-ups — the per-method primitives prompt interactively
-    /// for the new passphrase, and Secure Boot disabled is currently
-    /// a hard blocker. Plumbing those overrides end-to-end will land
-    /// alongside the multi-LUKS-volume work.
+    /// for the new passphrase. If Secure Boot is not yet active,
+    /// setup now stages as much of that work as Linux userspace can
+    /// do behind the scenes, then stops cleanly for any required
+    /// firmware change or reboot before TPM enrollment continues.
     Setup {
         /// Compute and print the plan, then exit without changing state.
         #[arg(long)]

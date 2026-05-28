@@ -32,7 +32,11 @@ pub async fn execute(command: HardwareCommand, flake: Option<&Path>) -> Result<(
             disk,
         } => report::execute(json, pre_install, post_install, write_status_file, disk).await,
         HardwareCommand::Setup { dry_run } => {
-            setup::execute_cli(setup::SetupOptions { dry_run }).await
+            setup::execute_cli(setup::SetupOptions {
+                dry_run,
+                secure_boot_status: None,
+            })
+            .await
         }
         HardwareCommand::Disks { id, command } => disks_dispatch(id, command).await,
         HardwareCommand::Enroll { method, disk } => {
