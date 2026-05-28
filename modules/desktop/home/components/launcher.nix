@@ -29,11 +29,6 @@ in
       inherit config;
       files = [
         {
-          targetPath = ".local/share/applications/keystone-projects.desktop";
-          relativePath = "modules/desktop/home/components/keystone-projects.desktop";
-          sourcePath = ./keystone-projects.desktop;
-        }
-        {
           targetPath = ".local/share/applications/keystone-notes.desktop";
           relativePath = "modules/desktop/home/components/keystone-notes.desktop";
           sourcePath = ./keystone-notes.desktop;
@@ -87,26 +82,6 @@ in
           targetPath = ".config/elephant/menus/keystone-update.lua";
           relativePath = "modules/desktop/home/components/keystone-update.lua";
           sourcePath = ./keystone-update.lua;
-        }
-        {
-          targetPath = ".config/elephant/menus/keystone-projects.lua";
-          relativePath = "modules/desktop/home/components/keystone-projects.lua";
-          sourcePath = ./keystone-projects.lua;
-        }
-        {
-          targetPath = ".config/elephant/menus/keystone-project-details.lua";
-          relativePath = "modules/desktop/home/components/keystone-project-details.lua";
-          sourcePath = ./keystone-project-details.lua;
-        }
-        {
-          targetPath = ".config/elephant/menus/keystone-project-notes.lua";
-          relativePath = "modules/desktop/home/components/keystone-project-notes.lua";
-          sourcePath = ./keystone-project-notes.lua;
-        }
-        {
-          targetPath = ".config/elephant/menus/keystone-project-session.lua";
-          relativePath = "modules/desktop/home/components/keystone-project-session.lua";
-          sourcePath = ./keystone-project-session.lua;
         }
         {
           targetPath = ".config/elephant/menus/keystone-photos.lua";
@@ -292,22 +267,6 @@ in
               input = " Update";
               list = "No update actions available";
             };
-            "menus:keystone-projects" = {
-              input = " Projects";
-              list = "No projects found";
-            };
-            "menus:keystone-project-details" = {
-              input = " Project actions";
-              list = "No project actions";
-            };
-            "menus:keystone-project-notes" = {
-              input = " Project notes";
-              list = "No project notes";
-            };
-            "menus:keystone-project-session" = {
-              input = " Session slug";
-              list = "Press Enter to create the session";
-            };
             "menus:keystone-photos" = {
               input = " Photos";
               list = "Search for a query to load photo results";
@@ -407,10 +366,6 @@ in
               "desktopapplications"
               "websearch"
             ];
-            sets.keystone-projects = {
-              default = [ "menus:keystone-projects" ];
-              empty = [ "menus:keystone-projects" ];
-            };
             actions = {
               fallback = [
                 {

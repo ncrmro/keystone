@@ -16,7 +16,7 @@ profile manifest. Most content is written into the consumer flake at
 <consumer-flake>/agents/. Two files in the home dir are also (re)written
 unconditionally on every run:
 
-  ~/.keystone/AGENTS.md          host-rendered conventions copy
+  ~/.keystone/AGENTS.md          legacy host-rendered conventions copy
   ~/.config/opencode/AGENTS.md   same content; OpenCode reads it natively
 
 The locked-mode home-manager activation in
@@ -296,7 +296,12 @@ if [[ "$repo_checkout" == "null" || -z "$repo_checkout" ]]; then
 fi
 
 if [[ ! -d "$repo_checkout" ]]; then
-  repo_slug="${repo_checkout##*/.keystone/repos/}"
+  repo_slug="ncrmro/keystone"
+  if [[ "$repo_checkout" == */repos/*/* ]]; then
+    repo_slug="${repo_checkout##*/repos/}"
+  elif [[ "$repo_checkout" == */.keystone/repos/*/* ]]; then
+    repo_slug="${repo_checkout##*/.keystone/repos/}"
+  fi
   echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
   mkdir -p "$(dirname "$repo_checkout")"
   git clone "https://github.com/$repo_slug.git" "$repo_checkout"
@@ -382,10 +387,10 @@ repos_agents_tmp="$(mktemp)"
   cat <<'EOF'
 # Keystone repos
 
-This directory (`~/.keystone/repos/`) is the agent-space root for the keystone
-system. It contains the core repositories that define and operate this machine's
-infrastructure. See `process.keystone-development` (inlined below) for the
-development workflow, tooling, and how changes flow through the system.
+The standard Keystone checkout layout is `~/repos/{owner}/{repo}/`. The
+consumer flake convention is `~/repos/{owner}/ks-config`, and local Keystone
+development prefers the sibling checkout at `~/repos/{owner}/keystone`.
+`~/.keystone/repos/` is legacy compatibility only.
 
 ## Repositories
 
@@ -405,7 +410,7 @@ if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
 
 - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks-notes`.
 - Use `ks-notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
+- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the repo checkout inventory.
 - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
 - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
 EOF

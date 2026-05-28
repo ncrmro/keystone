@@ -246,13 +246,13 @@ in
 
     configRepoPath = mkOption {
       type = types.str;
-      default = "${config.home.homeDirectory}/nixos-config";
+      default = "${config.home.homeDirectory}/repos/${config.home.username}/ks-config";
       description = ''
-        Absolute path to the NixOS config repo checkout. hwrekey derives the
+        Absolute path to the ks-config repo checkout. hwrekey derives the
         secrets submodule path as <configRepoPath>/<secretsFlakeInput> so it
         can run from any directory.
       '';
-      example = "/home/user/code/nixos-config";
+      example = "/home/user/repos/user/ks-config";
     };
   };
 

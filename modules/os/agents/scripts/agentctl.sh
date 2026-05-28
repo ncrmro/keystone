@@ -16,7 +16,7 @@ fi
 LAUNCHER_STATE_NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
 
 launcher_state_json() {
-  "$PZ" launcher-state-json 2>/dev/null || printf '%s\n' '{"interactive_defaults":{"agents":{},"projects":{}}}'
+  "$PROJECT_PREFS" launcher-state-json 2>/dev/null || printf '%s\n' '{"interactive_defaults":{"agents":{},"projects":{}}}'
 }
 
 effective_pref_json() {
@@ -77,7 +77,7 @@ agent_pref_set() {
 
   if [[ -n "$project_slug" ]]; then
     local current_json effective_provider effective_model effective_fallback
-    current_json=$("$PZ" project-launch-json "$project_slug")
+    current_json=$("$PROJECT_PREFS" project-launch-json "$project_slug")
     effective_provider=$(printf '%s\n' "$current_json" | jq -r '.provider // ""')
     effective_model=$(printf '%s\n' "$current_json" | jq -r '.model // ""')
     effective_fallback=$(printf '%s\n' "$current_json" | jq -r '.fallbackModel // ""')
@@ -92,9 +92,9 @@ agent_pref_set() {
       effective_fallback="$fallback_model"
     fi
 
-    "$PZ" project-set-host "$project_slug" "$host" >/dev/null
+    "$PROJECT_PREFS" project-set-host "$project_slug" "$host" >/dev/null
     if [[ -n "$effective_provider" || -n "$effective_model" || -n "$effective_fallback" ]]; then
-      "$PZ" project-set-models \
+      "$PROJECT_PREFS" project-set-models \
         "$project_slug" \
         "${effective_provider:-claude}" \
         "$effective_model" \
@@ -103,7 +103,7 @@ agent_pref_set() {
     return 0
   fi
 
-  "$PZ" agent-set-pref "$agent_name" "$host" "$provider" "$model" "${fallback_model:-}"
+  "$PROJECT_PREFS" agent-set-pref "$agent_name" "$host" "$provider" "$model" "${fallback_model:-}"
 }
 
 agent_pref_clear() {
@@ -111,11 +111,11 @@ agent_pref_clear() {
   local project_slug="${2:-}"
 
   if [[ -n "$project_slug" ]]; then
-    "$PZ" project-clear-prefs "$project_slug"
+    "$PROJECT_PREFS" project-clear-prefs "$project_slug"
     return 0
   fi
 
-  "$PZ" agent-clear-pref "$agent_name"
+  "$PROJECT_PREFS" agent-clear-pref "$agent_name"
 }
 
 agent_show_json() {
@@ -419,11 +419,14 @@ normalize_repo_url() {
 
 resolve_repo_path() {
   local repo_id="$1"
-  local keystone_path="$HOME/.keystone/repos/$repo_id"
+  local repos_path="$HOME/repos/$repo_id"
+  local legacy_keystone_path="$HOME/.keystone/repos/$repo_id"
   local code_path="$HOME/code/$repo_id"
 
-  if [[ -d "$keystone_path" ]]; then
-    printf '%s\n' "$keystone_path"
+  if [[ -d "$repos_path" ]]; then
+    printf '%s\n' "$repos_path"
+  elif [[ -d "$legacy_keystone_path" ]]; then
+    printf '%s\n' "$legacy_keystone_path"
   elif [[ -d "$code_path" ]]; then
     printf '%s\n' "$code_path"
   fi

@@ -32,40 +32,8 @@ let
   terminalCfg = config.keystone.terminal;
   isDev = config.keystone.development;
   isAgent = lib.hasPrefix "agent-" config.home.username;
-  repos = config.keystone.repos;
-  homeDir = config.home.homeDirectory;
-
-  # Look up a repo's local checkout path by its flakeInput name.
-  repoPath =
-    flakeInputName:
-    let
-      # 1. Try exact match by flakeInput attribute (primary lookup)
-      # This works for auto-populated repos and manually mapped ones.
-      entry = findFirst (name: (repos.${name}.flakeInput or null) == flakeInputName) null (
-        attrNames repos
-      );
-
-      # 2. Fallback: if the repo entry itself is named like the flakeInputName
-      # (e.g. name = "keystone" instead of "ncrmro/keystone")
-      entryByName = if entry == null && repos ? ${flakeInputName} then flakeInputName else null;
-
-      # 3. Fallback: find entry where the repo name (last part of owner/repo) matches the flakeInputName
-      # This handles "ncrmro/keystone" when flakeInput is null but we know it's keystone.
-      entryBySuffix =
-        if entry == null && entryByName == null then
-          findFirst (name: (last (splitString "/" name)) == flakeInputName) null (attrNames repos)
-        else
-          null;
-
-      finalEntry =
-        if entry != null then
-          entry
-        else if entryByName != null then
-          entryByName
-        else
-          entryBySuffix;
-    in
-    if finalEntry != null then "${homeDir}/.keystone/repos/${finalEntry}" else null;
+  devScripts = import ../shared/dev-script-link.nix { inherit lib; };
+  repoPath = flakeInputName: devScripts.resolveRepoCheckout config flakeInputName;
 
   keystonePath = repoPath "keystone";
   deepworkPath = repoPath "deepwork";

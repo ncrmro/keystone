@@ -146,7 +146,6 @@ in
                     userEmail = "installer@keystone.local";
                   };
                 };
-                keystone.projects.enable = false;
               };
 
               # Force kernel 6.12 — must override minimal CD default

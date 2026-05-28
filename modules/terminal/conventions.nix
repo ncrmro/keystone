@@ -13,11 +13,11 @@
 #   - OpenCode reads ~/.claude/CLAUDE.md via legacy compat — no separate file needed
 #
 # When keystone.development = true, also generates:
-#   - ~/.keystone/repos/AGENTS.md  using the keystone-developer archetype
+#   - ~/.keystone/repos/AGENTS.md  using the keystone-developer archetype (legacy path)
 #
 # Content separation:
 #   - Keystone repo (conventions/): tool manuals, process docs, archetypes — shared
-#   - nixos-config repo: SOUL.md, TEAM.md, SERVICES.md — per-deployment/per-agent
+#   - ks-config repo: SOUL.md, TEAM.md, SERVICES.md — per-deployment/per-agent
 #   - This module generates ONLY the conventions layer
 {
   config,
@@ -178,7 +178,8 @@ let
       "<!-- Convention ${name} not found -->"
   ) (reposArchetype.inlined_conventions or [ ]);
 
-  # Convention links relative to ~/.keystone/repos/ — resolve to live checkout
+  # Convention links are owner/repo relative and resolve from the standard
+  # ~/repos/{owner}/{repo}/ layout or the legacy ~/.keystone/repos mirror.
   reposReferencedConventions = map (name: "- [${name}](ncrmro/keystone/conventions/${name}.md)") (
     reposArchetype.referenced_conventions or [ ]
   );
@@ -195,10 +196,10 @@ let
       ''
         # Keystone repos
 
-        This directory (`~/.keystone/repos/`) is the agent-space root for the keystone
-        system. It contains the core repositories that define and operate this machine's
-        infrastructure. See `process.keystone-development` (inlined below) for the
-        development workflow, tooling, and how changes flow through the system.
+        The standard Keystone checkout layout is `~/repos/{owner}/{repo}/`. The
+        consumer flake convention is `~/repos/{owner}/ks-config`, and local Keystone
+        development prefers the sibling checkout at `~/repos/{owner}/keystone`.
+        `~/.keystone/repos/` is legacy compatibility only.
 
         ## Repositories
 
@@ -209,7 +210,7 @@ let
 
         - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks.notes`.
         - Use `ks.notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-        - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
+        - On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the repo checkout inventory.
         - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
         - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
       '')

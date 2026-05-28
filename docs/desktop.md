@@ -8,7 +8,7 @@ description: Overview of Keystone Desktop, including launchers, keybindings, and
 Keystone Desktop is the graphical layer of Keystone OS.
 
 It combines [Hyprland](https://wiki.hypr.land/Getting-Started/Installation/), [Walker](https://github.com/abenz1267/walker), [Waybar](https://github.com/Alexays/Waybar), [Ghostty](https://ghostty.org/docs), notifications, screenshots, and
-project-aware desktop navigation into a keyboard-first environment.
+desktop navigation into a keyboard-first environment.
 
 ## Getting started
 
@@ -36,8 +36,7 @@ The intended workflow is:
 
 - use Ghostty for shell access,
 - use Zellij inside Ghostty for long-running project sessions,
-- use Walker for app and project switching,
-- use `pz` for note-backed project session management, and
+- use Walker for app switching,
 - use Waybar and notifications for lightweight system feedback.
 
 ## Related docs

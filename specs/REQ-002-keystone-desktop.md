@@ -13,7 +13,7 @@ MAY, REQUIRED, OPTIONAL).
 
 The system MUST provide a unified, hierarchical menu accessible via a global keyboard shortcut (`Mod + Escape`) and the power button.
 
-- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Contexts, Agents, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
+- **dt-menu-001.1**: The menu MUST allow navigation to sub-menus: Apps, Agents, Learn, Capture, Toggle, Style, Setup, Install, Remove, Update, System.
 - **dt-menu-001.2**: The "System" sub-menu MUST provide options for: Lock, Suspend, Restart, and Shutdown.
 - **dt-menu-001.3**: The "Style" sub-menu MUST allow switching themes.
 - **dt-menu-001.4**: The "Toggle" sub-menu MUST allow toggling system features like Nightlight, Idle Inhibition, and configuring Nightlight schedule and intensity.
@@ -21,44 +21,9 @@ The system MUST provide a unified, hierarchical menu accessible via a global key
 - **dt-menu-001.6**: The "Learn" sub-menu MUST provide access to keybindings help and documentation.
 - **dt-menu-001.7**: The menu MUST support direct navigation to specific sub-menus via command-line arguments.
 - **dt-menu-001.8**: The "Setup" sub-menu MUST provide a "Monitors" section for dynamic display configuration (see dt-monitor-001).
-- **dt-menu-001.9**: The menu MUST provide access to project and desktop context selection behavior defined in `dt-context-001`.
+- **dt-menu-001.9**: The menu MUST provide access to configured desktop and agent actions.
 - **dt-menu-001.10**: Walker or Elephant MUST remain presentation-layer launchers only. Any long-lived terminal, editor, browser, or GUI process started from the menu MUST be detached from the menu process tree before the target command begins running.
 - **dt-menu-001.11**: When an `agenix-secrets` managed repo is present, the Walker-backed Keystone menu MUST expose a secrets-management entry point for it.
-
-### Desktop contexts (dt-context-001)
-
-The system MUST provide project-aware desktop context selectors that integrate `pz`, Hyprland, and existing desktop session windows.
-
-Detailed project desktop menu requirements are defined in `REQ-026`.
-
-- **dt-context-001.1**: Desktop context selectors MUST list registered projects from the `pz` project registry.
-- **dt-context-001.2**: When a selected project or session already has an active desktop window, the desktop MUST switch to the Hyprland workspace containing that window instead of opening a new terminal window.
-- **dt-context-001.3**: The desktop MUST determine the target workspace from the live Hyprland client list, rather than assuming the session uses a named workspace.
-- **dt-context-001.4**: If an active zellij session exists for the selected project or session but no matching desktop window exists, the desktop MUST open a new terminal attached to that existing session.
-- **dt-context-001.5**: Choosing a project from the project list MUST open a project details or actions view before any switch or attach action occurs.
-- **dt-context-001.6**: The project details or actions view MUST always include an explicit "New session" selection for each project, even when that project already has active sessions.
-- **dt-context-001.7**: Choosing "New session" MUST prompt for a session slug before launch.
-- **dt-context-001.8**: The session slug prompt MAY allow an empty value to create or attach to the project's main session.
-- **dt-context-001.9**: The desktop MUST support both current `pz` session names and legacy `obs-<project>` session names when determining whether a session is active.
-- **dt-context-001.10**: When multiple desktop windows correspond to the same active session, the desktop MUST prefer the focused matching window. If no matching window is focused, the desktop MUST choose a deterministic matching window.
-- **dt-context-001.11**: The same active-session behavior MUST apply in both the dedicated context switcher and the menu-based project selector.
-- **dt-context-001.12**: The project details or actions view MUST be reachable by keyboard. When the launcher supports directional key hooks, Right Arrow SHOULD open that view. When it does not, Enter or another primary selection action MAY open that view instead.
-- **dt-context-001.13 (Delegation):** Desktop components MUST NOT implement domain logic for project discovery, session management, or metadata retrieval. They MUST delegate all such operations to the `pz` CLI or other terminal-first tools.
-- **dt-context-001.14 (Experience Parity):** The desktop project menus SHOULD provide a visual experience that mirrors the information hierarchy and action set of the `pz` CLI, ensuring a seamless transition for users moving between terminal and desktop contexts.
-- **dt-context-001.15 (Performance):** Desktop menus MUST utilize bulk data retrieval patterns (e.g., a single CLI call returning all required menu state) to ensure menu responsiveness and avoid N+1 performance bottlenecks.
-- **dt-context-001.16 (Launcher Independence):** Opening or attaching a project session from the desktop menu MUST NOT tie the spawned terminal window or editor lifecycle to Walker or Elephant service lifetime. Restarting the launcher services MUST NOT close or interrupt the started session.
-- **dt-context-001.17 (Host awareness):** Desktop project menus MUST show the declared host inventory and MUST allow users to change the effective target host before launch.
-- **dt-context-001.18 (Remote transport):** When the effective target host is remote, the desktop MUST launch the project through a local terminal session that delegates to terminal-first remote project tooling.
-
-### Project details page (dt-context-002)
-
-The system SHOULD provide a project-specific details page reachable from the project menu.
-
-- **dt-context-002.1**: The project details page MUST display project information sourced from the notes project hub when available.
-- **dt-context-002.2**: The project details page SHOULD display active milestones for the project's GitHub repository.
-- **dt-context-002.2a**: When GitHub milestone data is unavailable, the page MAY fall back to milestone data stored in the notes project hub.
-- **dt-context-002.3**: For each active milestone shown, the page SHOULD display associated open issues and due dates when available.
-- **dt-context-002.4**: If notes, milestone, or issue data is unavailable, the page MUST degrade gracefully without preventing project and session actions.
 
 ### Monitor Management (dt-monitor-001)
 

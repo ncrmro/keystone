@@ -3,7 +3,7 @@
 Keystone development mode (`keystone.development`) enables rapid iteration by
 using local repository checkouts instead of immutable Nix store copies. When
 enabled, modules derive local paths from the `keystone.repos` registry at
-`~/.keystone/repos/{owner}/{repo}/`.
+`~/repos/{owner}/{repo}/`.
 
 ## Top-Level Toggle
 
@@ -21,7 +21,7 @@ enabled, modules derive local paths from the `keystone.repos` registry at
    `"ncrmro/keystone"`) that declares managed repositories.
 4. Each entry MUST specify a `url` (git remote) and MAY specify `flakeInput`
    (the corresponding flake input name) and `branch` (default: `"main"`).
-5. Repositories are expected at `~/.keystone/repos/{owner}/{repo}/` — this
+5. Repositories are expected at `~/repos/{owner}/{repo}/` — this
    path is computed, never hardcoded per-user.
 
 ## Path Resolution

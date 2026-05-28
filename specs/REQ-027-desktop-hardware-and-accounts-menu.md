@@ -18,8 +18,8 @@ This spec defines the contract for:
 - declarative multi-account mail and calendar configuration used by the
   desktop account menu.
 
-This spec does not redefine the general desktop menu framework from REQ-002,
-the project desktop menu from REQ-026, or Google Calendar OAuth2 support.
+This spec does not redefine the general desktop menu framework from REQ-002
+or Google Calendar OAuth2 support.
 
 ## Stories covered
 
@@ -35,7 +35,6 @@ the project desktop menu from REQ-026, or Google Calendar OAuth2 support.
 
 - REQ-002: Keystone Desktop
 - REQ-018: Keystone Home Directory and Repo Management
-- REQ-026: Project desktop menu
 
 ## Functional requirements
 

@@ -102,6 +102,8 @@ and the loop's behaviour is reviewable in git like any other skill.
 
 - [`agents.md`](agents.md) — human-side tooling: `agentctl` CLI, mail
   templates, and how operators interact with the agent fleet.
+- [OS agent e2e validation](os-agent-e2e.md) documents the email ping/pong
+  smoke test for installed notification-driven OS agents.
 - [`os-agents.md`](os-agents.md) — full reference for the OS-agent system:
   provisioning, task loop, scheduler, YAML schemas, systemd timers,
   observability.

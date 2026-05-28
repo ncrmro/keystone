@@ -44,6 +44,21 @@ If you'd rather see the existing `TODO:` markers up front:
 grep -RIn "TODO:" flake.nix hosts/
 ```
 
+## Validate OS agents
+
+After enabling and switching an OS agent, run the notification smoke test:
+
+```bash
+os-agents-e2e
+```
+
+If no OS agents are configured, this exits successfully with a skip message.
+When agents exist, it sends `[ping] <tag>` to the agent mailbox, starts the
+agent's Pi runner systemd service, and expects `Re: [pong] <tag>` to appear in
+your inbox. Use `os-agents-e2e drago email` to choose a specific agent.
+Use `os-agents-e2e drago all` when additional checks, such as PR assignment,
+are implemented.
+
 ## How this repo is organized
 
 See [`docs/keystone/keystone-config.md`](docs/keystone/keystone-config.md)

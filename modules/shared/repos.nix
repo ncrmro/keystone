@@ -133,7 +133,7 @@ in
       default = if osConfig != null then osConfig.keystone.development or false else false;
       description = ''
         Enable development mode globally. When true, modules use local repo
-        checkouts at ~/.keystone/repos/OWNER/REPO/ instead of Nix store copies.
+        checkouts at ~/repos/OWNER/REPO/ instead of Nix store copies.
         Requires keystone.repos to declare managed repositories.
 
         This defaults to false per process.enable-by-default exception rule 17 —
@@ -170,7 +170,7 @@ in
         }
       );
       default = if osConfig != null then osConfig.keystone.repos or { } else { };
-      description = "Managed repositories keyed by owner/repo. Cloned to ~/.keystone/repos/{owner}/{repo}/.";
+      description = "Managed repositories keyed by owner/repo. Cloned to ~/repos/{owner}/{repo}/.";
     };
   };
 

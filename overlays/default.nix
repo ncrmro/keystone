@@ -37,8 +37,6 @@ let
   write-polkit-theme-src = ../packages/write-polkit-theme;
   agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
-  ks-legacy-src = ../packages/ks-legacy;
-  pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
@@ -78,12 +76,7 @@ in
     repo-sync = final.callPackage repo-sync-src { };
     podman-agent = final.callPackage podman-agent-src { };
     agents-e2e = final.callPackage agents-e2e-src { };
-    ks-legacy = final.callPackage ks-legacy-src {
-      commandName = "ks-legacy";
-      ks = final.keystone.ks;
-    };
     ks = final.callPackage ks-src { };
-    pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
     zide = final.callPackage zide-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };

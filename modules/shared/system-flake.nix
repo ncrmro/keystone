@@ -23,9 +23,9 @@ in
   options.keystone.systemFlake = {
     path = mkOption {
       type = types.path;
-      default = "/home/${config.keystone.os.adminUsername}/.keystone/repos/${config.keystone.os.adminUsername}/keystone-config";
+      default = "/home/${config.keystone.os.adminUsername}/repos/${config.keystone.os.adminUsername}/ks-config";
       defaultText = literalExpression ''
-        "/home/''${config.keystone.os.adminUsername}/.keystone/repos/''${config.keystone.os.adminUsername}/keystone-config"
+        "/home/''${config.keystone.os.adminUsername}/repos/''${config.keystone.os.adminUsername}/ks-config"
       '';
       description = ''
         Absolute path to the consumer flake that produced this system.

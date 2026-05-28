@@ -73,8 +73,7 @@ impl FirstBootConfig {
         let default_owner = Self::default_repo_owner();
         let home = home::home_dir()?;
         Some(
-            home.join(".keystone")
-                .join("repos")
+            home.join("repos")
                 .join(&default_owner)
                 .join("keystone-config"),
         )
@@ -1439,7 +1438,7 @@ mod tests {
 
     fn test_first_boot_config() -> FirstBootConfig {
         FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/keystone-config"),
+            config_dir: PathBuf::from("/home/testuser/repos/testuser/keystone-config"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: Some("octocat".to_string()),
@@ -1471,7 +1470,7 @@ mod tests {
     #[test]
     fn test_remote_input_empty_without_github() {
         let config = FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/keystone-config"),
+            config_dir: PathBuf::from("/home/testuser/repos/testuser/keystone-config"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: None,
@@ -1483,7 +1482,7 @@ mod tests {
     #[test]
     fn test_remote_input_uses_custom_installed_repo_name() {
         let config = FirstBootConfig {
-            config_dir: PathBuf::from("/home/testuser/.keystone/repos/testuser/custom-config"),
+            config_dir: PathBuf::from("/home/testuser/repos/testuser/custom-config"),
             hostname: "test-machine".to_string(),
             username: "testuser".to_string(),
             github_username: Some("octocat".to_string()),
