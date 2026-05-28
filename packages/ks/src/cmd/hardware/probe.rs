@@ -420,7 +420,7 @@ pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
             scope: WarningScope::Machine,
             message: "Secure Boot is DISABLED.".into(),
             remediation: Some(
-                "Run `sudo ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware so TPM PCR-7 binding has an integrity anchor.".into(),
+                "Run `ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware so TPM PCR-7 binding has an integrity anchor.".into(),
             ),
         }),
         SecureBootState::SetupMode => out.push(Warning {
@@ -428,7 +428,7 @@ pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
             scope: WarningScope::Machine,
             message: "UEFI in Setup Mode — Secure Boot keys ready to enroll.".into(),
             remediation: Some(
-                "Run `sudo ks hardware setup` to enroll Secure Boot keys and stage the required reboot.".into(),
+                "Run `ks hardware setup` to enroll Secure Boot keys and stage the required reboot.".into(),
             ),
         }),
         SecureBootState::NotSupported => out.push(Warning {
@@ -450,7 +450,7 @@ pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
                     v.id
                 ),
                 remediation: Some(format!(
-                    "Run `sudo ks hardware enroll password --disk={}` (or `ks hardware setup`).",
+                    "Run `ks hardware enroll password --disk={}` (or `ks hardware setup`).",
                     v.id
                 )),
             });

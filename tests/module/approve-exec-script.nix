@@ -41,6 +41,47 @@ let
           ];
         }
         {
+          name = "ks-hardware-setup";
+          displayName = "Configure hardware-backed disk unlock";
+          reason = "Configure hardware-backed disk enrollment and unlock methods.";
+          runAs = "root";
+          approvalMethods = [ "password" ];
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "setup"
+          ];
+        }
+        {
+          name = "ks-hardware-setup-dry-run";
+          displayName = "Preview hardware-backed disk unlock setup";
+          reason = "Inspect the planned hardware enrollment flow on this host.";
+          runAs = "root";
+          approvalMethods = [ "password" ];
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "setup"
+            "--dry-run"
+          ];
+        }
+        {
+          name = "ks-hardware-enroll-recovery";
+          displayName = "Generate recovery key and enroll TPM";
+          reason = "Generate a recovery key and enroll TPM-backed disk unlock on this host.";
+          runAs = "root";
+          approvalMethods = [ "password" ];
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "enroll"
+            "recovery"
+          ];
+        }
+        {
           name = "ks-hardware-enroll-fido2";
           displayName = "Enroll hardware key for disk unlock";
           reason = "Enroll a FIDO2 hardware key for disk unlock.";
@@ -124,6 +165,23 @@ pkgs.runCommand "test-approve-exec-script"
     output_prefix="$(bash ${helperScript} --validate --reason "regression test" -- ks update --approve)"
     if ! grep -F '"name":"ks-update"' <<<"$output_prefix" >/dev/null; then
       fail "approve-exec.sh --validate must accept 'ks update --approve' (prefix match)"
+    fi
+
+    # -- Exact-match: ks hardware setup (+ dry-run) ------------------------
+
+    output_setup="$(bash ${helperScript} --validate --reason "regression test" -- ks hardware setup)"
+    if ! grep -F '"name":"ks-hardware-setup"' <<<"$output_setup" >/dev/null; then
+      fail "approve-exec.sh --validate must accept the exact 'ks hardware setup' entry"
+    fi
+
+    output_setup_dry_run="$(bash ${helperScript} --validate --reason "regression test" -- ks hardware setup --dry-run)"
+    if ! grep -F '"name":"ks-hardware-setup-dry-run"' <<<"$output_setup_dry_run" >/dev/null; then
+      fail "approve-exec.sh --validate must accept the exact 'ks hardware setup --dry-run' entry"
+    fi
+
+    output_recovery="$(bash ${helperScript} --validate --reason "regression test" -- ks hardware enroll recovery)"
+    if ! grep -F '"name":"ks-hardware-enroll-recovery"' <<<"$output_recovery" >/dev/null; then
+      fail "approve-exec.sh --validate must accept the exact 'ks hardware enroll recovery' entry"
     fi
 
     # -- Exact-match: ks hardware enroll fido2 -----------------------------

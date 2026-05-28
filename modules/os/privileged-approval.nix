@@ -132,6 +132,65 @@ in
       type = types.listOf commandSubmodule;
       default = [
         {
+          name = "ks-hardware-setup";
+          displayName = "Configure hardware-backed disk unlock";
+          reason = "Configure hardware-backed disk enrollment and unlock methods.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "setup"
+          ];
+        }
+        {
+          name = "ks-hardware-setup-dry-run";
+          displayName = "Preview hardware-backed disk unlock setup";
+          reason = "Inspect the planned hardware enrollment flow on this host.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "setup"
+            "--dry-run"
+          ];
+        }
+        {
+          name = "ks-hardware-enroll-password";
+          displayName = "Rotate disk unlock password";
+          reason = "Rotate the disk unlock password on this host.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "enroll"
+            "password"
+          ];
+        }
+        {
+          name = "ks-hardware-enroll-recovery";
+          displayName = "Generate recovery key and enroll TPM";
+          reason = "Generate a recovery key and enroll TPM-backed disk unlock on this host.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "enroll"
+            "recovery"
+          ];
+        }
+        {
+          name = "ks-hardware-enroll-tpm2";
+          displayName = "Enroll TPM-backed disk unlock";
+          reason = "Enroll or re-bind TPM-backed disk unlock on this host.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "enroll"
+            "tpm2"
+          ];
+        }
+        {
           name = "ks-hardware-enroll-fido2";
           displayName = "Enroll hardware key for disk unlock";
           reason = "Enroll a FIDO2 hardware key for disk unlock.";
@@ -141,6 +200,18 @@ in
             "hardware"
             "enroll"
             "fido2"
+          ];
+        }
+        {
+          name = "ks-hardware-enroll-fingerprint";
+          displayName = "Enroll fingerprint for sudo and login";
+          reason = "Enroll a fingerprint for sudo and login on this host.";
+          match = "exact";
+          argv = [
+            "ks"
+            "hardware"
+            "enroll"
+            "fingerprint"
           ];
         }
         {

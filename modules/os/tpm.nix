@@ -123,7 +123,7 @@ in
           |                                                                          |
           | To secure your encrypted disk, run the one-shot enrollment:             |
           |                                                                          |
-          |      $ sudo ks hardware setup                                            |
+          |      $ ks hardware setup                                                 |
           |                                                                          |
           | This will detect your hardware and chain:                               |
           |   1. Rotate the default password to one you choose                      |

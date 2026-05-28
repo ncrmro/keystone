@@ -18,13 +18,13 @@ post-install hardening on a new host.
 - The recommended first-time command on a normal Keystone laptop or server is:
 
   ```bash
-  sudo ks hardware setup
+  ks hardware setup
   ```
 
 - Preview the exact plan first with:
 
   ```bash
-  sudo ks hardware setup --dry-run
+  ks hardware setup --dry-run
   ```
 
 - Inspect the current state before and after with:
@@ -53,13 +53,13 @@ recovery path when it is not.
 
 | Command | Use it when |
 |---|---|
-| `sudo ks hardware setup` | First-time end-to-end enrollment on a newly installed host |
+| `ks hardware setup` | First-time end-to-end enrollment on a newly installed host |
 | `sudo ks hardware report` | Check current state before changes or verify after changes |
-| `sudo ks hardware enroll password --disk=root` | Only rotate the default `keystone` LUKS password |
-| `sudo ks hardware enroll recovery --disk=root` | Generate a paper recovery key and enroll TPM2 in one run |
-| `sudo ks hardware enroll tpm2 --disk=root` | Re-bind TPM2 after firmware or Secure Boot changes |
-| `sudo ks hardware enroll fido2 --disk=root` | Add a plugged-in YubiKey or other FIDO2 device |
-| `sudo ks hardware enroll fingerprint` | Enroll a fingerprint reader for login/sudo |
+| `ks hardware enroll password --disk=root` | Only rotate the default `keystone` LUKS password |
+| `ks hardware enroll recovery --disk=root` | Generate a paper recovery key and enroll TPM2 in one run |
+| `ks hardware enroll tpm2 --disk=root` | Re-bind TPM2 after firmware or Secure Boot changes |
+| `ks hardware enroll fido2 --disk=root` | Add a plugged-in YubiKey or other FIDO2 device |
+| `ks hardware enroll fingerprint` | Enroll a fingerprint reader for login/sudo |
 
 For v1.1, the LUKS-targeting commands only support the root unlock volume.
 
@@ -70,8 +70,8 @@ Run these on the newly installed host after Step 6 of
 
 ```bash
 sudo ks hardware report
-sudo ks hardware setup --dry-run
-sudo ks hardware setup
+ks hardware setup --dry-run
+ks hardware setup
 sudo reboot
 sudo ks hardware report
 ```
@@ -121,7 +121,7 @@ LUKS volumes (1 unlock targets):
 
 Warnings:
   ✖ [volume root] Volume `root` still accepts the default installer password.
-      → Run `sudo ks hardware enroll password --disk=root`.
+      → Run `ks hardware enroll password --disk=root`.
 ```
 
 The device path may be `/dev/zvol/rpool/credstore` on ZFS-backed installs.
@@ -218,7 +218,7 @@ Use this when you are not ready to enroll TPM2 yet, but you want the
 publicly known installer password gone immediately.
 
 ```bash
-sudo ks hardware enroll password --disk=root
+ks hardware enroll password --disk=root
 ```
 
 This changes slot 0 in place. It does not add TPM2, FIDO2, or a recovery key.
@@ -228,7 +228,7 @@ This changes slot 0 in place. It does not add TPM2, FIDO2, or a recovery key.
 This is the strongest manual path when you want a written recovery credential.
 
 ```bash
-sudo ks hardware enroll recovery --disk=root
+ks hardware enroll recovery --disk=root
 ```
 
 This:
@@ -243,7 +243,7 @@ Use this after Secure Boot key changes, firmware updates, or other TPM/PCR
 drift that causes a previously enrolled system to prompt for manual unlock.
 
 ```bash
-sudo ks hardware enroll tpm2 --disk=root
+ks hardware enroll tpm2 --disk=root
 ```
 
 ### Add a FIDO2 hardware key
@@ -251,7 +251,7 @@ sudo ks hardware enroll tpm2 --disk=root
 Plug the device in first, then run:
 
 ```bash
-sudo ks hardware enroll fido2 --disk=root
+ks hardware enroll fido2 --disk=root
 ```
 
 You will be prompted to touch the hardware key when it blinks.
@@ -259,7 +259,7 @@ You will be prompted to touch the hardware key when it blinks.
 ### Enroll fingerprint for login and sudo
 
 ```bash
-sudo ks hardware enroll fingerprint
+ks hardware enroll fingerprint
 ```
 
 This is not part of LUKS unlock. It controls user auth above the disk layer.

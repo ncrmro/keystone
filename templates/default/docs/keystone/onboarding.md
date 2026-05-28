@@ -346,8 +346,8 @@ single-method `ks hardware enroll ...` commands.
 
 ```bash
 sudo ks hardware report
-sudo ks hardware setup --dry-run
-sudo ks hardware setup
+ks hardware setup --dry-run
+ks hardware setup
 ```
 
 The normal first-time flow is:

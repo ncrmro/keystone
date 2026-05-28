@@ -54,12 +54,20 @@ pkgs.runCommand "test-ks-approve"
     printf '%s\n' "$mode|$reason|''${requested[*]}" >> "$PWD/logs/helper.log"
 
     if [[ "$mode" == "validate" ]]; then
-      if [[ "''${requested[*]}" == "ks hardware enroll fido2" ]]; then
+      case "''${requested[*]}" in
+        "ks hardware setup"|"ks hardware setup --dry-run"|"ks hardware enroll recovery")
+        cat <<'JSON'
+    {"displayName":"Allowlisted hardware flow","reason":"Allowlisted enrollment flow"}
+    JSON
+        exit 0
+        ;;
+        "ks hardware enroll fido2")
         cat <<'JSON'
     {"displayName":"Enroll FIDO2 key","reason":"Allowlisted enrollment flow"}
     JSON
         exit 0
-      fi
+        ;;
+      esac
       printf 'Rejected command: %s\n' "''${requested[*]}" >&2
       exit 1
     fi
@@ -97,6 +105,25 @@ pkgs.runCommand "test-ks-approve"
 
     grep -F -- "--reason Enroll hardware key -- ks hardware enroll fido2" "$PWD/logs/sudo.log" >/dev/null
     [[ ! -e "$PWD/logs/pkexec.log" ]]
+
+    rm -f "$PWD/logs/pkexec.log" "$PWD/logs/sudo.log"
+
+    WAYLAND_DISPLAY=wayland-1 ks hardware setup >"$PWD/logs/stdout-auto-graphical.log"
+
+    grep -F "Approval request: Allowlisted hardware flow" "$PWD/logs/stdout-auto-graphical.log" >/dev/null
+    grep -F -- "--reason Configure hardware-backed disk enrollment and unlock methods. -- ks hardware setup" "$PWD/logs/pkexec.log" >/dev/null
+    [[ ! -e "$PWD/logs/sudo.log" ]]
+    grep -F "exec|Configure hardware-backed disk enrollment and unlock methods.|ks hardware setup" "$PWD/logs/helper.log" >/dev/null
+
+    rm -f "$PWD/logs/pkexec.log" "$PWD/logs/sudo.log"
+
+    ks hardware enroll recovery --disk=root >"$PWD/logs/stdout-auto-terminal.log"
+
+    grep -F -- "--reason Generate a recovery key and enroll TPM-backed disk unlock on this host. -- ks hardware enroll recovery" "$PWD/logs/sudo.log" >/dev/null
+    if grep -F -- "--disk=root" "$PWD/logs/sudo.log" >/dev/null; then
+      echo "auto-brokered hardware enroll must canonicalize away the redundant --disk=root flag" >&2
+      exit 1
+    fi
 
     if ks approve --reason "Nope" -- /bin/echo nope >"$PWD/logs/stdout-reject.log" 2>"$PWD/logs/stderr-reject.log"; then
       echo "ks approve unexpectedly accepted a rejected command" >&2

@@ -263,10 +263,10 @@ preview() {
 Enroll hardware key for disk unlock
 
 This action opens a detached terminal and runs:
-  ks approve --reason "Enroll a hardware key for disk unlock." -- ks hardware enroll fido2
+  ks hardware enroll fido2
 
-The flow will show a desktop approval popup when available, then continue in the
-terminal for any LUKS password, FIDO2 PIN, or touch confirmation prompts.
+The flow will request approval when needed, then continue in the terminal for
+any LUKS password, FIDO2 PIN, or touch confirmation prompts.
 EOF
       ;;
     *)
@@ -279,9 +279,8 @@ launch_enroll_terminal() {
   local ks_cmd ghostty_cmd shell_cmd
   ks_cmd="$(keystone_cmd ks)"
   ghostty_cmd="$(keystone_cmd ghostty)"
-  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec %q approve --reason %q -- ks hardware enroll fido2' \
-    "$ks_cmd" \
-    "Enroll a hardware key for disk unlock."
+  printf -v shell_cmd 'printf "Starting hardware-key disk unlock enrollment...\\n\\n"; exec %q hardware enroll fido2' \
+    "$ks_cmd"
   detach "$ghostty_cmd" -e bash -lc "$shell_cmd"
 }
 

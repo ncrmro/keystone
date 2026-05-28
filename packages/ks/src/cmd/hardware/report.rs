@@ -388,14 +388,14 @@ mod tests {
                     scope: WarningScope::Machine,
                     message: "Secure Boot is DISABLED.".into(),
                     remediation: Some(
-                        "Run `sudo ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware.".into(),
+                        "Run `ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware.".into(),
                     ),
                 },
                 Warning {
                     severity: Severity::Critical,
                     scope: WarningScope::Volume { id: "root".into() },
                     message: "Volume `root` still accepts the default installer password.".into(),
-                    remediation: Some("Run `sudo ks hardware enroll password --disk=root`.".into()),
+                    remediation: Some("Run `ks hardware enroll password --disk=root`.".into()),
                 },
             ],
         }
@@ -454,7 +454,7 @@ mod tests {
             severity: Severity::Info,
             scope: WarningScope::Volume { id: "data".into() },
             message: "Volume `data` is not enrolled with TPM2.".into(),
-            remediation: Some("Run `sudo ks hardware enroll tpm --disk=data`.".into()),
+            remediation: Some("Run `ks hardware enroll tpm --disk=data`.".into()),
         });
 
         apply_disk_filter(&mut r, "root");

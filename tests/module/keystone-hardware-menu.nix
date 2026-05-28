@@ -59,19 +59,19 @@ pkgs.runCommand "test-keystone-hardware-menu"
 
     preview_enroll="$(keystone-hardware-menu preview enroll)"
     printf '%s\n' "$preview_enroll" \
-      | grep -F 'ks approve --reason "Enroll a hardware key for disk unlock." -- ks hardware enroll fido2' >/dev/null \
+      | grep -F 'ks hardware enroll fido2' >/dev/null \
       || fail "preview must show the canonical ks hardware enroll command"
 
     keystone-hardware-menu dispatch $'enroll-fido2\tEnroll hardware key\t'
 
     grep -F 'ghostty' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null \
       || fail "dispatch must launch ghostty via keystone-detach"
-    grep -F 'approve --reason' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null \
-      || fail "dispatch must invoke ks approve"
-    grep -F -- '-- ks hardware enroll fido2' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null \
-      || fail "approved argv must stay as bare 'ks hardware enroll fido2'"
-    if grep -E -- '-- /.+/ks hardware enroll fido2' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null; then
-      fail "approved argv must not be rewritten to an absolute ks path"
+    grep -F 'exec ' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null \
+      || fail "dispatch must execute the hardware command directly"
+    grep -F ' hardware enroll fido2' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null \
+      || fail "dispatch must invoke the bare ks hardware enroll command"
+    if grep -F 'approve --reason' "$XDG_RUNTIME_DIR/detach-command.txt" >/dev/null; then
+      fail "dispatch must not hardcode ks approve once the command self-brokers"
     fi
 
     touch "$out"
