@@ -205,7 +205,6 @@ let
           home.sessionVariables.TZ = timeZone;
 
           keystone.update.channel = lib.mkDefault updateChannel;
-          keystone.projects.enable = false;
           keystone.terminal = {
             enable = true;
             ai.enable = false;
@@ -760,7 +759,6 @@ rec {
           home.homeDirectory = "/Users/${username}";
           home.stateVersion = stateVersion;
 
-          keystone.projects.enable = false;
           keystone.terminal = {
             enable = true;
             ai.enable = false;

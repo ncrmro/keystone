@@ -16,7 +16,6 @@ let
         home.homeDirectory = "/home/testuser";
         home.stateVersion = "25.05";
 
-        keystone.projects.enable = false;
         keystone.terminal = {
           enable = true;
           sandbox.enable = false;

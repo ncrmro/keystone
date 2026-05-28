@@ -214,18 +214,18 @@ let
       # Verify DEEPWORK_ADDITIONAL_JOBS_FOLDERS for development-mode test
       if [ "${name}" = "development-mode" ]; then
         echo "Verifying DEEPWORK_ADDITIONAL_JOBS_FOLDERS in development-mode..."
-        if echo '${sessionVarsJson}' | grep -q "/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs"; then
+        if echo '${sessionVarsJson}' | grep -q "/home/testuser/repos/Unsupervisedcom/deepwork/library/jobs"; then
           echo "  ✓ Found local deepwork jobs path"
         else
           echo "  ✗ Missing local deepwork jobs path"
           echo "  Actual Session Vars: ${sessionVarsJson}"
           exit 1
         fi
-        # We expect /home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs
+        # We expect /home/testuser/repos/ncrmro/keystone/.deepwork/jobs
         # because ncrmro/keystone is the guessed name for the keystone input.
         # Anchor on a trailing colon/quote so we don't match `.deepwork/jobs-internal`
         # as a substring — otherwise dropping the published path would still pass.
-        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/\.keystone/repos/ncrmro/keystone/\.deepwork/jobs(:|\")"; then
+        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/repos/ncrmro/keystone/\.deepwork/jobs(:|\")"; then
           echo "  ✓ Found local keystone jobs path"
         else
           echo "  ✗ Missing local keystone jobs path"
@@ -234,14 +234,14 @@ let
         fi
         # Internal jobs path is appended only in dev mode and is intentionally
         # absent from the published keystone-deepwork-jobs package.
-        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/\.keystone/repos/ncrmro/keystone/\.deepwork/jobs-internal(:|\")"; then
+        if echo '${sessionVarsJson}' | grep -qE "/home/testuser/repos/ncrmro/keystone/\.deepwork/jobs-internal(:|\")"; then
           echo "  ✓ Found local keystone internal jobs path"
         else
           echo "  ✗ Missing local keystone internal jobs path"
           echo "  Actual Session Vars: ${sessionVarsJson}"
           exit 1
         fi
-        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/.keystone/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs:/home/testuser/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal"'; then
+        if echo '${deepworkMcpJson}' | grep -q '"/home/testuser/repos/Unsupervisedcom/deepwork/library/jobs:/home/testuser/repos/ncrmro/keystone/.deepwork/jobs:/home/testuser/repos/ncrmro/keystone/.deepwork/jobs-internal"'; then
           echo "  ✓ Found development-mode DeepWork MCP env value"
         else
           echo "  ✗ Missing development-mode DeepWork MCP env value"
