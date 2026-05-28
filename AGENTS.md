@@ -98,6 +98,17 @@ reads:
   matching root `docs/keystone/` symlink in sync per
   [`CONTRIBUTOR.md` § Consumer-flake docs sync](CONTRIBUTOR.md#consumer-flake-docs-sync).
 
+## Hardware e2e
+
+For changes to `packages/ks/src/cmd/hardware/`, Secure Boot, TPM, installer
+handoff, or post-install reboot logic, validate the full enrollment path with
+`bin/test-e2e --headless --e2e`.
+
+Keep the root guidance short and treat
+[`docs/testing/iso-os-virtual-machine.md`](docs/testing/iso-os-virtual-machine.md)
+as the canonical detailed reference for full TPM + Secure Boot enrollment
+testing, reboot gates, and VM-specific invariants.
+
 ## Pull request workflow
 
 PR mechanics — draft → Copilot review → merge queue, plus issue and

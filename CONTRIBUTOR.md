@@ -220,7 +220,7 @@ bin/test-e2e --direct laptop              # keep SPICE window open for debugging
 ```
 
 **Full ISO + installer (20-30 min)** — installer TUI, `ks install`,
-post-reboot desktop validation:
+Secure Boot enrollment, TPM enrollment, and post-reboot validation:
 
 ```bash
 bin/test-e2e                  # Full e2e (build + boot + install + validate)
@@ -234,6 +234,11 @@ in `test-iso --help` (e.g. `--luks-passphrase`, `--port`, `--memory`)
 generally works with `bin/test-e2e` too. It may also add wrapper
 defaults such as `--dev` and a default mode (`--e2e --headless`) when
 no mode flag is provided.
+
+For changes to `ks hardware`, Secure Boot, TPM, or post-install reboot logic,
+the full `--headless --e2e` path is required. See
+[ISO and OS virtual machine testing](docs/testing/iso-os-virtual-machine.md)
+for the full TPM + Secure Boot enrollment flow and its reboot invariants.
 
 ## AI instruction regeneration
 
@@ -321,8 +326,9 @@ For the full automated ISO and desktop testing workflow, see
 
 `bin/virtual-machine` is the canonical VM tool (Q35 + EDK2 SecureBoot + TPM + QXL).
 The template e2e test (`./bin/test-iso --dev --headless --e2e`) validates the full
-new-user journey. Changes to NixOS modules do NOT require an ISO rebuild — only
-`ks` binary or installer module changes do.
+new-user journey, including Secure Boot enrollment, recovery-key + TPM
+enrollment, and TPM auto-unlock verification. Changes to NixOS modules do NOT
+require an ISO rebuild — only `ks` binary or installer module changes do.
 
 `--post-install-reboot` creates a `post-install` qcow2 snapshot; restore with
 `--restore <vm> post-install` to skip reinstallation when debugging. Consolidation
