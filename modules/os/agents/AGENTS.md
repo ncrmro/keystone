@@ -18,7 +18,7 @@ agents/
   mail-client.nix    -- himalaya + mail assertions
   tailscale.nix      -- per-agent Tailscale (currently disabled)
   ssh.nix            -- ssh-agent + assertions
-  notes.nix          -- notes-sync, task-loop, scheduler services + timers
+  notes.nix          -- legacy task-loop and scheduler services + timers
   dispatcher.nix     -- experimental dispatcher service + TASKS.yaml path/timer units
   home-manager.nix   -- home-manager terminal integration
   scripts/
@@ -79,7 +79,7 @@ keystone.os.agents.drago = {
   mail = { provision = false; address = "agent-drago@example.com"; };
   github.username = "drago";
   forgejo.username = "drago";
-  git = { provision = false; username = "drago"; repoName = "agent-space"; };
+  git = { provision = false; username = "drago"; repoName = "drago"; };
   passwordManager.provision = false;
   mcp.servers = {};
   # Perception layer: PDF parsing, voice transcription, photo search,
@@ -173,10 +173,10 @@ agentctl <agent-name> <command> [args...]
 | `exec`                               | Run arbitrary command as the agent (diagnostics)        |
 | `tasks`                              | Show agent tasks table (pending/in_progress first)      |
 | `email`                              | Show agent inbox (recent envelopes)                     |
-| `claude`                             | Interactive Claude session in agent notes dir           |
-| `gemini`                             | Interactive Gemini session in agent notes dir           |
-| `codex`                              | Interactive Codex session in agent notes dir            |
-| `opencode`                           | Interactive OpenCode session in agent notes dir         |
+| `claude`                             | Interactive Claude session as the agent                 |
+| `gemini`                             | Interactive Gemini session as the agent                 |
+| `codex`                              | Interactive Codex session as the agent                  |
+| `opencode`                           | Interactive OpenCode session as the agent               |
 | `mail`                               | Send structured email via `agent-mail`                  |
 | `vnc`                                | Open remote-viewer to the agent's VNC desktop           |
 | `provision`                          | Generate SSH keypair, mail password, and agenix secrets |

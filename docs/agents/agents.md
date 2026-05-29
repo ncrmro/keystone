@@ -5,7 +5,7 @@ description: Human-side tooling for interacting with OS agents
 
 # Agents
 
-OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. See [OS Agents](os-agents.md) for the full system-level reference (provisioning, agent-space, task loop, cronjobs).
+OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. See [OS Agents](os-agents.md) for the full system-level reference (provisioning, identity docs, notification runners, cronjobs).
 
 This page documents the **human-side tooling** for interacting with agents.
 
@@ -32,7 +32,7 @@ agentctl <agent-name> <command> [args...]
 | `exec`                                                | Run an arbitrary command as the agent (diagnostics)       |
 | `tasks`                                               | Show agent tasks in a table (pending/in_progress first)   |
 | `email`                                               | Show the agent's inbox (recent envelopes)                 |
-| `claude`                                              | Start interactive Claude session in agent notes directory |
+| `claude`                                              | Start interactive Claude session as the agent user        |
 | `mail`                                                | Send structured email to the agent                        |
 | `vnc`                                                 | Open remote-viewer to the agent's VNC desktop             |
 | `provision`                                           | Generate SSH keypair, mail password, and agenix secrets   |
@@ -77,6 +77,20 @@ Subject lines follow the convention `[template-type] Title` (e.g., `[project.new
 
 ## Assigning Work
 
+## Validate an installed agent
+
+Use the email ping/pong smoke test after provisioning or changing OS-agent
+notification services:
+
+```bash
+os-agents-e2e drago email
+```
+
+The test sends `[ping] <tag>` to `drago@...`, starts
+`agent-drago-pi-task-runner.service`, waits for `Re: [pong] <tag>` in your
+inbox, and verifies the source email is acknowledged by the runner. See
+[OS agent e2e validation](os-agent-e2e.md) for the full contract.
+
 Use `agentctl <name> mail` to send structured task emails:
 
 ```bash
@@ -98,11 +112,10 @@ their normal task loop.
 
 Recommended path:
 
-1. Create or refresh the project hub note and repo links.
-2. Create a press release issue or working-backwards issue on the project's
+1. Create a press release issue or working-backwards issue on the project's
    primary git platform.
-3. Assign that issue to the product agent.
-4. Let the task loop ingest it and turn it into structured work.
+2. Assign that issue to the product agent.
+3. Let the task loop ingest it and turn it into structured work.
 
 This fits the standard artifact chain documented in
 [OS Agents](os-agents.md#two-agent-coordination):
@@ -144,18 +157,8 @@ That path is useful when:
 After the press release exists, continue with the usual handoff flow described
 by `process.product-engineering-handoff`.
 
-## Agent notes
+## Agent identity
 
-Agents work inside the same shared notes system as humans. Their notebook is
-typically `/home/agent-{name}/notes/`, and durable outputs should end up there
-rather than only in workflow scratch files.
-
-Use [Notes](../notes.md) for the shared workflow. The agent-specific behavior is:
-
-- create or refresh initiative hub notes with `/notes.project`,
-- write recurring output to `reports/` with `/notes.report`,
-- normalize older notebooks with `/notes.doctor`, and
-- promote fleeting notes with `/notes.process_inbox`.
-
-Material decisions that affect a repo or initiative should be recorded in the
-notebook and mirrored into the related issue or pull request.
+Agent identity is committed in `ks-config/agents` and linked into each agent
+home as `~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md`. Prompt composition reads
+those home-level files directly; it does not depend on a notes repository.

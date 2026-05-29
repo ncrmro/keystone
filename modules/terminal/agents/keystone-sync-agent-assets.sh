@@ -436,8 +436,55 @@ write_file "$CONSUMER_FLAKE_SHARED/AGENTS.md" "$global_agents_content"
 # so manual invocations don't leave it stale.
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
 
+team_tmp="$(mktemp)"
+{
+  cat <<'EOF'
+# Team
+
+| Name | Type | Role | Email | GitHub | Forgejo | Host |
+|---|---|---|---|---|---|---|
+EOF
+  while IFS= read -r agent_name; do
+    [[ -z "$agent_name" ]] && continue
+    full_name="$(jq -r --arg name "$agent_name" '.agents[$name].fullName // $name' "$manifest_path")"
+    email="$(jq -r --arg name "$agent_name" '.agents[$name].email // ""' "$manifest_path")"
+    archetype_value="$(jq -r --arg name "$agent_name" '.agents[$name].archetype // ""' "$manifest_path")"
+    github_username="$(jq -r --arg name "$agent_name" '.agents[$name].githubUsername // $name' "$manifest_path")"
+    forgejo_username="$(jq -r --arg name "$agent_name" '.agents[$name].forgejoUsername // $name' "$manifest_path")"
+    agent_host="$(jq -r --arg name "$agent_name" '.agents[$name].host // ""' "$manifest_path")"
+    printf '| %s | OS agent | %s | %s | %s | %s | %s |\n' "$full_name" "$archetype_value" "$email" "$github_username" "$forgejo_username" "$agent_host"
+  done < <(jq -r '.agents | keys[]?' "$manifest_path")
+} > "$team_tmp"
+write_file "$CONSUMER_FLAKE_SHARED/TEAM.md" "$(cat "$team_tmp")"
+rm -f "$team_tmp"
+
+write_file "$CONSUMER_FLAKE_SHARED/SERVICES.md" '# Services
+
+Host-provisioned services are configured by Keystone and exposed through local
+tools such as `himalaya`, `gh`, `fj`, `tea`, Grafana MCP, and browser MCP when
+enabled. Prefer the local tool configuration over hardcoded URLs.
+'
+
 while IFS= read -r agent_name; do
   [[ -z "$agent_name" ]] && continue
+  full_name="$(jq -r --arg name "$agent_name" '.agents[$name].fullName // $name' "$manifest_path")"
+  email="$(jq -r --arg name "$agent_name" '.agents[$name].email // ""' "$manifest_path")"
+  archetype_value="$(jq -r --arg name "$agent_name" '.agents[$name].archetype // ""' "$manifest_path")"
+  github_username="$(jq -r --arg name "$agent_name" '.agents[$name].githubUsername // $name' "$manifest_path")"
+  forgejo_username="$(jq -r --arg name "$agent_name" '.agents[$name].forgejoUsername // $name' "$manifest_path")"
+  agent_host="$(jq -r --arg name "$agent_name" '.agents[$name].host // ""' "$manifest_path")"
+  write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/SOUL.md" "# $full_name
+
+| Field | Value |
+|---|---|
+| System user | \`agent-$agent_name\` |
+| Email | $email |
+| Archetype | $archetype_value |
+| GitHub | $github_username |
+| Forgejo | $forgejo_username |
+| Host | $agent_host |
+"
+
   agent_pi_tmp="$(mktemp)"
   printf '%s' "$global_agents_content" > "$agent_pi_tmp"
   append_pi_runtime_instructions "$agent_pi_tmp" "$agent_name"
@@ -629,7 +676,10 @@ home-dir symlinks that home-manager activation creates.
 |---|---|
 | `_shared/AGENTS.md` | Single canonical instruction file. The per-tool symlinks (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) all resolve here. |
 | `_shared/conventions/` | Centralized conventions and roles, referenced by skills via per-skill symlinks. |
+| `_shared/TEAM.md` | Generated roster for humans and OS agents. OS agents receive this as `~/TEAM.md`. |
+| `_shared/SERVICES.md` | Generated service index. OS agents receive this as `~/SERVICES.md`. |
 | `<agent>/AGENTS.md` | Optional user-authored overlay for identity-specific OS-agent rules. |
+| `<agent>/SOUL.md` | Generated OS-agent identity file. OS agents receive this as `~/SOUL.md`. |
 | `<agent>/pi/AGENTS.md` | Generated Pi instruction file for that OS agent: shared instructions, Pi runtime instructions, plus the overlay. |
 | `skills/` | Canonical skill tree per the [`.agents/skills/` open standard][spec]. Read by every spec-compliant agent. |
 | `claude/agents/` | Claude-specific subagent personas. Read via `~/.claude/agents/`. |
@@ -644,6 +694,8 @@ home-dir symlinks that home-manager activation creates.
   `_shared/skills.yaml` survives sync. Per-agent overlays at
   `<agent>/AGENTS.md` also survive sync and are copied into generated
   `<agent>/pi/AGENTS.md` files after the Pi runtime instructions.
+- OS-agent identity docs are rooted here, not in `~/notes`: activation links
+  `~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` into each agent home.
 - README files in this tree (including this one) are regenerated;
   edits there will be overwritten.
 

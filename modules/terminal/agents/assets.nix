@@ -38,8 +38,15 @@ let
     builtins.readFile ./keystone-sync-agent-assets.sh
   );
   agentsWithMcp = mapAttrs (name: agentCfg: {
-    inherit (agentCfg) host archetype;
+    inherit (agentCfg)
+      host
+      archetype
+      fullName
+      email
+      ;
     notesPath = agentCfg.notes.path;
+    githubUsername = agentCfg.github.username;
+    forgejoUsername = agentCfg.forgejo.username;
     mcpServers = {
       deepwork = {
         command = "${pkgs.keystone.deepwork}/bin/deepwork";
@@ -313,6 +320,41 @@ in
 
           ln -s "$target" "$link"
         done
+
+        if [ "$is_agent_user" = "1" ]; then
+          agent_name="''${USER#agent-}"
+          identity_files=(
+            "SOUL.md:$agent_name/SOUL.md"
+            "TEAM.md:_shared/TEAM.md"
+            "SERVICES.md:_shared/SERVICES.md"
+          )
+          for entry in "''${identity_files[@]}"; do
+            link_rel="''${entry%%:*}"
+            target_rel="''${entry#*:}"
+            target="$agents_root/$target_rel"
+            link="$HOME/$link_rel"
+
+            if [ ! -f "$target" ]; then
+              echo "keystone-agent-asset-symlinks: identity file $target does not exist yet; skipping $link (run 'ks sync-agent-assets' to populate)" >&2
+              continue
+            fi
+
+            if [ -L "$link" ]; then
+              current="$(readlink "$link")"
+              if [ "$current" = "$target" ]; then
+                continue
+              fi
+              rm -f "$link"
+            elif [ -f "$link" ]; then
+              rm -f "$link"
+            elif [ -e "$link" ]; then
+              echo "keystone-agent-asset-symlinks: $link exists and is not a file or symlink; leaving untouched" >&2
+              continue
+            fi
+
+            ln -s "$target" "$link"
+          done
+        fi
 
         # Pi reads instructions from ~/.pi/agent/AGENTS.md. Human users get the
         # shared instruction file; OS agents get a composed per-agent file when

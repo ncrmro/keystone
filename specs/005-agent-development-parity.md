@@ -12,7 +12,6 @@
 - `modules/os/agents/agentctl.nix`
 - `tests/module/agent-evaluation.nix`
 - `docs/agents/os-agents.md`
-- `docs/agents/os-agents.agent-space.md`
 
 ## Data Models
 
@@ -20,8 +19,8 @@
 
 | Principal  | Home root            | Managed repo root                        | Dev-mode source                       |
 | ---------- | -------------------- | ---------------------------------------- | ------------------------------------- |
-| Human user | `/home/{user}`       | `~/.keystone/repos`                      | inherited from `keystone.development` |
-| OS agent   | `/home/agent-{name}` | `~/.keystone/repos` under the agent home | inherited from `keystone.development` |
+| Human user | `/home/{user}`       | `~/repos`                      | inherited from `keystone.development` |
+| OS agent   | `/home/agent-{name}` | `~/repos` under the agent home | inherited from `keystone.development` |
 
 ### Exception record
 

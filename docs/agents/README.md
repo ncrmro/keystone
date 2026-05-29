@@ -32,7 +32,7 @@ quality-gated multi-step processes.
 | Layer | What | Where to read |
 |---|---|---|
 | **L1 Terminal agents** | You + your CLI coding agents (Claude Code, Gemini CLI, Codex, OpenCode) + per-tool skills and subagents synced from your consumer flake. | [`tool.cli-coding-agents`](../../conventions/tool.cli-coding-agents.md) convention; [`docs/terminal/cli-coding-agents.md`](../terminal/cli-coding-agents.md) reference |
-| **L2 OS agents** | Sandboxed service-account principals (`agent-<name>` users) that inherit L1 skills and subagents into isolated home dirs, run on systemd timers, and can auto-loop on platform-native skills without DeepWork. | [`os-agents.md`](os-agents.md), [`os-agents.agent-space.md`](os-agents.agent-space.md) |
+| **L2 OS agents** | Sandboxed service-account principals (`agent-<name>` users) that inherit L1 skills, identity docs, and subagents into isolated home dirs, run on systemd timers, and process notification-backed assignments. | [`os-agents.md`](os-agents.md) |
 | **L3 DeepWork** | Workflow orchestration MCP for advanced multi-step processes with quality gates, layered over L1+L2. Used when basic looping needs richer control flow. | [`process.deepwork-job`](../../conventions/process.deepwork-job.md) convention |
 
 L1 is the substrate. L2 builds on L1 by giving agents their own identity, mail,
@@ -79,6 +79,9 @@ commits those files when they accept the generated state.
 | Path | Ownership | Purpose |
 |---|---|---|
 | `agents/_shared/AGENTS.md` | Generated, committed | Canonical host-rendered instruction file for normal CLI agents. |
+| `agents/_shared/TEAM.md` | Generated, committed | Shared team roster linked into each OS-agent home as `~/TEAM.md`. |
+| `agents/_shared/SERVICES.md` | Generated, committed | Shared service index linked into each OS-agent home as `~/SERVICES.md`. |
+| `agents/<name>/SOUL.md` | Generated, committed | Per-agent identity linked into that OS-agent home as `~/SOUL.md`. |
 | `agents/<name>/AGENTS.md` | User-authored, committed | Optional per-OS-agent overlay for identity-specific rules. |
 | `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi-specific composed file: shared instructions, Pi runtime instructions, plus the per-agent overlay. |
 | `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the generated file for the current user or OS agent. |
@@ -88,6 +91,9 @@ For human users, activation links `~/.pi/agent/AGENTS.md` to
 `agents/<name>/pi/AGENTS.md` when it exists. Other CLI agents continue to read
 the shared file through their native paths, for example
 `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`.
+OS-agent identity is linked from `ks-config/agents`, not from a notes repo:
+`~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` resolve to committed files under
+the consumer flake.
 
 The generated Pi file is intentionally not just the shared coding-agent file.
 It adds the OS-agent runtime contract: treat prompts as notification-backed
@@ -130,11 +136,8 @@ and the loop's behaviour is reviewable in git like any other skill.
 - [OS agent e2e validation](os-agent-e2e.md) documents the email ping/pong
   smoke test for installed notification-driven OS agents.
 - [`os-agents.md`](os-agents.md) — full reference for the OS-agent system:
-  provisioning, task loop, scheduler, YAML schemas, systemd timers,
+  provisioning, identity docs, notification runners, systemd timers, and
   observability.
-- [`os-agents.agent-space.md`](os-agents.agent-space.md) — agent-space
-  directory layout, shared identity documents (SOUL.md, TEAM.md, SERVICES.md),
-  prompt composition, archetypes.
 - [`comparison.md`](comparison.md) — platform comparison: keystone vs hosted
   agentic platforms (Devin, Imbue, etc.).
 - [`hooks.md`](hooks.md) — CLI coding agent lifecycle hooks.

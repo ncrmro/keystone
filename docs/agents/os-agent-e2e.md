@@ -69,6 +69,22 @@ From: drago@...
 
 The runner should record the email source as seen after launching the task.
 
+## Planned identity check
+
+After the `ks-config/agents` identity symlinks are deployed, add an e2e check
+that sends the agent an assignment asking it to read `~/SOUL.md` and reply
+with its own name. The expected reply should match the `fullName` rendered
+into `agents/<name>/SOUL.md`.
+
+This validates the intended identity path:
+
+```text
+ks-config/agents/<name>/SOUL.md -> /home/agent-<name>/SOUL.md -> Pi context
+```
+
+The test should fail if the agent answers from memory, from `~/notes`, or from
+hardcoded test logic.
+
 ## Design rule
 
 New OS-agent checks should follow the same pattern:
