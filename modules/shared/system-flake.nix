@@ -58,6 +58,7 @@ in
       # SECURITY: Grants OS agents traversal only, not directory listing, so
       # symlinks into ~/repos/... resolve without exposing the admin home tree.
       "a ${systemFlakeHome} - - - - g:agents:x"
+      "a ${systemFlakeHome} - - - - m::x"
     ];
   };
 }
