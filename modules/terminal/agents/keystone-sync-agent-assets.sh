@@ -136,6 +136,56 @@ append_file_content() {
   cat "$source_file" >> "$output_file"
 }
 
+append_pi_runtime_instructions() {
+  local output_file="$1"
+  local agent_name="$2"
+
+  cat <<EOF >> "$output_file"
+
+---
+
+# Pi runtime instructions
+
+This file is read by Pi from \`~/.pi/agent/AGENTS.md\`.
+
+You are running as the \`agent-${agent_name}\` OS agent. Treat the current Pi
+prompt as a notification-backed assignment unless the user explicitly says it
+is an interactive diagnostic. The assignment may come from email, GitHub,
+Forgejo, or another Keystone notification source.
+
+## Operating loop
+
+1. Inspect the assignment and identify the requested observable outcome.
+2. Use local tools directly; do not ask the human to perform steps the agent
+   can safely perform itself.
+3. Write results back to the same shared surface that created the assignment:
+   reply to email for email tasks, comment/update the issue or PR for
+   GitHub/Forgejo tasks, and preserve milestones/boards as the public record.
+4. If blocked, report the blocker on that same surface with the command or
+   credential that failed and the next human action required.
+
+## Local tools
+
+Read \`~/TOOLS.md\` or \`~/.config/keystone/TOOLS.md\` for host-provisioned
+tools. For email, \`himalaya\` is configured for this agent account and can
+send replies. Include a \`Date:\` header when sending raw mail so messages sort
+correctly:
+
+\`\`\`bash
+cat <<MAIL | himalaya message send
+From: your-agent-email@example.com
+To: recipient@example.com
+Subject: Re: subject
+Date: \$(date -R)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Body here
+MAIL
+\`\`\`
+EOF
+}
+
 render_template() {
   local template_path="$1"
   local content
@@ -390,6 +440,7 @@ while IFS= read -r agent_name; do
   [[ -z "$agent_name" ]] && continue
   agent_pi_tmp="$(mktemp)"
   printf '%s' "$global_agents_content" > "$agent_pi_tmp"
+  append_pi_runtime_instructions "$agent_pi_tmp" "$agent_name"
   agent_overlay="$CONSUMER_FLAKE_AGENTS/$agent_name/AGENTS.md"
   if [[ -f "$agent_overlay" ]]; then
     {
@@ -579,7 +630,7 @@ home-dir symlinks that home-manager activation creates.
 | `_shared/AGENTS.md` | Single canonical instruction file. The per-tool symlinks (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) all resolve here. |
 | `_shared/conventions/` | Centralized conventions and roles, referenced by skills via per-skill symlinks. |
 | `<agent>/AGENTS.md` | Optional user-authored overlay for identity-specific OS-agent rules. |
-| `<agent>/pi/AGENTS.md` | Generated Pi instruction file for that OS agent: shared instructions plus the overlay. |
+| `<agent>/pi/AGENTS.md` | Generated Pi instruction file for that OS agent: shared instructions, Pi runtime instructions, plus the overlay. |
 | `skills/` | Canonical skill tree per the [`.agents/skills/` open standard][spec]. Read by every spec-compliant agent. |
 | `claude/agents/` | Claude-specific subagent personas. Read via `~/.claude/agents/`. |
 
@@ -592,7 +643,7 @@ home-dir symlinks that home-manager activation creates.
 - User-authored content in `claude/agents/<persona>.md` and
   `_shared/skills.yaml` survives sync. Per-agent overlays at
   `<agent>/AGENTS.md` also survive sync and are copied into generated
-  `<agent>/pi/AGENTS.md` files.
+  `<agent>/pi/AGENTS.md` files after the Pi runtime instructions.
 - README files in this tree (including this one) are regenerated;
   edits there will be overwritten.
 

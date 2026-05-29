@@ -80,7 +80,7 @@ commits those files when they accept the generated state.
 |---|---|---|
 | `agents/_shared/AGENTS.md` | Generated, committed | Canonical host-rendered instruction file for normal CLI agents. |
 | `agents/<name>/AGENTS.md` | User-authored, committed | Optional per-OS-agent overlay for identity-specific rules. |
-| `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi-specific composed file: shared instructions plus the per-agent overlay. |
+| `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi-specific composed file: shared instructions, Pi runtime instructions, plus the per-agent overlay. |
 | `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the generated file for the current user or OS agent. |
 
 For human users, activation links `~/.pi/agent/AGENTS.md` to
@@ -88,6 +88,12 @@ For human users, activation links `~/.pi/agent/AGENTS.md` to
 `agents/<name>/pi/AGENTS.md` when it exists. Other CLI agents continue to read
 the shared file through their native paths, for example
 `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`.
+
+The generated Pi file is intentionally not just the shared coding-agent file.
+It adds the OS-agent runtime contract: treat prompts as notification-backed
+assignments, use local tools directly, and write results back to the same
+surface that created the task. That keeps interactive Pi and
+`pi-task-runner` aligned.
 
 ## L1 → L2 inheritance
 
