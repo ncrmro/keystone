@@ -70,6 +70,25 @@ overwrite on next run, the user's `git checkout` restores their version.
 The regen is **manual** (`ks sync-agent-assets`). Home-manager activation
 never silently rewrites the user's git tree.
 
+## Agent instruction files
+
+Agent instructions follow the same audit-log rule: Keystone materializes
+generated prompt assets into the user's `keystone-config` repo, and the user
+commits those files when they accept the generated state.
+
+| Path | Ownership | Purpose |
+|---|---|---|
+| `agents/_shared/AGENTS.md` | Generated, committed | Canonical host-rendered instruction file for normal CLI agents. |
+| `agents/<name>/AGENTS.md` | User-authored, committed | Optional per-OS-agent overlay for identity-specific rules. |
+| `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi-specific composed file: shared instructions plus the per-agent overlay. |
+| `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the generated file for the current user or OS agent. |
+
+For human users, activation links `~/.pi/agent/AGENTS.md` to
+`agents/_shared/AGENTS.md`. For OS agents, activation prefers
+`agents/<name>/pi/AGENTS.md` when it exists. Other CLI agents continue to read
+the shared file through their native paths, for example
+`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`.
+
 ## L1 → L2 inheritance
 
 OS agents inherit L1 by getting the same `<consumer-flake>/agents/<tool>/`
@@ -102,6 +121,8 @@ and the loop's behaviour is reviewable in git like any other skill.
 
 - [`agents.md`](agents.md) — human-side tooling: `agentctl` CLI, mail
   templates, and how operators interact with the agent fleet.
+- [OS agent e2e validation](os-agent-e2e.md) documents the email ping/pong
+  smoke test for installed notification-driven OS agents.
 - [`os-agents.md`](os-agents.md) — full reference for the OS-agent system:
   provisioning, task loop, scheduler, YAML schemas, systemd timers,
   observability.

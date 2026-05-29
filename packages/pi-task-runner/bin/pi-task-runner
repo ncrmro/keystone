@@ -1,0 +1,375 @@
+#!/usr/bin/env python3
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+
+
+def now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def die(message: str, code: int = 1) -> None:
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def write_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def read_json(path: Path, default):
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def command_json(cmd: list[str]) -> object:
+    result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        die(f"{cmd[0]} failed: {result.stderr.strip()}")
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        die(f"{cmd[0]} returned invalid JSON: {error}")
+
+
+def command_text(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, input=input_text, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+
+
+def source_ref(source: str, item: dict) -> str | None:
+    if source == "email":
+        envelope_id = item.get("id")
+        if not envelope_id:
+            return None
+        return f"email:{envelope_id}"
+    repo = item.get("repo")
+    number = item.get("number")
+    if not repo or not number:
+        return None
+    return f"{source}:{repo}#{number}"
+
+
+def fetch_detail(item: dict) -> dict:
+    if item.get("source") == "email":
+        return item
+    if item.get("body") or item.get("agent_task"):
+        return item
+    source = item["source"]
+    repo = item["repo"]
+    number = item["number"]
+    try:
+        if source == "github":
+            detail = command_json(["gh", "api", f"repos/{repo}/issues/{number}"])
+        elif source == "forgejo":
+            host = os.environ.get("FORGEJO_HOST", "").rstrip("/")
+            token = os.environ.get("FORGEJO_TOKEN", "")
+            if not host or not token:
+                detail = {}
+            else:
+                kind = "pulls" if item.get("type") == "Pull" else "issues"
+                detail = command_json([
+                    "curl",
+                    "-sf",
+                    "-H",
+                    "Accept: application/json",
+                    "-H",
+                    f"Authorization: token {token}",
+                    f"{host}/api/v1/repos/{repo}/{kind}/{number}",
+                ])
+        else:
+            detail = {}
+    except SystemExit as error:
+        detail = {"enrichment_error": str(error)}
+    enriched = dict(item)
+    if isinstance(detail, dict):
+        enriched["detail"] = detail
+        for key in ("body", "labels", "state", "assignee", "assignees"):
+            if key in detail:
+                enriched[key] = detail[key]
+    return enriched
+
+
+def agent_task(item: dict) -> dict | None:
+    direct = item.get("agent_task")
+    if isinstance(direct, dict):
+        return direct
+    body = item.get("body")
+    if not isinstance(body, str):
+        return None
+    match = re.search(r"```(?:agent-task|json\s+agent-task)\s*\n(.*?)\n```", body, re.S)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def normalize(item: dict, task: dict, agent: str, default_model: str) -> dict | None:
+    if task.get("agent") not in (None, "", agent):
+        return None
+    repo = str(task.get("repo") or item.get("repo") or "")
+    branch = str(task.get("branch") or task.get("branch_name") or "")
+    worktree = str(task.get("worktree") or "")
+    prompt = str(task.get("prompt") or task.get("description") or item.get("title") or "")
+    if not repo or not branch or not worktree or not prompt:
+        return None
+    return {
+        "source_ref": item["source_ref"],
+        "repo": repo,
+        "branch": branch,
+        "worktree": worktree,
+        "executor": str(task.get("executor") or "coding-agent"),
+        "provider": str(task.get("provider") or "pi"),
+        "model": str(task.get("model") or default_model),
+        "prompt": prompt,
+        "title": item.get("title") or "",
+        "url": item.get("url") or "",
+    }
+
+
+def validate_worktree(task: dict, home: Path) -> str | None:
+    worktree = Path(task["worktree"]).expanduser().resolve()
+    parts = task["repo"].split("/")
+    if len(parts) != 2 or not all(parts):
+        return f"repo must be OWNER/REPO: {task['repo']}"
+    expected = (home / "repos" / parts[0] / "worktree" / parts[1]).resolve()
+    if not str(worktree).startswith(str(expected) + os.sep):
+        return f"worktree is outside {expected}: {worktree}"
+    if not worktree.exists():
+        return f"worktree does not exist: {worktree}"
+    if not (worktree / ".git").exists():
+        return f"not a git worktree: {worktree}"
+    task["worktree"] = str(worktree)
+    return None
+
+
+def candidates(entries: list[dict], seen: set[str]) -> list[dict]:
+    out = []
+    for entry in entries:
+        source = entry.get("source")
+        if source not in ("email", "forgejo", "github") or not isinstance(entry.get("data"), list):
+            continue
+        for raw in entry["data"]:
+            if not isinstance(raw, dict):
+                continue
+            if source != "email" and raw.get("type") not in ("Issue", "Pull", "PullRequest"):
+                continue
+            ref = source_ref(source, raw)
+            if not ref or ref in seen:
+                continue
+            item = dict(raw)
+            item["source"] = source
+            item["source_ref"] = ref
+            out.append(fetch_detail(item))
+    return out
+
+
+def select_task(args: argparse.Namespace, tasks: list[dict], run_dir: Path) -> dict | None:
+    if not tasks:
+        return None
+    if args.no_pi_select or len(tasks) == 1:
+        return tasks[0]
+    payload = {
+        "instructions": "Select the single highest-priority actionable task. Return strict JSON only.",
+        "schema": {"selected_source_ref": "forgejo:owner/repo#123", "reason": "short reason"},
+        "tasks": tasks,
+    }
+    result = subprocess.run(
+        [
+            args.pi,
+            "--print",
+            "--no-session",
+            "--model",
+            args.model,
+            "--append-system-prompt",
+            "Prioritize Keystone OS-agent assignments. Return only strict JSON.",
+            json.dumps(payload, indent=2, sort_keys=True),
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    (run_dir / "pi.stdout").write_text(result.stdout, encoding="utf-8")
+    (run_dir / "pi.stderr").write_text(result.stderr, encoding="utf-8")
+    if result.returncode != 0:
+        return None
+    match = re.search(r"\{.*\}", result.stdout, re.S)
+    if not match:
+        return None
+    try:
+        selected = json.loads(match.group(0)).get("selected_source_ref")
+    except json.JSONDecodeError:
+        return None
+    return next((task for task in tasks if task["source_ref"] == selected), None)
+
+
+def launch(args: argparse.Namespace, task: dict, run_dir: Path) -> list[str]:
+    if task["executor"] == "pi":
+        sessions_dir = run_dir / "sessions"
+        events_path = run_dir / "events.jsonl"
+        stderr_path = run_dir / "pi.stderr"
+        status_path = run_dir / "child-status.json"
+        script_path = run_dir / "run-task.sh"
+        pi_bin = shutil.which(args.pi) or args.pi
+        command = [
+            pi_bin,
+            "--mode",
+            "json",
+            "--session-dir",
+            str(sessions_dir),
+            "--model",
+            task["model"],
+        ]
+        tools_prompt = local_tools_prompt(args.home)
+        if tools_prompt:
+            command.extend(["--append-system-prompt", tools_prompt])
+        command.append(task["prompt"])
+        script_path.write_text(
+            "\n".join([
+                "#!/bin/sh",
+                "set +e",
+                f"export PATH={shlex.quote(os.environ.get('PATH', ''))}",
+                f"mkdir -p {shlex.quote(str(sessions_dir))}",
+                f"{shlex.join(command)} > {shlex.quote(str(events_path))} 2> {shlex.quote(str(stderr_path))}",
+                "code=$?",
+                (
+                    "printf '{\"completed_at\":\"%s\",\"exit_code\":%s}\\n' "
+                    '"$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" '
+                    f"> {shlex.quote(str(status_path))}"
+                ),
+                "exit \"$code\"",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+        script_path.chmod(0o755)
+        write_json(
+            run_dir / "run.json",
+            {
+                "started_at": now(),
+                "status": "launched",
+                "task": task,
+                "pi_command": command,
+                "events": str(events_path),
+                "stderr": str(stderr_path),
+                "sessions": str(sessions_dir),
+            },
+        )
+        command = [str(script_path)]
+    else:
+        command = [
+            args.executor,
+            "--repo",
+            task["repo"],
+            "--branch",
+            task["branch"],
+            "--worktree",
+            task["worktree"],
+            "--provider",
+            task["provider"],
+            "--model",
+            task["model"],
+            "--task",
+            task["prompt"],
+        ]
+    unit = "pi-task-" + re.sub(r"[^A-Za-z0-9_.-]+", "-", task["source_ref"]).strip("-")[:48]
+    return [args.systemd_run, "--user", "--unit", unit, "--collect", "--working-directory", task["worktree"], *command]
+
+
+def local_tools_prompt(home: Path) -> str:
+    sections = []
+    seen = set()
+    for path in (
+        home / ".pi/agent/AGENTS.md",
+        home / "TOOLS.md",
+        home / ".config/keystone/TOOLS.md",
+    ):
+        if path.exists():
+            section = path.read_text(encoding="utf-8")
+            if section not in seen:
+                seen.add(section)
+                sections.append(section)
+    return "\n\n".join(sections)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Dispatch one preassigned Pi task from agent notifications.")
+    parser.add_argument("--agent", default=os.environ.get("KS_AGENT_NAME") or "")
+    parser.add_argument("--model", default="ollama/qwen3:4b")
+    parser.add_argument("--sources", default="forgejo,github")
+    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--state-dir", type=Path)
+    parser.add_argument("--ks", default="ks")
+    parser.add_argument("--pi", default="pi")
+    parser.add_argument("--executor", default="agent.coding-agent")
+    parser.add_argument("--systemd-run", default="systemd-run")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-pi-select", action="store_true")
+    args = parser.parse_args()
+    if not args.agent:
+        die("--agent or KS_AGENT_NAME is required")
+
+    home = args.home.expanduser().resolve()
+    state_dir = (args.state_dir or home / ".local/state/pi-task-runner").expanduser().resolve()
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / "lock").open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        run_dir = state_dir / "runs" / now().replace(":", "")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        seen_path = state_dir / "seen.json"
+        blocked_path = state_dir / "blocked.json"
+        seen = set(read_json(seen_path, []))
+
+        notifications = command_json([args.ks, "notification", "fetch", "--json", "--sources", args.sources])
+        write_json(run_dir / "notifications.json", notifications)
+        enriched = candidates(notifications, seen)
+        write_json(run_dir / "candidates.json", enriched)
+
+        tasks = []
+        blocked = read_json(blocked_path, [])
+        for item in enriched:
+            task_data = agent_task(item)
+            task = normalize(item, task_data, args.agent, args.model) if task_data else None
+            if not task:
+                continue
+            reason = validate_worktree(task, home)
+            if reason:
+                blocked.append({"at": now(), "reason": reason, "task": task})
+            else:
+                tasks.append(task)
+        write_json(blocked_path, blocked)
+        write_json(run_dir / "tasks.json", tasks)
+
+        selected = select_task(args, tasks, run_dir)
+        if not selected:
+            print(json.dumps({"status": "idle", "reason": "no valid preassigned tasks"}, sort_keys=True))
+            return
+
+        command = launch(args, selected, run_dir)
+        write_json(run_dir / "launch.json", {"task": selected, "command": command})
+        print(json.dumps({"status": "selected", "task": selected, "command": command}, sort_keys=True))
+        if args.dry_run:
+            return
+
+        subprocess.run(command, check=True)
+        seen.add(selected["source_ref"])
+        write_json(seen_path, sorted(seen))
+
+
+if __name__ == "__main__":
+    main()

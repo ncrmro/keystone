@@ -118,7 +118,8 @@ let
   );
   # Per-tool instruction files that symlink as individual files (not dirs)
   # from the home dir to the canonical `_shared/AGENTS.md`. Each tool reads
-  # the same bytes via its native instruction-file path.
+  # the same bytes via its native instruction-file path. Pi is handled below
+  # because OS agents use per-agent composed files under agents/<name>/pi/.
   instructionFileSymlinks = [
     {
       linkRelPath = ".claude/CLAUDE.md";
@@ -312,6 +313,37 @@ in
 
           ln -s "$target" "$link"
         done
+
+        # Pi reads instructions from ~/.pi/agent/AGENTS.md. Human users get the
+        # shared instruction file; OS agents get a composed per-agent file when
+        # `ks sync-agent-assets` has generated one from agents/<name>/AGENTS.md.
+        pi_target="$agents_root/_shared/AGENTS.md"
+        if [ "$is_agent_user" = "1" ]; then
+          agent_name="''${USER#agent-}"
+          agent_pi_target="$agents_root/$agent_name/pi/AGENTS.md"
+          if [ -f "$agent_pi_target" ]; then
+            pi_target="$agent_pi_target"
+          fi
+        fi
+        pi_link="$HOME/.pi/agent/AGENTS.md"
+        if [ -f "$pi_target" ]; then
+          mkdir -p "$(dirname "$pi_link")"
+          if [ -L "$pi_link" ]; then
+            current="$(readlink "$pi_link")"
+            if [ "$current" != "$pi_target" ]; then
+              rm -f "$pi_link"
+              ln -s "$pi_target" "$pi_link"
+            fi
+          elif [ -f "$pi_link" ]; then
+            echo "keystone-agent-asset-symlinks: refusing to replace regular file $pi_link with symlink to $pi_target" >&2
+          elif [ -e "$pi_link" ]; then
+            echo "keystone-agent-asset-symlinks: $pi_link exists and is not a file or symlink; leaving untouched" >&2
+          else
+            ln -s "$pi_target" "$pi_link"
+          fi
+        else
+          echo "keystone-agent-asset-symlinks: Pi instruction file $pi_target does not exist yet; skipping $pi_link (run 'ks sync-agent-assets' to populate)" >&2
+        fi
       '';
     }
   ]);

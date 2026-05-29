@@ -443,10 +443,6 @@
             inherit pkgs lib;
             self = self;
           };
-          ksDoctorReport = import ./tests/module/ks-doctor-report.nix {
-            inherit pkgs;
-          };
-
           # --- Individual checks (available for local builds) ---
 
           osEvaluation = import ./tests/module/os-evaluation.nix {
@@ -490,21 +486,6 @@
           serverEvaluation = import ./tests/module/server-evaluation.nix {
             inherit pkgs lib nixpkgs;
             self = self;
-          };
-          ksLockSync = import ./tests/module/ks-lock-sync.nix {
-            inherit pkgs;
-          };
-          projectsSchema = import ./tests/module/projects-schema.nix {
-            inherit pkgs lib;
-          };
-          pzRegression = import ./tests/module/pz-regression.nix {
-            inherit pkgs lib;
-          };
-          pzProjectMenu = import ./tests/module/pz-project-menu.nix {
-            inherit pkgs lib;
-          };
-          pzHostLauncherState = import ./tests/module/pz-host-launcher-state.nix {
-            inherit pkgs lib;
           };
           keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
@@ -577,6 +558,7 @@
             inherit pkgs lib;
           };
           linuxTaskDispatcher = ksPkgs.keystone.linux-task-dispatcher.passthru.tests.dispatcher;
+          piTaskRunner = ksPkgs.keystone.pi-task-runner.passthru.tests.runner;
         in
         {
           # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
@@ -588,12 +570,7 @@
           template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
           ks-help = ksHelp;
-          ks-lock-sync = ksLockSync;
           keystone-photos = ksPhotos;
-          projects-schema = projectsSchema;
-          pz-regression = pzRegression;
-          pz-project-menu = pzProjectMenu;
-          pz-host-launcher-state = pzHostLauncherState;
           keystone-secrets-menu = keystoneSecretsMenu;
           keystone-fingerprint-menu = keystoneFingerprintMenu;
           keystone-update-menu-wiring = keystoneUpdateMenuWiring;
@@ -607,7 +584,6 @@
           approve-exec-script = approveExecScript;
           polkit-keystone-approve-cache = polkitKeystoneApproveCache;
           polkit-update-session-inhibit = polkitUpdateSessionInhibit;
-          ks-doctor-report = ksDoctorReport;
           ks-rust-tests = ksRustTests;
           ks-rust-clippy = ksRustClippy;
           ks-rust-fmt = ksRustFmt;
@@ -620,6 +596,7 @@
           agent-runtime-coherence = agentRuntimeCoherence;
           agent-queue-migration = agentQueueMigration;
           linux-task-dispatcher = linuxTaskDispatcher;
+          pi-task-runner = piTaskRunner;
 
           # --- CI groups — parallel matrix jobs via nix-github-actions ---
 
@@ -647,22 +624,16 @@
             ln -s ${approveExecScript} "$out/approve-exec-script"
             ln -s ${polkitKeystoneApproveCache} "$out/polkit-keystone-approve-cache"
             ln -s ${polkitUpdateSessionInhibit} "$out/polkit-update-session-inhibit"
-            ln -s ${ksDoctorReport} "$out/doctor-report"
-            ln -s ${ksLockSync} "$out/lock-sync"
           '';
 
           # Lightweight shell script tests (runCommand, no heavy deps)
           check-scripts = pkgs.runCommand "check-scripts" { } ''
             mkdir -p "$out"
             ln -s ${agentctlRegression} "$out/agentctl-regression"
-            ln -s ${pzRegression} "$out/pz-regression"
-            ln -s ${pzProjectMenu} "$out/pz-project-menu"
-            ln -s ${pzHostLauncherState} "$out/pz-host-launcher-state"
             ln -s ${keystoneSecretsMenu} "$out/keystone-secrets-menu"
             ln -s ${keystoneFingerprintMenu} "$out/keystone-fingerprint-menu"
             ln -s ${keystoneUpdateMenuWiring} "$out/keystone-update-menu-wiring"
             ln -s ${keystoneUpdateApproveFlow} "$out/keystone-update-approve-flow"
-            ln -s ${projectsSchema} "$out/projects-schema"
           '';
 
           # Desktop config serialization and startup regressions
@@ -682,6 +653,7 @@
             ln -s ${agentTaskLoopPingPong} "$out/agent-task-loop-ping-pong"
             ln -s ${agentRuntimeCoherence} "$out/agent-runtime-coherence"
             ln -s ${agentQueueMigration} "$out/agent-queue-migration"
+            ln -s ${piTaskRunner} "$out/pi-task-runner"
             ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
             ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
             ln -s ${terminalZide} "$out/terminal-zide"
@@ -711,10 +683,10 @@
             forgejo-project
             fetch-github-sources
             linux-task-dispatcher
+            pi-task-runner
             repo-sync
             podman-agent
             ks
-            pz
             cfait
             zide
             zellij-tab-name

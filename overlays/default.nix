@@ -30,6 +30,7 @@ let
   fetch-github-sources-src = ../packages/fetch-github-sources;
   repo-sync-src = ../packages/repo-sync;
   linux-task-dispatcher-src = ../packages/linux-task-dispatcher;
+  pi-task-runner-src = ../packages/pi-task-runner;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
   zide-src = ../packages/zide;
@@ -38,8 +39,6 @@ let
   write-polkit-theme-src = ../packages/write-polkit-theme;
   agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
-  ks-legacy-src = ../packages/ks-legacy;
-  pz-src = ../packages/pz;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
@@ -78,14 +77,10 @@ in
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
     repo-sync = final.callPackage repo-sync-src { };
     linux-task-dispatcher = final.callPackage linux-task-dispatcher-src { };
+    pi-task-runner = final.callPackage pi-task-runner-src { };
     podman-agent = final.callPackage podman-agent-src { };
     agents-e2e = final.callPackage agents-e2e-src { };
-    ks-legacy = final.callPackage ks-legacy-src {
-      commandName = "ks-legacy";
-      ks = final.keystone.ks;
-    };
     ks = final.callPackage ks-src { };
-    pz = final.callPackage pz-src { };
     cfait = final.callPackage cfait-src { };
     zide = final.callPackage zide-src { };
     zellij-tab-name = final.callPackage zellij-tab-name-src { };

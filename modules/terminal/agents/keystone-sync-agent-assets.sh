@@ -16,7 +16,7 @@ profile manifest. Most content is written into the consumer flake at
 <consumer-flake>/agents/. Two files in the home dir are also (re)written
 unconditionally on every run:
 
-  ~/.keystone/AGENTS.md          host-rendered conventions copy
+  ~/.keystone/AGENTS.md          legacy host-rendered conventions copy
   ~/.config/opencode/AGENTS.md   same content; OpenCode reads it natively
 
 The locked-mode home-manager activation in
@@ -29,6 +29,8 @@ The committed canonical surface:
   <consumer-flake>/agents/
     _shared/AGENTS.md             host-rendered instruction file
     _shared/skills.yaml           optional user-authored skill overrides
+    <agent>/AGENTS.md             optional per-agent instruction overlay
+    <agent>/pi/AGENTS.md          generated Pi instruction file for that OS agent
     skills/<name>/SKILL.md        per-skill body, spec-compliant naming
     skills/<name>/<convention>.md colocated conventions/roles
 
@@ -37,8 +39,10 @@ Home-manager activation symlinks ~/.agents/skills/ → <flake>/agents/skills/
 .agents/skills/ open standard) and ~/.claude/skills/ → <flake>/agents/skills/
 (Claude-only shadow at the same target). Per-tool instruction filenames
 (CLAUDE.md, GEMINI.md, codex AGENTS.md) symlink to _shared/AGENTS.md via
-the activation. No per-tool rendering, no hyphenated-codex fan-out — the
-spec-compliant naming makes one canonical tree sufficient for every agent.
+the activation. Pi reads ~/.pi/agent/AGENTS.md; OS agents point at their
+generated <agent>/pi/AGENTS.md file so agents/<agent>/AGENTS.md can add
+identity-specific rules. No per-tool rendering, no hyphenated-codex fan-out —
+the spec-compliant naming makes one canonical tree sufficient for every agent.
 
 The merged skill map is built from conventions/archetypes.yaml.skills
 (keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
@@ -296,7 +300,12 @@ if [[ "$repo_checkout" == "null" || -z "$repo_checkout" ]]; then
 fi
 
 if [[ ! -d "$repo_checkout" ]]; then
-  repo_slug="${repo_checkout##*/.keystone/repos/}"
+  repo_slug="ncrmro/keystone"
+  if [[ "$repo_checkout" == */repos/*/* ]]; then
+    repo_slug="${repo_checkout##*/repos/}"
+  elif [[ "$repo_checkout" == */.keystone/repos/*/* ]]; then
+    repo_slug="${repo_checkout##*/.keystone/repos/}"
+  fi
   echo "Live keystone repo checkout not found at $repo_checkout — cloning $repo_slug..."
   mkdir -p "$(dirname "$repo_checkout")"
   git clone "https://github.com/$repo_slug.git" "$repo_checkout"
@@ -377,15 +386,31 @@ write_file "$CONSUMER_FLAKE_SHARED/AGENTS.md" "$global_agents_content"
 # so manual invocations don't leave it stale.
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
 
+while IFS= read -r agent_name; do
+  [[ -z "$agent_name" ]] && continue
+  agent_pi_tmp="$(mktemp)"
+  printf '%s' "$global_agents_content" > "$agent_pi_tmp"
+  agent_overlay="$CONSUMER_FLAKE_AGENTS/$agent_name/AGENTS.md"
+  if [[ -f "$agent_overlay" ]]; then
+    {
+      printf '\n\n---\n\n'
+      printf '# OS agent overlay: %s\n\n' "$agent_name"
+      cat "$agent_overlay"
+    } >> "$agent_pi_tmp"
+  fi
+  write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/pi/AGENTS.md" "$(cat "$agent_pi_tmp")"
+  rm -f "$agent_pi_tmp"
+done < <(jq -r '.agents | keys[]?' "$manifest_path")
+
 repos_agents_tmp="$(mktemp)"
 {
   cat <<'EOF'
 # Keystone repos
 
-This directory (`~/.keystone/repos/`) is the agent-space root for the keystone
-system. It contains the core repositories that define and operate this machine's
-infrastructure. See `process.keystone-development` (inlined below) for the
-development workflow, tooling, and how changes flow through the system.
+The standard Keystone checkout layout is `~/repos/{owner}/{repo}/`. The
+consumer flake convention is `~/repos/{owner}/ks-config`, and local Keystone
+development prefers the sibling checkout at `~/repos/{owner}/keystone`.
+`~/.keystone/repos/` is legacy compatibility only.
 
 ## Repositories
 
@@ -405,7 +430,7 @@ if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
 
 - Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks-notes`.
 - Use `ks-notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the `~/.keystone/repos/` inventory.
+- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the repo checkout inventory.
 - When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
 - When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
 EOF
@@ -553,6 +578,8 @@ home-dir symlinks that home-manager activation creates.
 |---|---|
 | `_shared/AGENTS.md` | Single canonical instruction file. The per-tool symlinks (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) all resolve here. |
 | `_shared/conventions/` | Centralized conventions and roles, referenced by skills via per-skill symlinks. |
+| `<agent>/AGENTS.md` | Optional user-authored overlay for identity-specific OS-agent rules. |
+| `<agent>/pi/AGENTS.md` | Generated Pi instruction file for that OS agent: shared instructions plus the overlay. |
 | `skills/` | Canonical skill tree per the [`.agents/skills/` open standard][spec]. Read by every spec-compliant agent. |
 | `claude/agents/` | Claude-specific subagent personas. Read via `~/.claude/agents/`. |
 
@@ -563,7 +590,9 @@ home-dir symlinks that home-manager activation creates.
   command is manual — `ks switch` / `ks update --dev` never write here
   implicitly.
 - User-authored content in `claude/agents/<persona>.md` and
-  `_shared/skills.yaml` survives sync.
+  `_shared/skills.yaml` survives sync. Per-agent overlays at
+  `<agent>/AGENTS.md` also survive sync and are copied into generated
+  `<agent>/pi/AGENTS.md` files.
 - README files in this tree (including this one) are regenerated;
   edits there will be overwritten.
 

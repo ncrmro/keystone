@@ -86,6 +86,7 @@ in
     ./ssh.nix
     ./notes.nix
     ./dispatcher.nix
+    ./pi-task-runner.nix
     ./home-manager.nix
     ./observability.nix
     ./perception.nix

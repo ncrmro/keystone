@@ -979,6 +979,7 @@ rec {
               specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { });
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
+                keystone.systemFlake.path = lib.mkDefault "/home/${adminUsername}/repos/${effectiveRepoOwner}/ks-config";
                 keystone.update.channel = lib.mkDefault hostUpdateChannel;
               };
               modules = [
@@ -1106,6 +1107,7 @@ rec {
           ) vmImageHosts;
         in
         {
+          agents-e2e = self.packages.${installerSystem}.agents-e2e;
           installerTargetsJson = pkgs.writeText "installer-targets.json" (builtins.toJSON installerTargets);
           iso = mkInstallerIsoForFlake {
             system = installerSystem;
