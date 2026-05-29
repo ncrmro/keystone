@@ -60,7 +60,8 @@ flowchart TB
         soul["agents/{name}/SOUL.md"]
         team["agents/_shared/TEAM.md"]
         services_doc["agents/_shared/SERVICES.md"]
-        pi_prompt["agents/{name}/pi/AGENTS.md"]
+        agent_prompt["agents/{name}/AGENTS.md"]
+        system_prompt["agents/{name}/SYSTEM.md"]
     end
 
     subgraph Pipeline["Notification runner"]

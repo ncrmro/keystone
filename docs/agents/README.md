@@ -82,24 +82,23 @@ commits those files when they accept the generated state.
 | `agents/_shared/TEAM.md` | Generated, committed | Shared team roster linked into each OS-agent home as `~/TEAM.md`. |
 | `agents/_shared/SERVICES.md` | Generated, committed | Shared service index linked into each OS-agent home as `~/SERVICES.md`. |
 | `agents/<name>/SOUL.md` | Generated, committed | Per-agent identity linked into that OS-agent home as `~/SOUL.md`. |
-| `agents/<name>/AGENTS.md` | User-authored, committed | Optional per-OS-agent overlay for identity-specific rules. |
-| `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi-specific composed file: shared instructions, Pi runtime instructions, plus the per-agent overlay. |
-| `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the generated file for the current user or OS agent. |
+| `agents/<name>/AGENTS.md` | User-authored, committed | Per-OS-agent instruction file linked into `~/AGENTS.md` and `~/.pi/agent/AGENTS.md`. |
+| `agents/<name>/SYSTEM.md` | User-authored, committed | Per-OS-agent system file linked into `~/SYSTEM.md`, `~/.pi/agent/SYSTEM.md`, and `~/.pi/agents/SYSTEM.md`. |
+| `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the shared file for human users or the per-agent file for OS agents. |
 
 For human users, activation links `~/.pi/agent/AGENTS.md` to
-`agents/_shared/AGENTS.md`. For OS agents, activation prefers
-`agents/<name>/pi/AGENTS.md` when it exists. Other CLI agents continue to read
-the shared file through their native paths, for example
+`agents/_shared/AGENTS.md`. For OS agents, activation links
+`~/.pi/agent/AGENTS.md` to `agents/<name>/AGENTS.md` and Pi SYSTEM paths to
+`agents/<name>/SYSTEM.md`. Other CLI agents continue to read the shared file
+through their native paths, for example
 `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`.
 OS-agent identity is linked from `ks-config/agents`, not from a notes repo:
 `~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` resolve to committed files under
 the consumer flake.
 
-The generated Pi file is intentionally not just the shared coding-agent file.
-It adds the OS-agent runtime contract: treat prompts as notification-backed
-assignments, use local tools directly, and write results back to the same
-surface that created the task. That keeps interactive Pi and
-`pi-task-runner` aligned.
+Per-agent Pi files are intentionally user-authored. Keystone owns the symlink
+topology; the consumer `ks-config` repo owns the instruction content being
+tested or deployed.
 
 ## L1 → L2 inheritance
 

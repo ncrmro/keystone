@@ -46,6 +46,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         mock_bin="$PWD/mock-bin"
         worktree="$home/repos/tmp/worktree/agent-ping-pong/feat/ping-pong"
         mkdir -p "$worktree/.git" "$mock_bin" "$home/.config/keystone" "$home/.pi/agent"
+        printf '%s\n' '# Pi system instructions' 'Use the agent system file.' > "$home/.pi/agent/SYSTEM.md"
         printf '%s\n' '# Pi agent instructions' 'Use local tools promptly.' > "$home/.pi/agent/AGENTS.md"
         printf '%s\n' '# OS agent tools' 'Use himalaya for email.' > "$home/.config/keystone/TOOLS.md"
 
@@ -112,6 +113,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         grep -F -- '--mode json' "$run_script" >/dev/null
         grep -F -- '--session-dir' "$run_script" >/dev/null
         grep -F -- '--append-system-prompt' "$run_script" >/dev/null
+        grep -F 'Pi system instructions' "$run_script" >/dev/null
         grep -F 'Pi agent instructions' "$run_script" >/dev/null
         grep -F 'himalaya' "$run_script" >/dev/null
         python -c 'import json,sys; data=json.load(open(sys.argv[1])); assert data["status"] == "launched"; assert data["task"]["source_ref"] == "email:mail-1"; assert data["events"].endswith("/events.jsonl"); assert data["sessions"].endswith("/sessions")' "$(dirname "$run_script")/run.json"

@@ -29,8 +29,8 @@ The committed canonical surface:
   <consumer-flake>/agents/
     _shared/AGENTS.md             host-rendered instruction file
     _shared/skills.yaml           optional user-authored skill overrides
-    <agent>/AGENTS.md             optional per-agent instruction overlay
-    <agent>/pi/AGENTS.md          generated Pi instruction file for that OS agent
+    <agent>/AGENTS.md             user-authored per-agent instruction file
+    <agent>/SYSTEM.md             user-authored per-agent system file
     skills/<name>/SKILL.md        per-skill body, spec-compliant naming
     skills/<name>/<convention>.md colocated conventions/roles
 
@@ -40,8 +40,9 @@ Home-manager activation symlinks ~/.agents/skills/ → <flake>/agents/skills/
 (Claude-only shadow at the same target). Per-tool instruction filenames
 (CLAUDE.md, GEMINI.md, codex AGENTS.md) symlink to _shared/AGENTS.md via
 the activation. Pi reads ~/.pi/agent/AGENTS.md; OS agents point at their
-generated <agent>/pi/AGENTS.md file so agents/<agent>/AGENTS.md can add
-identity-specific rules. No per-tool rendering, no hyphenated-codex fan-out —
+user-authored agents/<agent>/AGENTS.md file. Keystone owns the symlink
+topology; the consumer flake owns the per-agent instruction content.
+No per-tool rendering, no hyphenated-codex fan-out —
 the spec-compliant naming makes one canonical tree sufficient for every agent.
 
 The merged skill map is built from conventions/archetypes.yaml.skills
@@ -126,6 +127,20 @@ write_file() {
   printf '%s' "$content" > "$tmp"
   chmod 644 "$tmp"
   mv "$tmp" "$target"
+}
+
+ensure_user_file() {
+  local target="$1"
+  local target_dir
+
+  if [[ -e "$target" || -L "$target" ]]; then
+    return 0
+  fi
+
+  target_dir="$(dirname "$target")"
+  mkdir -p "$target_dir"
+  : > "$target"
+  chmod 644 "$target"
 }
 
 append_file_content() {
@@ -467,6 +482,8 @@ enabled. Prefer the local tool configuration over hardcoded URLs.
 
 while IFS= read -r agent_name; do
   [[ -z "$agent_name" ]] && continue
+  ensure_user_file "$CONSUMER_FLAKE_AGENTS/$agent_name/AGENTS.md"
+  ensure_user_file "$CONSUMER_FLAKE_AGENTS/$agent_name/SYSTEM.md"
   full_name="$(jq -r --arg name "$agent_name" '.agents[$name].fullName // $name' "$manifest_path")"
   email="$(jq -r --arg name "$agent_name" '.agents[$name].email // ""' "$manifest_path")"
   archetype_value="$(jq -r --arg name "$agent_name" '.agents[$name].archetype // ""' "$manifest_path")"
@@ -496,7 +513,9 @@ while IFS= read -r agent_name; do
       cat "$agent_overlay"
     } >> "$agent_pi_tmp"
   fi
-  write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/pi/AGENTS.md" "$(cat "$agent_pi_tmp")"
+  if [[ "${KEYSTONE_GENERATE_PI_AGENT_AGENTS:-0}" == "1" ]]; then
+    write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/pi/AGENTS.md" "$(cat "$agent_pi_tmp")"
+  fi
   rm -f "$agent_pi_tmp"
 done < <(jq -r '.agents | keys[]?' "$manifest_path")
 
@@ -678,9 +697,9 @@ home-dir symlinks that home-manager activation creates.
 | `_shared/conventions/` | Centralized conventions and roles, referenced by skills via per-skill symlinks. |
 | `_shared/TEAM.md` | Generated roster for humans and OS agents. OS agents receive this as `~/TEAM.md`. |
 | `_shared/SERVICES.md` | Generated service index. OS agents receive this as `~/SERVICES.md`. |
-| `<agent>/AGENTS.md` | Optional user-authored overlay for identity-specific OS-agent rules. |
+| `<agent>/AGENTS.md` | User-authored OS-agent instruction file. OS agents receive this as `~/AGENTS.md` and `~/.pi/agent/AGENTS.md`. |
+| `<agent>/SYSTEM.md` | User-authored OS-agent system file. OS agents receive this as `~/SYSTEM.md`, `~/.pi/agent/SYSTEM.md`, and `~/.pi/agents/SYSTEM.md`. |
 | `<agent>/SOUL.md` | Generated OS-agent identity file. OS agents receive this as `~/SOUL.md`. |
-| `<agent>/pi/AGENTS.md` | Generated Pi instruction file for that OS agent: shared instructions, Pi runtime instructions, plus the overlay. |
 | `skills/` | Canonical skill tree per the [`.agents/skills/` open standard][spec]. Read by every spec-compliant agent. |
 | `claude/agents/` | Claude-specific subagent personas. Read via `~/.claude/agents/`. |
 
@@ -690,10 +709,9 @@ home-dir symlinks that home-manager activation creates.
   state (capabilities, archetype) determines which skills land. The
   command is manual — `ks switch` / `ks update --dev` never write here
   implicitly.
-- User-authored content in `claude/agents/<persona>.md` and
-  `_shared/skills.yaml` survives sync. Per-agent overlays at
-  `<agent>/AGENTS.md` also survive sync and are copied into generated
-  `<agent>/pi/AGENTS.md` files after the Pi runtime instructions.
+- User-authored content in `claude/agents/<persona>.md`,
+  `_shared/skills.yaml`, `<agent>/AGENTS.md`, and `<agent>/SYSTEM.md`
+  survives sync.
 - OS-agent identity docs are rooted here, not in `~/notes`: activation links
   `~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` into each agent home.
 - README files in this tree (including this one) are regenerated;

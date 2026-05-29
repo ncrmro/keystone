@@ -324,6 +324,8 @@ in
         if [ "$is_agent_user" = "1" ]; then
           agent_name="''${USER#agent-}"
           identity_files=(
+            "AGENTS.md:$agent_name/AGENTS.md"
+            "SYSTEM.md:$agent_name/SYSTEM.md"
             "SOUL.md:$agent_name/SOUL.md"
             "TEAM.md:_shared/TEAM.md"
             "SERVICES.md:_shared/SERVICES.md"
@@ -357,14 +359,13 @@ in
         fi
 
         # Pi reads instructions from ~/.pi/agent/AGENTS.md. Human users get the
-        # shared instruction file; OS agents get a composed per-agent file when
-        # `ks sync-agent-assets` has generated one from agents/<name>/AGENTS.md.
+        # shared instruction file; OS agents get their committed per-agent file.
         pi_target="$agents_root/_shared/AGENTS.md"
         if [ "$is_agent_user" = "1" ]; then
           agent_name="''${USER#agent-}"
-          agent_pi_target="$agents_root/$agent_name/pi/AGENTS.md"
-          if [ -f "$agent_pi_target" ]; then
-            pi_target="$agent_pi_target"
+          agent_target="$agents_root/$agent_name/AGENTS.md"
+          if [ -f "$agent_target" ]; then
+            pi_target="$agent_target"
           fi
         fi
         pi_link="$HOME/.pi/agent/AGENTS.md"
@@ -385,6 +386,32 @@ in
           fi
         else
           echo "keystone-agent-asset-symlinks: Pi instruction file $pi_target does not exist yet; skipping $pi_link (run 'ks sync-agent-assets' to populate)" >&2
+        fi
+
+        if [ "$is_agent_user" = "1" ]; then
+          agent_name="''${USER#agent-}"
+          system_target="$agents_root/$agent_name/SYSTEM.md"
+          if [ -f "$system_target" ]; then
+            for system_link in "$HOME/.pi/agent/SYSTEM.md" "$HOME/.pi/agents/SYSTEM.md"; do
+              mkdir -p "$(dirname "$system_link")"
+              if [ -L "$system_link" ]; then
+                current="$(readlink "$system_link")"
+                if [ "$current" != "$system_target" ]; then
+                  rm -f "$system_link"
+                  ln -s "$system_target" "$system_link"
+                fi
+              elif [ -f "$system_link" ]; then
+                rm -f "$system_link"
+                ln -s "$system_target" "$system_link"
+              elif [ -e "$system_link" ]; then
+                echo "keystone-agent-asset-symlinks: $system_link exists and is not a file or symlink; leaving untouched" >&2
+              else
+                ln -s "$system_target" "$system_link"
+              fi
+            done
+          else
+            echo "keystone-agent-asset-symlinks: Pi system file $system_target does not exist yet; skipping Pi SYSTEM.md links" >&2
+          fi
         fi
       '';
     }

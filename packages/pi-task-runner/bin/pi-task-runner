@@ -295,6 +295,8 @@ def local_tools_prompt(home: Path) -> str:
     sections = []
     seen = set()
     for path in (
+        home / ".pi/agent/SYSTEM.md",
+        home / ".pi/agents/SYSTEM.md",
         home / ".pi/agent/AGENTS.md",
         home / "TOOLS.md",
         home / ".config/keystone/TOOLS.md",
