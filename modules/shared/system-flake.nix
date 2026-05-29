@@ -16,6 +16,12 @@
 with lib;
 let
   cfg = config.keystone.systemFlake;
+  systemFlakeParts = splitString "/" (toString cfg.path);
+  systemFlakeHome =
+    if length systemFlakeParts >= 3 && elemAt systemFlakeParts 1 == "home" then
+      "/home/${elemAt systemFlakeParts 2}"
+    else
+      null;
 in
 {
   imports = [ ./update.nix ];
@@ -23,9 +29,9 @@ in
   options.keystone.systemFlake = {
     path = mkOption {
       type = types.path;
-      default = "/home/${config.keystone.os.adminUsername}/.keystone/repos/${config.keystone.os.adminUsername}/keystone-config";
+      default = "/home/${config.keystone.os.adminUsername}/repos/${config.keystone.os.adminUsername}/ks-config";
       defaultText = literalExpression ''
-        "/home/''${config.keystone.os.adminUsername}/.keystone/repos/''${config.keystone.os.adminUsername}/keystone-config"
+        "/home/''${config.keystone.os.adminUsername}/repos/''${config.keystone.os.adminUsername}/ks-config"
       '';
       description = ''
         Absolute path to the consumer flake that produced this system.
@@ -47,5 +53,11 @@ in
       printf '%s\n' "${cfg.path}" > $out/keystone-system-flake
       printf '%s\n' "${config.keystone.update.channel}" > $out/keystone-update-channel
     '';
+
+    systemd.tmpfiles.rules = optionals (systemFlakeHome != null && config.keystone.os.agents != { }) [
+      # SECURITY: Grants OS agents traversal only, not directory listing, so
+      # symlinks into ~/repos/... resolve without exposing the admin home tree.
+      "a ${systemFlakeHome} - - - - g:agents:x"
+    ];
   };
 }
