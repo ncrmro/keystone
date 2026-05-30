@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Photos, printer, journal-remote, notes, and perception integrations received follow-up fixes for path handling, TLS, menu responsiveness, and default notebook behavior
+- Photos, printer, journal-remote, notes, and perception integrations received follow-up fixes for path handling, TLS, and menu responsiveness
 - Desktop context menus regained project submenu behavior, navigation, theme activation, and audio-device stability
 - `ks` fixes resolved print CSS path issues, lock-sync parsing, lock repo export behavior, and docs-browser polish
 - Immich and service fixes addressed remote ML binding, matplotlib cache placement, and ACL identity correctness
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop launcher and Walker fixes improved project loading, caching, keybindings, session selection, and menu performance
 - Observability fixes removed conflicting node exporter flags and corrected dashboard provisioning details
 - `ks` fixes improved Grafana API key discovery, URL resolution, warning behavior, and dev-mode dashboard sync
-- Agent and notes fixes corrected zk permissions, textfile directory ownership, and default note repo behavior
+- Agent and notes fixes corrected textfile directory ownership and default note repo behavior
 
 ## [0.10.0] - 2026-03-25
 
@@ -61,8 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `keystone.development` mode, with repo registry support and auto-discovery of managed repositories from flake inputs
 - Smarter deployment workflows in `ks`, including `ks switch`, `ks update`, faster dev updates, and local Ollama diagnostics
-- Zettelkasten note workflows for both humans and agents, including notebook scaffolding, note docs, and VCS-aware note handling
-- Project discovery and session tooling improvements, including standardized repo and worktree paths, `pz` autocomplete, project discovery from zk hubs, and new desktop context launchers
+- Note workflows for both humans and agents, including note docs and VCS-aware handling
+- Project discovery and session tooling improvements, including standardized repo and worktree paths and desktop context launchers
 - Codex, DeepWork, and slash-command integrations across terminal tooling, including workflow skills and MCP wiring
 - Demo and presentation tooling, including Slidev integration and optional OBS desktop support
 - CalDAV-backed task and calendar support for users and agents
