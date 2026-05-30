@@ -29,7 +29,6 @@ let
     "ks"
     "ks-dev"
     "assistant"
-    "notes"
     "project"
     "engineer"
     "product"
@@ -57,7 +56,6 @@ let
     "ks-system"
   ]
   ++ optionals (elem "assistant" resolvedCapabilities) [ "ks-assistant" ]
-  ++ optionals (elem "notes" resolvedCapabilities) [ "ks-notes" ]
   ++ optionals (elem "project" resolvedCapabilities) [ "ks-projects" ]
   ++ optionals (elem "ks-dev" resolvedCapabilities) [ "ks-dev" ]
   ++ optionals (elem "engineer" resolvedCapabilities) [ "ks-engineer" ]
