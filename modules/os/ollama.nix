@@ -47,7 +47,17 @@ in
         ]
       );
       default = null;
-      description = "GPU acceleration backend. null uses CPU only.";
+      description = ''
+        GPU acceleration backend. null uses CPU only.
+
+        AMD trade-offs:
+        - "rocm" is ~10% faster than "vulkan" on supported cards when the
+          model fully fits in VRAM, but pulls in the full ROCm stack (much
+          larger closure) and is more sensitive to nixpkgs/kernel drift.
+        - "vulkan" is the safer default: smaller closure, broader card
+          support, and when the model spills to system RAM the backend
+          choice has little effect (CPU path dominates).
+      '';
       example = "vulkan";
     };
 
