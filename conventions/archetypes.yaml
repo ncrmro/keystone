@@ -58,7 +58,6 @@ archetypes:
       - tool.github
       - process.issue-journal
       - process.project-board
-      - process.presentation-slides
       - process.enable-by-default
       - os.zfs-backup
       - os.systemd-over-activation
@@ -134,7 +133,6 @@ archetypes:
       - os.systemd-over-activation
       - process.user-groups
       - tool.cloudflare-workers
-      - process.knowledge-management
       - tool.stalwart
     roles:
       # Role: code-reviewer
@@ -235,8 +233,6 @@ archetypes:
       - tool.forgejo
       - tool.himalaya
       - tool.github
-      - process.knowledge-management
-      - process.presentation-slides
     roles:
       # Role: business-analyst
       # Used for evaluating market opportunities, competitor products, and defining KPIs.

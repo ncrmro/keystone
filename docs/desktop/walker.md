@@ -1,15 +1,13 @@
 ---
 title: Walker
-description: Desktop launcher and project switcher for Keystone Desktop
+description: Desktop launcher for Keystone Desktop
 ---
 
 # Walker
 
 Walker is the quick launcher used by Keystone Desktop.
 
-In Keystone, Walker is not just an application launcher. It is also the main
-project switcher for moving between active project workspaces, shells, and
-desktop windows.
+In Keystone, Walker provides the main desktop launcher and custom menu surface.
 
 Keystone Desktop uses two related projects:
 
@@ -45,27 +43,19 @@ just an app launcher.
 
 ## Project navigation
 
-Keystone integrates Walker with the project model used by
-[Projects and pz](../terminal/projects.md).
+Keystone integrates Walker with Keystone's project model. That means Walker can:
 
-That means Walker can:
-
-- list projects from the notes index,
+- list projects from Keystone project metadata,
 - jump to the right Ghostty or Zellij session for a project, and
-- act as the desktop side of the same workflow that `pz` provides in the
-  terminal.
 
-If your notes are stale, the Walker project menu will also be stale. See
-[Notes](../notes.md) for how project notes are synced and used as durable
-context.
+If your project metadata is stale, the Walker project menu will also be stale.
 
 ## How it fits into Keystone Desktop
 
 The intended flow is:
 
-1. Keep project notes up to date
-2. Use `pz` in the terminal when you are already working in a shell
-3. Use Walker when you want to jump between projects from the desktop
+1. Keep project metadata up to date
+2. Use Walker when you want to jump between projects from the desktop
 
 This gives Keystone Desktop a fast project-oriented navigation model instead of
 just a flat application launcher.
@@ -75,7 +65,6 @@ just a flat application launcher.
 The most important launcher-related keybindings are:
 
 - `$mod+Space` opens Walker
-- `$mod+D` opens the Keystone project switcher
 - `$mod+Ctrl+V` opens the clipboard manager in a terminal
 - `$mod+Ctrl+E` opens Walker in symbols mode
 - `$mod+K` opens the desktop keybindings menu
@@ -84,7 +73,5 @@ See [Desktop keybindings](keybindings.md) for the broader keyboard workflow.
 
 ## Related docs
 
-- [Projects and pz](../terminal/projects.md)
-- [Notes](../notes.md)
 - [Desktop keybindings](keybindings.md)
 - [Waybar Configuration](waybar-configuration.md)

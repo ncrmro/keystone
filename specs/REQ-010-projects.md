@@ -24,13 +24,11 @@ discovery.
 
 ### Discovery
 
-**REQ-010.4** The module MUST discover projects via
-`zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`,
-deriving the notes path from `keystone.notes.path` (see REQ-009).
+**REQ-010.4** The module MUST discover projects from explicit Keystone project
+metadata.
 
-**REQ-010.5** Keystone project metadata consumers MUST derive their project
-list from active notes hub metadata. When project metadata is enabled,
-`keystone.notes.enable` MUST also be `true`.
+**REQ-010.5** Keystone project metadata consumers MUST NOT require the notes
+module.
 
 ### Environment
 
@@ -84,8 +82,8 @@ system without desktop integration, operating in headless mode.
 ### Desktop Integration (Optional)
 
 **REQ-010.18** When `keystone.desktop` is enabled, a Walker plugin SHOULD
-read from `keystone.notes` configuration to discover projects and present
-them as launchable items alongside desktop applications.
+read from Keystone project metadata and present projects as launchable items
+alongside desktop applications.
 
 **REQ-010.19** When `keystone.desktop` is enabled, the keystone menu
 (mod+escape) SHOULD include a "Projects" submenu listing discovered
