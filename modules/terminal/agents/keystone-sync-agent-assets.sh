@@ -777,7 +777,7 @@ spec. Inside:
 ## Naming
 
 - `ks-*` — keystone-curated skills tied to a slash-command id
-  published by this host (e.g., `/ks-engineer`, `/ks-notes`). Only
+  published by this host (e.g., `/ks-engineer`, `/ks-dev`). Only
   emitted if the host capability set includes the matching command.
 - Bare names (`deepwork`, `wrap-up`, `review`) — always-on workflow
   skills that don'\''t gate on capability.

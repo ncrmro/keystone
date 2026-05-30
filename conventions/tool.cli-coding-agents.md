@@ -290,7 +290,7 @@ can review them.
     to restore a previous version, then commit. No in-file markers, no skip-if-exists.
 16. User-authored skills and keystone-generated skills share a single
     namespace under `<consumer-flake>/agents/skills/`. Keystone-curated
-    skills use the `ks-` name prefix (e.g. `ks-notes`, `ks-dev`);
+    skills use the `ks-` name prefix (e.g. `ks-engineer`, `ks-dev`);
     user-authored skills SHOULD avoid that prefix to reduce collision risk
     on regen. Skill names MUST be lowercase with hyphens per the
     [`.agents/skills/` spec][agent-skills-doc] — no dots, no underscores,
@@ -390,10 +390,8 @@ before re-running activation.
 4. MUST preserve YAML frontmatter for tools that natively consume Markdown metadata, including Claude Code commands and Codex skills
 5. MUST render Gemini commands as native TOML rather than Markdown-based skill files
 6. MUST keep command filenames and Codex skill ids stable unless a breaking rename is explicitly intended
-7. `ks-notes` SHOULD act as the durable-memory skill for decision capture, report capture, and zk-linked shared-surface refs
-8. Keystone workflow skills SHOULD remind agents to use `ks-notes` when work produces durable findings or decisions
-9. Skill directory names and SKILL.md frontmatter `name:` fields MUST be lowercase with hyphens per the [`.agents/skills/` spec][agent-skills-doc] (e.g., `ks-system`, `ks-dev`, `configure-reviews`). The same name is used by every tool — no per-tool transform.
-10. Generated instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) MUST NOT duplicate the list of available skills. CLI coding agents inject the skill catalog into the system prompt automatically; repeating it in instruction files wastes context tokens.
+7. Skill directory names and SKILL.md frontmatter `name:` fields MUST be lowercase with hyphens per the [`.agents/skills/` spec][agent-skills-doc] (e.g., `ks-system`, `ks-dev`, `configure-reviews`). The same name is used by every tool — no per-tool transform.
+8. Generated instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`) MUST NOT duplicate the list of available skills. CLI coding agents inject the skill catalog into the system prompt automatically; repeating it in instruction files wastes context tokens.
 
 ### `modules/terminal/agents/mcp-configs.nix`
 

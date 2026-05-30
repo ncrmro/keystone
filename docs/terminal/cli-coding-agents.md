@@ -23,7 +23,6 @@ Domain knowledge loads on demand when a skill is activated:
 - `/ks-engineer` — implementation, code review, architecture, CI
 - `/ks-product` — press releases, milestones, stakeholder communication
 - `/ks-project-manager` — task decomposition, tracking, boards
-- `/ks-notes` — durable notebook capture and repair
 - `/ks-projects` — project lifecycle workflows
 
 Each skill folder colocates its conventions, role definitions, and DeepWork
@@ -163,7 +162,6 @@ The set of published skills depends on resolved capabilities:
 | (always — no capability gate) | `/ks-system` |
 | `assistant` (default) | `/ks-assistant` |
 | `project` (default) | `/ks-projects` |
-| `notes` (explicit) | `/ks-notes` |
 | `engineer` (archetype) | `/ks-engineer` |
 | `product` (archetype) | `/ks-product` |
 | `project-manager` (explicit) | `/ks-project-manager` |
@@ -172,9 +170,7 @@ The set of published skills depends on resolved capabilities:
 
 Defaults come from `baseCapabilities` in `modules/terminal/agents/extensions.nix`
 (currently `[ "ks" "assistant" "project" ]`); the `"ks"` tag is internal
-plumbing and doesn't add a slash command directly. `notes` is explicit per
-host — declare it in `keystone.terminal.aiExtensions.capabilities` or pull
-it in via the OS-agent capability list to enable `/ks-notes`.
+plumbing and doesn't add a slash command directly.
 
 Capabilities merge from base defaults, archetype defaults (e.g., `engineer`
 archetype auto-enables the `engineer` capability), explicit
