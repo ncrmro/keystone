@@ -260,6 +260,31 @@ in
           };
         };
 
+        pi = {
+          extensions = {
+            mcp.enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = ''
+                Enable Keystone's default Pi MCP extension for this OS agent.
+                When enabled, Pi receives the same generated MCP server set as
+                the other coding CLIs, including Chrome DevTools when
+                chrome.mcp.enable is true.
+              '';
+            };
+
+            packages = mkOption {
+              type = types.listOf types.anything;
+              default = [ ];
+              description = ''
+                Additional Pi packages for this OS agent. Entries are passed to
+                ~/.pi/agent/settings.json and may be Nix store paths, npm/git
+                package sources, or Pi package filter objects.
+              '';
+            };
+          };
+        };
+
         # Grafana MCP server for querying metrics and logs (REQ-017.9)
         grafana = {
           mcp = {

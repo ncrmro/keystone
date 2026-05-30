@@ -100,6 +100,14 @@ Per-agent Pi files are intentionally user-authored. Keystone owns the symlink
 topology; the consumer `ks-config` repo owns the instruction content being
 tested or deployed.
 
+OS agents also enable Keystone's default Pi MCP package unless
+`keystone.os.agents.<name>.pi.extensions.mcp.enable = false`. The same
+`keystone.terminal.cliCodingAgents.mcpServers` model feeds Pi through
+`~/.pi/agent/mcp.json`, so `chrome.mcp.enable = true` gives Drago/Luce the
+Nix-built Chrome DevTools MCP server in Pi as well as Claude, Gemini, Codex,
+and OpenCode. Additional Pi packages can be added with
+`keystone.os.agents.<name>.pi.extensions.packages`.
+
 ## L1 → L2 inheritance
 
 OS agents inherit L1 by getting the same `<consumer-flake>/agents/<tool>/`

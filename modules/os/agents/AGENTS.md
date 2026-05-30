@@ -75,6 +75,7 @@ keystone.os.agents.drago = {
   terminal.enable = true;
   desktop = { enable = true; resolution = "1920x1080"; vncPort = null; };
   chrome = { enable = true; debugPort = null; mcp.port = null; };
+  pi.extensions = { mcp.enable = true; packages = []; };
   grafana.mcp = { enable = false; url = "https://grafana.example.com"; };
   mail = { provision = false; address = "agent-drago@example.com"; };
   github.username = "drago";

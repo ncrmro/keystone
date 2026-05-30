@@ -192,6 +192,10 @@ in
                       }
                     ) agentCfg.mcp.servers;
                   };
+                  pi.extensions = {
+                    defaults.mcp.enable = mkDefault agentCfg.pi.extensions.mcp.enable;
+                    packages = mkDefault agentCfg.pi.extensions.packages;
+                  };
                 };
 
                 # Bridge agent notes config to the home-manager notes module.

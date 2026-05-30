@@ -692,6 +692,7 @@
             zellij-tab-name
             write-polkit-theme
             chrome-devtools-mcp
+            pi-mcp-extension
             grafana-mcp
             lfs-s3
             deepwork-library-jobs

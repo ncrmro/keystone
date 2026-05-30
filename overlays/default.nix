@@ -40,6 +40,7 @@ let
   agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
+  pi-mcp-extension-src = ../packages/pi-mcp-extension;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -138,6 +139,7 @@ in
       keystone-src = self;
     };
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
+    pi-mcp-extension = final.callPackage pi-mcp-extension-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };
