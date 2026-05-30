@@ -289,16 +289,6 @@ let
     builtins.readFile ./keystone-context.sh
   );
 
-  # Context switcher — fuzzy search across active contexts via Walker
-  keystoneContextSwitch = pkgs.writeShellScriptBin "keystone-context-switch" (
-    builtins.readFile ./keystone-context-switch.sh
-  );
-
-  # Internal helper for Walker/Elephant project menus
-  keystoneProjectMenu = pkgs.writeShellScriptBin "keystone-project-menu" (
-    builtins.readFile ./keystone-project-menu.sh
-  );
-
   # Photo search and preview adapter for Walker/Elephant
   keystonePhotosMenu = pkgs.writeShellScriptBin "keystone-photos-menu" (
     builtins.readFile ./keystone-photos-menu.sh
@@ -307,11 +297,6 @@ let
   # Agent control surface for the main menu
   keystoneAgentMenu = pkgs.writeShellScriptBin "keystone-agent-menu" (
     builtins.readFile ./keystone-agent-menu.sh
-  );
-
-  # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
-  keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
-    builtins.readFile ./keystone-notes-inbox.sh
   );
 
   # Battery monitor script
@@ -406,7 +391,6 @@ let
       extraEnvSetup = ''
         export KEYSTONE_MENU_SHOW_PHOTOS="${if cfg.photos.enable then "true" else "false"}"
         export KEYSTONE_MENU_SHOW_AGENTS="${if cfg.agents.enable then "true" else "false"}"
-        export KEYSTONE_MENU_SHOW_CONTEXTS="${if cfg.contexts.enable then "true" else "false"}"
       '';
     })
     (mkHomeScriptCommand {
@@ -598,34 +582,6 @@ let
     })
     (mkHomeScriptCommand {
       inherit config pkgs;
-      commandName = "keystone-context-switch";
-      relativePath = "modules/desktop/home/scripts/keystone-context-switch.sh";
-      package = keystoneContextSwitch;
-      runtimeInputs = [ pkgs.walker ];
-    })
-    (mkHomeScriptCommand {
-      inherit config pkgs;
-      commandName = "keystone-project-menu";
-      relativePath = "modules/desktop/home/scripts/keystone-project-menu.sh";
-      package = keystoneProjectMenu;
-      runtimeInputs = [
-        hyprlandPkg
-        pkgs.coreutils
-        pkgs.findutils
-        pkgs.gawk
-        pkgs.gnugrep
-        pkgs.gnused
-        pkgs.jq
-        pkgs.keystone.pz
-        pkgs.yq-go
-        pkgs.zk
-        pkgs.zellij
-        pkgs.util-linux
-        pkgs.walker
-      ];
-    })
-    (mkHomeScriptCommand {
-      inherit config pkgs;
       commandName = "keystone-photos-menu";
       relativePath = "modules/desktop/home/scripts/keystone-photos-menu.sh";
       package = keystonePhotosMenu;
@@ -642,17 +598,10 @@ let
       relativePath = "modules/desktop/home/scripts/keystone-agent-menu.sh";
       package = keystoneAgentMenu;
       runtimeInputs = [
-        pkgs.keystone.pz
         pkgs.keystone.ks
         pkgs.jq
         pkgs.walker
       ];
-    })
-    (mkHomeScriptCommand {
-      inherit config pkgs;
-      commandName = "keystone-notes-inbox";
-      relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
-      package = keystoneNotesInbox;
     })
   ];
 in
@@ -668,7 +617,6 @@ in
             keystoneNightlightToggle
             keystoneBatteryMonitor
             keystoneDetach
-            keystoneProjectMenu
             keystonePhotosMenu
             pkgs.jq
             pkgs.pulseaudio

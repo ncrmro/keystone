@@ -28,7 +28,6 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 - `modules/terminal/` — Home-manager terminal: shell, editor, AI tools, mail, calendar, DeepWork
 - `modules/desktop/` — Hyprland desktop environment: theming, keybindings, components
 - `modules/server/` — Server services: DNS, mail, monitoring, Forgejo, Grafana, Immich, Vaultwarden
-- `modules/notes/` — Zettelkasten notebook management via zk
 
 ## Packages
 
