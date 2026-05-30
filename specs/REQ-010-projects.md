@@ -1,8 +1,8 @@
 # REQ-010: Projects
 
-Home Manager module (`keystone.projects`) for managing per-project working
-environments with terminal sessions, AI agent integration, and optional
-desktop launcher support. Portable across NixOS and macOS.
+Project metadata conventions for managing per-project working environments,
+AI agent integration, and optional desktop launcher support. Portable across
+NixOS and macOS.
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).
@@ -28,19 +28,9 @@ discovery.
 `zk --notebook-dir {notes_path} list index/ --tag "status/active" --format json`,
 deriving the notes path from `keystone.notes.path` (see REQ-009).
 
-**REQ-010.5** The module MUST expose `keystone.projects.enable` (bool,
-default `true`) to activate project management. When enabled,
+**REQ-010.5** Keystone project metadata consumers MUST derive their project
+list from active notes hub metadata. When project metadata is enabled,
 `keystone.notes.enable` MUST also be `true`.
-
-### Sessions
-
-**REQ-010.6** The module MUST provide a `pz` command that creates or attaches
-to a Zellij session named `{slug}` for the default project session or
-`{slug}-{session-slug}` for a named project session.
-
-**REQ-010.8** A `pz` session MUST persist across terminal disconnections.
-Re-running `pz {slug}` MUST attach to the existing session rather than
-creating a new one.
 
 ### Environment
 
@@ -80,27 +70,18 @@ alternate forms.
 `AGENTS.md` files from each declared repository into a single context file
 available at `$AGENTS_MD`.
 
-### AI Agent Integration
+### AI Agent integration
 
-**REQ-010.13** The module MUST provide a `pz agent` command that wraps
-`agentctl`, automatically injecting the current project's slug via the
-`--project` flag when executed within a project session.
+**REQ-010.13** `agentctl` MUST support project-scoped execution by accepting
+the current project's slug via the `--project` flag.
 
-**REQ-010.14** The `pz agent` command MUST support passing arbitrary
+**REQ-010.14** Project-scoped agent execution MUST support passing arbitrary
 arguments and subcommands to the underlying `agentctl` execution.
 
 **REQ-010.15** OS agents (see SPEC-007) MUST be able to use the same project
 system without desktop integration, operating in headless mode.
 
-### Tab Completion
-
-**REQ-010.17** The module MUST provide shell completion for `pz` in both
-Bash and Zsh, completing project slugs discovered at runtime from the
-notes directory.
-
 ### Desktop Integration (Optional)
-
-Detailed desktop project menu behavior is defined in `REQ-026`.
 
 **REQ-010.18** When `keystone.desktop` is enabled, a Walker plugin SHOULD
 read from `keystone.notes` configuration to discover projects and present
@@ -111,8 +92,7 @@ them as launchable items alongside desktop applications.
 projects.
 
 **REQ-010.20** Selecting a project from Walker or the keystone menu MUST
-open a terminal with the corresponding Zellij session (equivalent to
-running `pz {slug}`).
+open a terminal with the corresponding project context.
 
 ### Portability
 
