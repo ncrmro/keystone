@@ -179,6 +179,8 @@ in
                         args = [
                           "--browserUrl"
                           "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}"
+                          "--no-usage-statistics"
+                          "--no-performance-crux"
                         ];
                       };
                     }

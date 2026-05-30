@@ -65,6 +65,8 @@ let
         args = [
           "--browserUrl"
           "http://127.0.0.1:${toString (agentsLib.globalAgentChromeDebugPort name agentCfg)}"
+          "--no-usage-statistics"
+          "--no-performance-crux"
         ];
       };
     };
