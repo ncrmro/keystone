@@ -144,7 +144,6 @@ in
               "ks"
               "ks-dev"
               "assistant"
-              "notes"
               "project"
               "engineer"
               "product"
@@ -159,7 +158,6 @@ in
             gate what the generated `/ks` and `/ks-dev` skills may do.
           '';
           example = [
-            "notes"
             "executive-assistant"
           ];
         };
