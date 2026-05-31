@@ -113,15 +113,15 @@ Browse Keystone Markdown docs in the terminal with `glow` and `fzf`.
 
 - With no argument, `ks docs` opens an interactive picker over Markdown files in `docs/` only.
 - In the picker, type to filter, press Enter to open, and press Esc to cancel.
-- Topic shortcuts: `os`, `terminal`, `desktop`, `agents`, `projects`.
-- Relative docs paths such as `terminal/projects.md` also work.
+- Topic shortcuts: `os`, `terminal`, `desktop`, `agents`.
+- Relative docs paths also work.
 
 Examples:
 
 ```bash
 ks docs
 ks docs desktop
-ks docs terminal/projects.md
+ks docs terminal/terminal.md
 ```
 
 ### `ks hardware-key`

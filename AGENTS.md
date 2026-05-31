@@ -36,7 +36,6 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 - `packages/fetch-github-sources/` — GitHub notification fetcher (gh API)
 - `packages/fetch-forgejo-sources/` — Forgejo notification fetcher (curl)
 - `packages/keystone-ha/` — Home-assistant integration
-- `packages/ks-legacy/` — Legacy shell-based ks commands
 
 ## Flake Exports
 
@@ -74,9 +73,9 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 
 ## Keystone Config Repo
 
-The **keystone config repo** is `nixos-config` — the consumer flake that imports keystone
-modules and declares per-host/per-user configuration. All keystone-managed repos live
-under `~/.keystone/repos/OWNER/REPO/`.
+The **keystone config repo** is `ks-config` — the consumer flake that imports keystone
+modules and declares per-host/per-user configuration. Keystone-managed repos live
+under `~/repos/OWNER/REPO/`; `~/.keystone/repos/OWNER/REPO/` is legacy fallback only.
 
 ## Pull request workflow
 

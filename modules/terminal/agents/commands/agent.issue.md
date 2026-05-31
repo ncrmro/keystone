@@ -11,4 +11,4 @@ Use the DeepWork MCP tools to start the workflow:
 - workflow_name: "issue"
 - goal: "$ARGUMENTS" (description of the infrastructure problem, e.g., 'scheduler permission denied')
 
-Follow the workflow instructions returned by the MCP server. This drafts a GitHub issue with title, body, labels, and assignee for the admin's nixos-config repo (ncrmro/keystone) to address agent-space blockers.
+Follow the workflow instructions returned by the MCP server. This drafts a GitHub issue with title, body, labels, and assignee for the admin's ks-config repo to address agent-space blockers.

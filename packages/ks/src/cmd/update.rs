@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::{cmd, repo};
 
@@ -11,17 +11,6 @@ pub struct UpdateResult {
     pub hosts: Vec<String>,
     pub dev: bool,
     pub mode: String,
-}
-
-async fn repo_checkout_candidates(repo_root: &Path, key: &str) -> Vec<PathBuf> {
-    let home = home::home_dir().unwrap_or_default();
-    let repo_name = key.rsplit('/').next().unwrap_or(key);
-    vec![
-        home.join(".keystone").join("repos").join(key),
-        repo_root.join(".repos").join(repo_name),
-        repo_root.join(".submodules").join(repo_name),
-        repo_root.join(repo_name),
-    ]
 }
 
 async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
@@ -40,18 +29,12 @@ async fn pull_managed_repos(repo_root: &Path) -> Result<()> {
             continue;
         }
 
-        let candidates = repo_checkout_candidates(repo_root, key).await;
+        let candidates = repo::repo_checkout_candidates(repo_root, key);
         let target = candidates
             .iter()
             .find(|candidate| candidate.join(".git").exists())
             .cloned()
-            .unwrap_or_else(|| {
-                home::home_dir()
-                    .unwrap_or_default()
-                    .join(".keystone")
-                    .join("repos")
-                    .join(key)
-            });
+            .unwrap_or_else(|| home::home_dir().unwrap_or_default().join("repos").join(key));
 
         if target.join(".git").exists() {
             eprintln!("Pulling {}...", key);
@@ -140,7 +123,7 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
     };
 
     for (key, _value) in obj {
-        let candidates = repo_checkout_candidates(repo_root, key).await;
+        let candidates = repo::repo_checkout_candidates(repo_root, key);
         if let Some(path) = candidates.iter().find(|candidate| candidate.is_dir()) {
             verify_repo_lock_ready(path, key).await?;
         }
@@ -172,7 +155,7 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
         .await;
     if let Ok(status) = pull_status {
         if !status.success() {
-            eprintln!("Warning: failed to pull nixos-config");
+            eprintln!("Warning: failed to pull ks-config");
         }
     }
 
@@ -199,7 +182,7 @@ async fn update_locked(repo_root: &Path, mode: &str, hosts: &[String]) -> Result
         .await;
     if let Ok(status) = push_status {
         if !status.success() {
-            eprintln!("Warning: failed to push nixos-config");
+            eprintln!("Warning: failed to push ks-config");
         }
     }
 

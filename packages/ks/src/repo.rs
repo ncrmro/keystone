@@ -55,10 +55,10 @@ pub struct HostInfo {
     pub build_on_remote: bool,
 }
 
-/// Return the base repos directory (~/.keystone/repos/).
+/// Return the standard base repos directory (~/repos/).
 fn repos_dir() -> Result<PathBuf> {
     let home = home_dir().context("Failed to get home directory")?;
-    Ok(home.join(".keystone").join("repos"))
+    Ok(home.join("repos"))
 }
 
 fn looks_like_keystone_repo(path: &Path) -> bool {
@@ -210,18 +210,35 @@ fn find_repo_with_pointer(flake_override: Option<&Path>, pointer_file: &Path) ->
 }
 
 /// Discover a local checkout for a repo registry key (`owner/repo`).
-pub fn find_local_repo(repo_root: &Path, key: &str) -> Option<PathBuf> {
+pub fn repo_checkout_candidates(repo_root: &Path, key: &str) -> Vec<PathBuf> {
     let name = key.rsplit('/').next().unwrap_or(key);
-    let home = home_dir()?;
+    let mut candidates = Vec::new();
 
-    let candidates = [
-        home.join(".keystone").join("repos").join(key),
+    if let Some(home) = home_dir() {
+        candidates.push(home.join("repos").join(key));
+    }
+
+    if let Some(parent) = repo_root.parent() {
+        candidates.push(parent.join(name));
+    }
+
+    candidates.extend([
+        repo_root.join(name),
         repo_root.join(".repos").join(name),
         repo_root.join(".submodules").join(name),
-        repo_root.join(name),
-    ];
+    ]);
 
-    candidates.into_iter().find(|candidate| candidate.is_dir())
+    if let Some(home) = home_dir() {
+        candidates.push(home.join(".keystone").join("repos").join(key));
+    }
+
+    candidates
+}
+
+pub fn find_local_repo(repo_root: &Path, key: &str) -> Option<PathBuf> {
+    repo_checkout_candidates(repo_root, key)
+        .into_iter()
+        .find(|candidate| candidate.is_dir())
 }
 
 /// Locate a local Keystone checkout from the current shell context.
@@ -238,23 +255,11 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
         }
     }
 
-    if let Some(home) = home_dir() {
-        let configured_repo = home.join(".keystone").join("repos").join("ncrmro/keystone");
-        if looks_like_keystone_repo(&configured_repo) {
-            return Ok(configured_repo);
-        }
-    }
-
     if let Ok(repo_root) = find_repo(None) {
         if let Some(keystone_repo) = find_local_repo(&repo_root, "ncrmro/keystone") {
             if looks_like_keystone_repo(&keystone_repo) {
                 return Ok(keystone_repo);
             }
-        }
-
-        let sibling = repo_root.join("keystone");
-        if looks_like_keystone_repo(&sibling) {
-            return Ok(sibling);
         }
     }
 
@@ -262,8 +267,10 @@ pub fn resolve_keystone_repo() -> Result<PathBuf> {
         "could not find a local keystone checkout with a docs/ directory.\n\
          Expected one of:\n\
            - current repo root\n\
-           - ~/.keystone/repos/ncrmro/keystone\n\
-           - <nixos-config>/.repos/keystone"
+           - ~/repos/ncrmro/keystone\n\
+           - <ks-config>/../keystone\n\
+           - <ks-config>/keystone\n\
+           - ~/.keystone/repos/ncrmro/keystone"
     )
 }
 
@@ -452,8 +459,6 @@ pub async fn local_override_args(repo_root: &Path) -> Result<Vec<String>> {
         return Ok(args);
     };
 
-    let home = home_dir().unwrap_or_default();
-
     for (key, value) in obj {
         let flake_input = value
             .get("flakeInput")
@@ -463,15 +468,7 @@ pub async fn local_override_args(repo_root: &Path) -> Result<Vec<String>> {
             continue;
         }
 
-        let name = key.rsplit('/').next().unwrap_or(key);
-        let candidates = [
-            home.join(".keystone").join("repos").join(key),
-            repo_root.join(".repos").join(name),
-            repo_root.join(".submodules").join(name),
-            repo_root.join(name),
-        ];
-
-        for candidate in &candidates {
+        for candidate in repo_checkout_candidates(repo_root, key) {
             if candidate.is_dir() {
                 args.push("--override-input".to_string());
                 args.push(flake_input.to_string());
@@ -867,7 +864,7 @@ pub async fn list_target_hm_users(
     Ok(users)
 }
 
-/// Discover repos on disk in ~/.keystone/repos/ that are valid git repositories.
+/// Discover repos on disk in ~/repos/ that are valid git repositories.
 pub async fn discover_repos() -> Result<Vec<KeystoneRepo>> {
     let repos_dir = repos_dir()?;
     if !repos_dir.exists() {
@@ -877,7 +874,7 @@ pub async fn discover_repos() -> Result<Vec<KeystoneRepo>> {
     let mut found = Vec::new();
     let mut entries = fs::read_dir(&repos_dir)
         .await
-        .context("Failed to read ~/.keystone/repos/")?;
+        .context("Failed to read ~/repos/")?;
 
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
@@ -888,6 +885,21 @@ pub async fn discover_repos() -> Result<Vec<KeystoneRepo>> {
         if git_dir.exists() {
             let name = entry.file_name().to_string_lossy().to_string();
             found.push(KeystoneRepo { name, path });
+            continue;
+        }
+
+        let owner = entry.file_name().to_string_lossy().to_string();
+        let mut repo_entries = fs::read_dir(&path).await?;
+        while let Some(repo_entry) = repo_entries.next_entry().await? {
+            let repo_path = repo_entry.path();
+            if !repo_path.join(".git").exists() {
+                continue;
+            }
+            let repo_name = repo_entry.file_name().to_string_lossy().to_string();
+            found.push(KeystoneRepo {
+                name: format!("{}/{}", owner, repo_name),
+                path: repo_path,
+            });
         }
     }
 
@@ -901,7 +913,7 @@ pub async fn import_repo(repo_name: String, git_url: String) -> Result<KeystoneR
     let repos_dir = repos_dir()?;
     fs::create_dir_all(&repos_dir)
         .await
-        .context("Failed to create ~/.keystone/repos directory")?;
+        .context("Failed to create ~/repos directory")?;
 
     let target_path = repos_dir.join(&repo_name);
 
@@ -962,7 +974,7 @@ pub async fn create_new_repo(repo_name: String) -> Result<KeystoneRepo> {
     let repos_dir = repos_dir()?;
     fs::create_dir_all(&repos_dir)
         .await
-        .context("Failed to create ~/.keystone/repos directory")?;
+        .context("Failed to create ~/repos directory")?;
 
     let target_path = repos_dir.join(&repo_name);
 
@@ -1022,7 +1034,7 @@ pub async fn create_new_repo_from_config(
     let repos_dir = repos_dir()?;
     fs::create_dir_all(&repos_dir)
         .await
-        .context("Failed to create ~/.keystone/repos directory")?;
+        .context("Failed to create ~/repos directory")?;
 
     let target_path = repos_dir.join(&repo_name);
 
@@ -1296,6 +1308,26 @@ mod tests {
         // Error should mention the pointer file location and --flake.
         let msg = err.to_string();
         assert!(msg.contains("--flake") || msg.contains("keystone.systemFlake"));
+    }
+
+    #[test]
+    fn repo_checkout_candidates_prefer_standard_layouts() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_root = dir.path().join("ks-config");
+        std::fs::create_dir_all(&repo_root).unwrap();
+
+        let candidates = repo_checkout_candidates(&repo_root, "ncrmro/keystone");
+        assert_eq!(candidates[1], dir.path().join("keystone"));
+        assert_eq!(candidates[2], repo_root.join("keystone"));
+        assert_eq!(candidates[3], repo_root.join(".repos").join("keystone"));
+        assert_eq!(
+            candidates.last().unwrap(),
+            &home_dir()
+                .unwrap()
+                .join(".keystone")
+                .join("repos")
+                .join("ncrmro/keystone")
+        );
     }
 
     #[test]

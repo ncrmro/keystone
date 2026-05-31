@@ -34,7 +34,7 @@ pkgs.runCommand "test-agentctl-regression"
     EOF
     chmod +x "$PWD/bin/agentctl"
 
-    cat > "$PWD/bin/fake-pz" <<'EOF'
+    cat > "$PWD/bin/fake-project-prefs" <<'EOF'
     #!${pkgs.bash}/bin/bash
     set -euo pipefail
 
@@ -98,12 +98,12 @@ pkgs.runCommand "test-agentctl-regression"
         mv "$tmp" "$state_file"
         ;;
       *)
-        printf 'unexpected fake-pz command: %s\n' "$cmd" >&2
+        printf 'unexpected fake-project-prefs command: %s\n' "$cmd" >&2
         exit 1
         ;;
     esac
     EOF
-    chmod +x "$PWD/bin/fake-pz"
+    chmod +x "$PWD/bin/fake-project-prefs"
 
     cat > "$PWD/bin/helper" <<'EOF'
     #!${pkgs.bash}/bin/bash
@@ -119,7 +119,7 @@ pkgs.runCommand "test-agentctl-regression"
 
     cat > "$PWD/agentctl.env" <<'EOF'
     KNOWN_AGENTS="drago,luce"
-    PZ="$PWD/bin/fake-pz"
+    PROJECT_PREFS="$PWD/bin/fake-project-prefs"
     OPENSSH="${pkgs.openssh}"
     PROJECT_INDEX_HELPER="$PWD/bin/project-index-helper"
     HELPER="$PWD/bin/helper"

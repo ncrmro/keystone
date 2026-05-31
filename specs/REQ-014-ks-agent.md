@@ -3,8 +3,8 @@
 New subcommands for the `ks` infrastructure CLI that launch an AI agent
 with full keystone OS context. Uses agentctl under the hood.
 
-Part of the projctl terminal session management milestone (alongside
-REQ-011, REQ-012, REQ-013).
+Part of the agent terminal session management milestone (alongside
+REQ-012 and REQ-013).
 
 Key words: RFC 2119 (MUST, MUST NOT, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 MAY, REQUIRED, OPTIONAL).

@@ -2736,7 +2736,6 @@ async fn amend_install_commit(
 fn installed_repo_paths(username: &str, repo_owner: &str, repo_name: &str) -> (PathBuf, PathBuf) {
     let system_repo_dir = PathBuf::from("/home")
         .join(username)
-        .join(".keystone")
         .join("repos")
         .join(repo_owner)
         .join(repo_name);
@@ -3726,11 +3725,11 @@ mod tests {
 
         assert_eq!(
             system_repo_dir,
-            PathBuf::from("/home/noah/.keystone/repos/noah/keystone-config")
+            PathBuf::from("/home/noah/repos/noah/keystone-config")
         );
         assert_eq!(
             mounted_repo_dir,
-            PathBuf::from("/mnt/home/noah/.keystone/repos/noah/keystone-config")
+            PathBuf::from("/mnt/home/noah/repos/noah/keystone-config")
         );
     }
 

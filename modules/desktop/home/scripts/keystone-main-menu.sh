@@ -63,15 +63,13 @@ blocked_entry_json() {
 }
 
 main_json() {
-  # ISSUE-REQ-1 (#390): Contexts/Photos/Agents are gated by capability env vars
+  # ISSUE-REQ-1 (#390): Photos/Agents are gated by capability env vars
   # wired from the desktop home-manager module. Default to hidden when unset so
   # the surface never leaks in stale builds or ad-hoc invocations.
-  local show_contexts="${KEYSTONE_MENU_SHOW_CONTEXTS:-false}"
   local show_photos="${KEYSTONE_MENU_SHOW_PHOTOS:-false}"
   local show_agents="${KEYSTONE_MENU_SHOW_AGENTS:-false}"
 
   jq -n \
-    --arg show_contexts "$show_contexts" \
     --arg show_photos "$show_photos" \
     --arg show_agents "$show_agents" '
     [
@@ -81,12 +79,6 @@ main_json() {
         Value: "open-apps",
         Icon: "view-app-grid-symbolic"
       },
-      (if $show_contexts == "true" then {
-        Text: "Contexts",
-        Subtext: "Project and session switcher",
-        Value: "open-contexts",
-        Icon: "folder-development-symbolic"
-      } else empty end),
       (if $show_photos == "true" then {
         Text: "Photos",
         Subtext: "Search Keystone Photos and preview results",
@@ -416,9 +408,6 @@ dispatch() {
       ;;
     open-apps)
       detach walker
-      ;;
-    open-contexts)
-      detach "$(keystone_cmd keystone-context-switch)"
       ;;
     open-photos-search)
       detach "$(keystone_cmd keystone-photos-menu)" prompt-query

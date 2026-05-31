@@ -1,6 +1,6 @@
 ---
 title: Navigation
-description: Keyboard-first navigation across Keystone Desktop, Ghostty, Zellij, and project sessions
+description: Keyboard-first navigation across Keystone Desktop, Ghostty, and Zellij
 ---
 
 # Navigation
@@ -15,7 +15,6 @@ These keybindings move you around the desktop, launchers, and workspaces:
 
 - `$mod+Return`: Open Ghostty
 - `$mod+Space`: Open Walker
-- `$mod+D`: Open the Keystone project switcher
 - `$mod+Escape`: Open the Keystone menu
 - `$mod+K`: Open the keybindings menu
 - `$mod+H` and `$mod+L`: Move focus horizontally
@@ -48,20 +47,11 @@ Inside Ghostty and Zellij, these bindings handle tab and session movement:
 
 Ghostty is configured to stay out of the way for `Ctrl+PageUp` and `Ctrl+PageDown` so Zellij can handle tab switching directly.
 
-## Project and session navigation
+## Session navigation
 
-Keystone uses project-aware navigation across Walker, `pz`, Ghostty, and Zellij:
-
-- Use `$mod+D` to jump into the project switcher from the desktop
-- Use `pz list` to inspect known projects from the terminal
-- Use `pz <project>` to open or attach to that project's Zellij session
-- Use `zellij attach` to resume an existing session directly
-
-The intended flow is:
-
-1. Jump to a project from the desktop or terminal.
-2. Work inside Ghostty with Zellij tabs and panes.
-3. Detach instead of closing the session when you are done for now.
+Use `zellij attach` to resume an existing session directly. Work inside
+Ghostty with Zellij tabs and panes, and detach instead of closing the session
+when you are done for now.
 
 ## Related docs
 
@@ -69,4 +59,3 @@ The intended flow is:
 - [Walker](desktop/walker.md)
 - [Terminal module overview](terminal/terminal.md)
 - [Developer workflow](terminal/tui-developer-workflow.md)
-- [Projects and pz](terminal/projects.md)

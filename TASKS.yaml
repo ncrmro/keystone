@@ -1,0 +1,113 @@
+tasks:
+  - id: verify-keystone-notes-timer
+    status: done
+    priority: 1
+    title: "Keep keystone.notes as git-backed sync only"
+    summary: "Confirmed keystone.notes still defines keystone-notes-sync service and timer after removing zk scaffolding, zk options, and notes skills."
+    evidence:
+      - "nix build .#checks.x86_64-linux.notes-evaluation --no-link"
+      - "nix-instantiate --parse modules/notes/default.nix"
+    follow_up: "Do not remove keystone.notes unless a separate replacement for the git-backed notes sync timer is designed."
+
+  - id: review-ks-legacy-removal
+    status: pending
+    priority: 2
+    title: "Validate deletion of packages/ks-legacy"
+    summary: "The dirty tree deletes packages/ks-legacy and ks legacy module tests. Assess whether all legacy shell commands have Rust ks replacements before committing."
+    files:
+      - "packages/ks-legacy/"
+      - "tests/module/ks-doctor-report.nix"
+      - "tests/module/ks-lock-sync.nix"
+      - "flake.nix"
+    checks:
+      - "Search for remaining package exports or references to ks-legacy."
+      - "Confirm docs, print, lock-sync, doctor-report, and compatibility shims are covered by Rust ks or intentionally removed."
+      - "Run the relevant ks Rust tests and flake checks after the commit is isolated."
+
+  - id: review-repo-layout-migration
+    status: pending
+    priority: 3
+    title: "Validate ~/repos repo-layout migration"
+    summary: "Several dirty changes move canonical paths from ~/.keystone/repos to ~/repos and update dev script lookup candidates."
+    files:
+      - "packages/ks/src/repo.rs"
+      - "packages/ks/src/cmd/update.rs"
+      - "packages/ks/src/components/first_boot.rs"
+      - "packages/ks/src/components/install.rs"
+      - "modules/shared/dev-script-link.nix"
+      - "modules/shared/repos.nix"
+      - "templates/default/bin/test-iso"
+      - "conventions/process.keystone-development.md"
+    checks:
+      - "Confirm ~/.keystone/repos remains a fallback where needed for existing installs."
+      - "Validate ks update --dev, ks switch, first boot install, and test-iso paths."
+      - "Add or update tests for repo_checkout_candidates and system flake pointer behavior."
+
+  - id: review-desktop-context-removal
+    status: pending
+    priority: 4
+    title: "Validate desktop context/project menu removal"
+    summary: "The dirty tree removes the context switcher, project launcher surfaces, Mod+D binding, and project-related Walker menu entries."
+    files:
+      - "modules/desktop/home/components/launcher.nix"
+      - "modules/desktop/home/default.nix"
+      - "modules/desktop/home/hyprland/bindings.nix"
+      - "modules/desktop/home/scripts/keystone-context-switch.sh"
+      - "modules/desktop/home/scripts/keystone-context.sh"
+      - "modules/desktop/home/scripts/keystone-main-menu.sh"
+      - "docs/desktop.md"
+      - "docs/navigation.md"
+      - "specs/REQ-002-keystone-desktop.md"
+    checks:
+      - "Confirm the intended replacement navigation path for projects and contexts."
+      - "Verify Walker main menu, keybindings, and generated desktop files still build."
+      - "Run a desktop/home-manager evaluation after isolating this chunk."
+
+  - id: review-agent-e2e-runner-trigger
+    status: pending
+    priority: 5
+    title: "Validate agents-e2e ping/pong runner trigger"
+    summary: "The dirty tree changes the email smoke test to create a worktree-like task, send an agent-task email, and optionally start the pi task runner."
+    files:
+      - "packages/agents-e2e/src/agentctl.ts"
+      - "packages/agents-e2e/src/checks.ts"
+      - "packages/agents-e2e/src/main.ts"
+      - "modules/os/agents/notes.nix"
+      - "tests/module/agentctl-regression.nix"
+    checks:
+      - "Confirm the smoke task matches the actual pi-task-runner notification contract."
+      - "Decide whether the worktree path should be created by the harness or by the agent runner."
+      - "Run the e2e smoke command against drago after deploying the final module changes."
+
+  - id: review-terminal-and-deepwork-tweaks
+    status: pending
+    priority: 6
+    title: "Assess remaining terminal, DeepWork, and docs edits"
+    summary: "Smaller dirty changes touch terminal commands, DeepWork config, age-yubikey docs, warm-cachix, installer, and specs."
+    files:
+      - "bin/warm-cachix"
+      - "modules/terminal/age-yubikey.nix"
+      - "modules/terminal/agents/commands/agent.issue.md"
+      - "modules/terminal/deepwork.nix"
+      - "modules/installer.nix"
+      - "docs/ks.md"
+      - "docs/terminal/functions.md"
+      - "docs/terminal/tuis.md"
+      - "specs/REQ-013-container-sub-agents.md"
+      - "specs/REQ-014-ks-agent.md"
+      - "specs/REQ-017-conventions-grafana-mcp.md"
+    checks:
+      - "Group these into coherent commits or revert if they are stale scratch edits."
+      - "Run formatting and targeted evaluations for each grouped change."
+
+  - id: review-drago-system-prompt-edit
+    status: pending
+    priority: 7
+    title: "Decide whether to keep drago SYSTEM.md wording changes"
+    summary: "ks-config has one remaining dirty file that rewrites Drago's SYSTEM.md heading style and opening identity line."
+    repo: "/home/ncrmro/repos/ncrmro/ks-config"
+    files:
+      - "agents/drago/SYSTEM.md"
+    checks:
+      - "Confirm this was intentional prompt tuning, not a temporary pi-loading experiment."
+      - "If keeping it, commit separately in ks-config."

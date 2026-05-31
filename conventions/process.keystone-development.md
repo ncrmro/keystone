@@ -1,8 +1,8 @@
 # Convention: Keystone Development Workflow (process.keystone-development)
 
 Standards for efficiently developing and deploying changes across the keystone
-platform repos: `ncrmro/keystone`, `ncrmro/nixos-config`, and
-`Unsupervisedcom/deepwork`. All repos live under `~/.keystone/repos/{owner}/{repo}/`.
+platform repos: `ncrmro/keystone`, `ncrmro/ks-config`, and
+`Unsupervisedcom/deepwork`. All repos live under `~/repos/{owner}/{repo}/`.
 
 For the technical rules governing how `keystone.development = true` resolves paths
 at the Nix module level, see `process.keystone-development-mode`.
@@ -12,7 +12,7 @@ at the Nix module level, see `process.keystone-development-mode`.
 1. **`ncrmro/keystone`** is the upstream platform — reusable NixOS modules any user
    can adopt. Changes here affect all adopters. Put things here when they are
    broadly useful and not specific to ncrmro's setup.
-2. **`ncrmro/nixos-config`** is the consumer flake — per-host and per-user config
+2. **`ncrmro/ks-config`** is the consumer flake — per-host and per-user config
    that imports keystone modules. Put things here when they are specific to this
    fleet (host names, secrets, user preferences).
 3. **`Unsupervisedcom/deepwork`** is the DeepWork framework and shared job library.
@@ -50,9 +50,9 @@ at the Nix module level, see `process.keystone-development-mode`.
     Approval policy still applies to `ks update --dev`.
 11. When managing the local service stack (database, backend, frontend) during development, agents MUST follow `tool.process-compose-agent` for reliable orchestration.
 
-## Change flow: keystone → nixos-config
+## Change flow: keystone → ks-config
 
-12. When a change ships to the `ncrmro/keystone` GitHub repo, nixos-config must
+12. When a change ships to the `ncrmro/keystone` GitHub repo, ks-config must
     update its flake lock to pick it up:
     ```bash
     nix flake update keystone   # update keystone input only — NEVER bare nix flake update
@@ -77,9 +77,9 @@ at the Nix module level, see `process.keystone-development-mode`.
 
 19. `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` (set by keystone in dev mode — see
     `process.keystone-development-mode` rule 10) points at the live job roots:
-    - `~/.keystone/repos/Unsupervisedcom/deepwork/library/jobs/` — shared library jobs
-    - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs/` — published keystone-native jobs
-    - `~/.keystone/repos/ncrmro/keystone/.deepwork/jobs-internal/` — keystone-development-only jobs (appended in dev mode only; absent on adopter hosts)
+    - `~/repos/Unsupervisedcom/deepwork/library/jobs/` — shared library jobs
+    - `~/repos/ncrmro/keystone/.deepwork/jobs/` — published keystone-native jobs
+    - `~/repos/ncrmro/keystone/.deepwork/jobs-internal/` — keystone-development-only jobs (appended in dev mode only; absent on adopter hosts)
 20. Edits to job files in these directories take effect immediately without rebuild.
 21. When fixing or extending a shared library job, edit it in
     `Unsupervisedcom/deepwork/library/jobs/`. For keystone-specific jobs, edit

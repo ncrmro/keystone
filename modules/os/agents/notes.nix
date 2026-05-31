@@ -132,7 +132,7 @@ in
           username = "agent-${name}";
         in
         {
-          "agent-${name}-task-loop" =
+          "agent-${name}-task-loop" = mkIf agentCfg.notes.taskLoop.enable (
             let
               notesDir = agentCfg.notes.path;
               maxTasks = agentCfg.notes.taskLoop.maxTasks;
@@ -182,9 +182,10 @@ in
                   ''
                     exec ${pkgs.bash}/bin/bash ${agentTaskLoopScript name agentCfg}
                   '';
-            };
+            }
+          );
 
-          "agent-${name}-scheduler" = {
+          "agent-${name}-scheduler" = mkIf agentCfg.notes.scheduler.enable {
             description = "Daily scheduler for ${username}";
             unitConfig.ConditionUser = username;
             environment.PATH = lib.mkForce "/etc/profiles/per-user/${username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:${lib.makeBinPath [ pkgs.nix ]}";
@@ -209,7 +210,7 @@ in
           username = "agent-${name}";
         in
         {
-          "agent-${name}-task-loop" = {
+          "agent-${name}-task-loop" = mkIf agentCfg.notes.taskLoop.enable {
             wantedBy = [ "default.target" ];
             unitConfig.ConditionUser = username;
             timerConfig = {
@@ -218,7 +219,7 @@ in
             };
           };
 
-          "agent-${name}-scheduler" = {
+          "agent-${name}-scheduler" = mkIf agentCfg.notes.scheduler.enable {
             wantedBy = [ "default.target" ];
             unitConfig.ConditionUser = username;
             timerConfig = {

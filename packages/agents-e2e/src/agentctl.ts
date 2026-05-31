@@ -36,6 +36,22 @@ export class AgentCtl {
     return (await proc.exited) === 0;
   }
 
+  async start(agent: string, unit: string): Promise<boolean> {
+    const proc = Bun.spawn(["agentctl", agent, "start", unit], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return (await proc.exited) === 0;
+  }
+
+  async exec(agent: string, command: string): Promise<boolean> {
+    const proc = Bun.spawn(["agentctl", agent, "exec", "--", "bash", "-lc", command], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return (await proc.exited) === 0;
+  }
+
   async exists(agent: string): Promise<boolean> {
     const proc = Bun.spawn(["agentctl"], {
       stdout: "pipe",

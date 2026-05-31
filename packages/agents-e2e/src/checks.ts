@@ -31,6 +31,7 @@ interface Config {
   domain: string;
   timeoutMs: number;
   smoke: boolean;
+  triggerAgentRunner: boolean;
   notificationLoopEval: boolean;
   dryRun: boolean;
   print: boolean;
@@ -316,13 +317,47 @@ export async function setupEnvironment(
 // Ping-pong smoke test
 // ---------------------------------------------------------------------------
 
-export async function pingPong(config: Config, report: Report) {
+export async function pingPong(
+  config: Config,
+  report: Report,
+  agentctl?: AgentCtl,
+) {
   const toAddr = `${config.productAgent}@${config.domain}`;
   const tag = `e2e-${Date.now()}`;
+  const worktree = `/home/agent-${config.productAgent}/repos/tmp/worktree/os-agents-e2e/feat/email-pong-${tag}`;
   const subject = `[ping] ${tag}`;
   emit("info", "sending ping email", { to: toAddr, tag });
   try {
+    if (!agentctl) {
+      report.check("ping_worktree", "fail", "agentctl wrapper unavailable");
+      return;
+    }
+    const prepared = await agentctl.exec(
+      config.productAgent,
+      `mkdir -p ${JSON.stringify(worktree)}/.git`,
+    );
+    report.check(
+      "ping_worktree",
+      prepared ? "pass" : "fail",
+      prepared ? `Prepared ${worktree}` : `Failed to prepare ${worktree}`,
+    );
+    if (!prepared) return;
+
     const fromAddr = detectSender();
+    const task = {
+      agent: config.productAgent,
+      repo: "tmp/os-agents-e2e",
+      branch: `feat/email-pong-${tag}`,
+      worktree,
+      executor: "pi",
+      model: "ollama/qwen3:4b",
+      prompt: [
+        `Read this notification email and reply to ${fromAddr}.`,
+        `Send an email whose subject is exactly "Re: [pong] ${tag}".`,
+        `The body must be exactly "pong".`,
+        `Use the local himalaya CLI documented in TOOLS.md; include a Date header.`,
+      ].join(" "),
+    };
     const eml = [
       `From: ${fromAddr}`,
       `To: ${toAddr}`,
@@ -331,7 +366,11 @@ export async function pingPong(config: Config, report: Report) {
       `MIME-Version: 1.0`,
       `Content-Type: text/plain; charset=utf-8`,
       ``,
-      `ping`,
+      `Please handle this assigned OS-agent smoke task.`,
+      ``,
+      "```agent-task",
+      JSON.stringify(task, null, 2),
+      "```",
     ].join("\r\n");
     execSync("himalaya message send", {
       input: eml,
@@ -343,13 +382,14 @@ export async function pingPong(config: Config, report: Report) {
     throw err;
   }
 
+  if (config.triggerAgentRunner) {
+    await triggerPiRunner(config, report, agentctl);
+  }
+
   emit("info", "waiting for pong reply", { tag });
-  // The contract (job.yml parse_sources step) requires the reply subject to
-  // be `Re: [pong] <tag>` — flip `ping` to `pong`, preserve the tag. The
-  // harness asserts that invariant exactly: tag present AND pong in subject.
-  // Contract drift is caught by the sandbox test under `nix flake check`
-  // (tests/module/agent-task-loop-ping-pong.nix), so the smoke does not need
-  // a body-fallback.
+  // The agent-task prompt requires the reply subject to preserve the tag and
+  // replace ping with pong. The runner must not special-case this; Pi should
+  // use the local himalaya tool instructions to send the reply.
   const found = await pollUntil(async () => {
     try {
       const raw = execSync('himalaya envelope list -o json "not flag seen"', {
@@ -370,6 +410,30 @@ export async function pingPong(config: Config, report: Report) {
     found
       ? `Received pong reply for ${tag}`
       : `No pong reply within ${Math.round(config.timeoutMs / 60_000)} min`,
+  );
+}
+
+async function triggerPiRunner(
+  config: Config,
+  report: Report,
+  agentctl?: AgentCtl,
+) {
+  if (!agentctl) {
+    report.check(
+      "ping_runner_trigger",
+      "fail",
+      "agentctl wrapper unavailable; waiting for timer only",
+    );
+    return;
+  }
+  const unit = `agent-${config.productAgent}-pi-task-runner.service`;
+  const started = await agentctl.start(config.productAgent, unit);
+  report.check(
+    "ping_runner_trigger",
+    started ? "pass" : "fail",
+    started
+      ? `Started ${unit}`
+      : `Failed to start ${unit}; waiting for timer only`,
   );
 }
 

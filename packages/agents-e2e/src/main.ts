@@ -21,6 +21,7 @@ interface Config {
   domain: string;
   timeoutMs: number;
   smoke: boolean;
+  triggerAgentRunner: boolean;
   notificationLoopEval: boolean;
   dryRun: boolean;
   print: boolean;
@@ -58,6 +59,8 @@ function parseConfig(): Config | null {
       domain: { type: "string", default: Bun.env.AGENT_DOMAIN ?? "" },
       timeout: { type: "string", default: "30" },
       smoke: { type: "boolean", default: false },
+      "trigger-agent-runner": { type: "boolean", default: true },
+      "no-trigger-agent-runner": { type: "boolean", default: false },
       "notification-loop-eval": { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       print: { type: "boolean", default: false },
@@ -120,6 +123,9 @@ function parseConfig(): Config | null {
     domain,
     timeoutMs: resolvedTimeoutMinutes * 60 * 1000,
     smoke: values.smoke ?? false,
+    triggerAgentRunner:
+      (values["trigger-agent-runner"] ?? true) &&
+      !(values["no-trigger-agent-runner"] ?? false),
     notificationLoopEval: isNotificationLoopEval,
     dryRun: values["dry-run"] ?? false,
     print: values.print ?? false,
@@ -147,6 +153,10 @@ Options:
   --domain DOMAIN       Agent email domain (default: $AGENT_DOMAIN or derived from --forgejo-url)
   --timeout MINUTES     Polling timeout in minutes (default: 30)
   --smoke               Send ping email and wait for pong reply (pipeline smoke test)
+  --trigger-agent-runner
+                        In smoke mode, start agent-NAME-pi-task-runner.service after sending ping (default: true)
+  --no-trigger-agent-runner
+                        In smoke mode, wait for the timer instead of starting the runner
   --notification-loop-eval
                         Compare models on the ping/pong notification tool-use task
   --dry-run             Validate configuration without executing the workflow
@@ -179,7 +189,7 @@ async function main() {
 
   if (config.smoke) {
     emit("info", "smoke mode -- ping-pong email pipeline test");
-    await checks.pingPong(config, report);
+    await checks.pingPong(config, report, agentctl);
     report.finalize();
     report.print(config.print);
     process.exit(report.failed ? 1 : 0);

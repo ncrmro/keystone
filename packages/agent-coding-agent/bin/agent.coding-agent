@@ -19,6 +19,7 @@ Required:
 
 Optional:
   --branch PREFIX/NAME      Full branch name (default: auto-generated)
+  --worktree PATH           Use a preassigned git worktree instead of .repos checkout
   --prefix PREFIX           Branch prefix: feature|fix|chore|refactor|docs (default: feature)
   --provider NAME           Agent CLI: claude|codex|gemini (default: claude)
   --model MODEL             Model override (e.g. sonnet, opus)
@@ -37,6 +38,7 @@ EOF
 REPO=""
 TASK=""
 BRANCH=""
+WORKTREE=""
 PREFIX="feature"
 PROVIDER="claude"
 MODEL=""
@@ -53,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --repo)       REPO="$2"; shift 2 ;;
     --task)       TASK="$2"; shift 2 ;;
     --branch)     BRANCH="$2"; shift 2 ;;
+    --worktree)   WORKTREE="$2"; shift 2 ;;
     --prefix)     PREFIX="$2"; shift 2 ;;
     --provider)   PROVIDER="$2"; shift 2 ;;
     --model)      MODEL="$2"; shift 2 ;;
@@ -78,7 +81,11 @@ if [[ -z "$TASK" && -z "$REVIEW_ONLY" ]]; then
   exit 1
 fi
 
-REPO_DIR="$AGENT_SPACE/.repos/$REPO"
+if [[ -n "$WORKTREE" ]]; then
+  REPO_DIR="$(cd "$WORKTREE" && pwd)"
+else
+  REPO_DIR="$AGENT_SPACE/.repos/$REPO"
+fi
 
 ##############################################################################
 # Cleanup trap
@@ -90,7 +97,7 @@ cleanup() {
     rm -f "$f"
   done
   # Return to default branch on exit (best-effort)
-  if [[ -n "${DEFAULT_BRANCH:-}" && -d "$REPO_DIR" ]]; then
+  if [[ -z "$WORKTREE" && -n "${DEFAULT_BRANCH:-}" && -d "$REPO_DIR" ]]; then
     git -C "$REPO_DIR" checkout "$DEFAULT_BRANCH" 2>/dev/null || true
   fi
   exit "$exit_code"
@@ -146,13 +153,22 @@ if [[ -z "$DEFAULT_BRANCH" ]]; then
 fi
 log "Default branch: $DEFAULT_BRANCH"
 
-# Ensure clean state on default branch
-git -C "$REPO_DIR" checkout "$DEFAULT_BRANCH" 2>/dev/null || die "Failed to checkout $DEFAULT_BRANCH"
-git -C "$REPO_DIR" fetch origin || die "Failed to fetch origin"
-git -C "$REPO_DIR" pull --ff-only origin "$DEFAULT_BRANCH" || die "Failed to pull $DEFAULT_BRANCH (non-fast-forward)"
+if [[ -n "$WORKTREE" ]]; then
+  CURRENT_BRANCH="$(git -C "$REPO_DIR" branch --show-current)" || die "Cannot detect current worktree branch"
+  if [[ -z "$BRANCH" ]]; then
+    BRANCH="$CURRENT_BRANCH"
+  elif [[ "$CURRENT_BRANCH" != "$BRANCH" ]]; then
+    die "Worktree branch mismatch: expected $BRANCH, found $CURRENT_BRANCH"
+  fi
+else
+  # Ensure clean state on default branch
+  git -C "$REPO_DIR" checkout "$DEFAULT_BRANCH" 2>/dev/null || die "Failed to checkout $DEFAULT_BRANCH"
+  git -C "$REPO_DIR" fetch origin || die "Failed to fetch origin"
+  git -C "$REPO_DIR" pull --ff-only origin "$DEFAULT_BRANCH" || die "Failed to pull $DEFAULT_BRANCH (non-fast-forward)"
+fi
 
 if ! git -C "$REPO_DIR" diff --quiet || ! git -C "$REPO_DIR" diff --cached --quiet; then
-  die "Working tree is not clean on $DEFAULT_BRANCH. Commit or stash changes first."
+  die "Working tree is not clean on $BRANCH. Commit or stash changes first."
 fi
 
 log "Pre-flight passed"
@@ -221,23 +237,37 @@ fi
 ##############################################################################
 # 2. Create branch
 ##############################################################################
-if [[ -z "$BRANCH" ]]; then
-  SLUG="$(slugify "$TASK")"
-  BRANCH="$PREFIX/$SLUG"
+if [[ -z "$WORKTREE" ]]; then
+  if [[ -z "$BRANCH" ]]; then
+    SLUG="$(slugify "$TASK")"
+    BRANCH="$PREFIX/$SLUG"
+  fi
+  log "Branch: $BRANCH"
+  git -C "$REPO_DIR" checkout -b "$BRANCH" || die "Failed to create branch: $BRANCH"
+else
+  log "Branch: $BRANCH"
 fi
-log "Branch: $BRANCH"
-
-git -C "$REPO_DIR" checkout -b "$BRANCH" || die "Failed to create branch: $BRANCH"
 
 ##############################################################################
 # 3. Generate system prompt
 ##############################################################################
 SYSTEM_PROMPT_FILE="$(mktemp)"
 TEMP_FILES+=("$SYSTEM_PROMPT_FILE")
+LOCAL_TOOLS_PROMPT=""
+for tools_file in "$HOME/TOOLS.md" "$HOME/.config/keystone/TOOLS.md"; do
+  if [[ -f "$tools_file" ]]; then
+    LOCAL_TOOLS_PROMPT+="
+
+## Local Tools
+$(cat "$tools_file")"
+  fi
+done
 
 cat > "$SYSTEM_PROMPT_FILE" <<SYSEOF
 ## Task
 $TASK
+
+$LOCAL_TOOLS_PROMPT
 
 ## Git Context
 Branch: $BRANCH (created from $DEFAULT_BRANCH)

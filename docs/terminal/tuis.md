@@ -40,4 +40,3 @@ TUIs are a good fit because they:
 
 - [Terminal Module](terminal.md)
 - [Shell Tools](shell-tools.md)
-- [Projects and pz](projects.md)
