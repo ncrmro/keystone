@@ -279,9 +279,10 @@ def create_uefi_secureboot_vm(
             print(f"ERROR: Failed to create disk image")
             sys.exit(1)
 
-    # NVRAM path in vms/ directory
+    # Keep firmware variables per VM so stale VM cleanup cannot delete another
+    # running VM's pflash file when tests share a parent directory.
     vm_dir = os.path.dirname(disk_path)
-    nvram_path = os.path.join(vm_dir, "OVMF_VARS.fd")
+    nvram_path = os.path.join(vm_dir, f"{vm_name}-OVMF_VARS.fd")
 
     # Find OVMF firmware files
     print("Searching for OVMF firmware...")

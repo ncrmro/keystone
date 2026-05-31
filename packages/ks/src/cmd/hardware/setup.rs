@@ -1,16 +1,16 @@
 //! `ks hardware setup` — one-shot LUKS enrollment orchestrator.
 //!
 //! Given a freshly installed machine, do everything: detect the
-//! hardware, replace the default LUKS password, generate a recovery
-//! key, enroll TPM2, enroll a FIDO2 device if one is plugged in, and
+//! hardware, enroll a strong human fallback, enroll TPM2, replace the
+//! default LUKS password, enroll a FIDO2 device if one is plugged in, and
 //! enroll a fingerprint if a reader is present.
 //!
 //! Layered fallback (in the final state):
 //!
+//! - **FIDO2**: YubiKey HMAC, preferred human fallback when present.
+//! - **Recovery key** (slot 1): 8-word paper key, high-entropy fallback.
 //! - **Password** (slot 0): user-chosen passphrase, manual fallback.
-//! - **Recovery key** (slot 1): 8-word paper key, last-resort.
-//! - **TPM2**: PCR-bound auto-unlock at boot (default).
-//! - **FIDO2**: YubiKey HMAC, manual fallback when TPM rebinding breaks.
+//! - **TPM2**: PCR-bound auto-unlock at boot (default ergonomic path).
 //! - **Fingerprint**: not LUKS; gates sudo/login.
 //!
 //! The implementation is `plan` + `execute`: `plan` computes the
@@ -58,22 +58,18 @@ pub enum SetupStep {
     /// Secure Boot enrollment has been staged and a reboot is now required
     /// before TPM-bound unlock can continue.
     RebootAndResume { reason: String },
-    /// Slot 0 currently accepts "keystone" — rotate it before anything
-    /// else can touch the volume.
+    /// Slot 0 currently accepts "keystone" — rotate it after stronger
+    /// fallback methods are available.
     RotateDefaultPassword { volume_id: String },
-    /// Generate the recovery key and enroll TPM2 in one shot via
-    /// [`enroll::enroll_recovery`]. Skipped if both are already
-    /// enrolled.
-    EnrollRecoveryAndTpm2 {
-        volume_id: String,
-        already_recovery: bool,
-        already_tpm2: bool,
-    },
     /// Enroll the plugged-in FIDO2 device against this volume.
     EnrollFido2 {
         volume_id: String,
         device_label: String,
     },
+    /// Generate a paper recovery key for this volume.
+    EnrollRecoveryKey { volume_id: String },
+    /// Enroll TPM2 automatic unlock against this volume.
+    EnrollTpm2 { volume_id: String },
     /// Enroll the current user's fingerprint via fprintd.
     EnrollFingerprint,
     /// Hardware is present but enrollment is skipped (e.g., FIDO2 reader
@@ -94,16 +90,22 @@ impl SetupStep {
             Self::RotateDefaultPassword { volume_id } => {
                 format!("Rotate default password on `{}`", volume_id)
             }
-            Self::EnrollRecoveryAndTpm2 { volume_id, .. } => {
-                format!("Generate recovery key + enroll TPM2 on `{}`", volume_id)
-            }
             Self::EnrollFido2 {
                 volume_id,
                 device_label,
             } => {
-                format!("Enroll FIDO2 ({}) on `{}`", device_label, volume_id)
+                format!(
+                    "Enroll FIDO2 hardware key ({}) on `{}`",
+                    device_label, volume_id
+                )
             }
-            Self::EnrollFingerprint => "Enroll fingerprint for sudo/login".into(),
+            Self::EnrollRecoveryKey { volume_id } => {
+                format!("Generate recovery key for `{}`", volume_id)
+            }
+            Self::EnrollTpm2 { volume_id } => {
+                format!("Enroll TPM2 automatic unlock on `{}`", volume_id)
+            }
+            Self::EnrollFingerprint => "Enroll fingerprint for login/sudo".into(),
             Self::Skip { reason } => format!("Skip: {}", reason),
         }
     }
@@ -151,9 +153,9 @@ fn require_root_volume(volume_id: &str) -> Result<()> {
 enum EnrollmentAction {
     ProvisionSecureBoot,
     RotatePassword,
-    EnrollRecoveryAndTpm2,
-    EnrollTpm2Only,
     EnrollFido2,
+    EnrollRecoveryKey,
+    EnrollTpm2,
     EnrollFingerprint,
 }
 
@@ -167,21 +169,17 @@ fn action_for_step(step: &SetupStep) -> Result<Option<EnrollmentAction>> {
             require_root_volume(volume_id)?;
             Ok(Some(EnrollmentAction::RotatePassword))
         }
-        SetupStep::EnrollRecoveryAndTpm2 {
-            volume_id,
-            already_recovery,
-            already_tpm2: _,
-        } => {
-            require_root_volume(volume_id)?;
-            if *already_recovery {
-                Ok(Some(EnrollmentAction::EnrollTpm2Only))
-            } else {
-                Ok(Some(EnrollmentAction::EnrollRecoveryAndTpm2))
-            }
-        }
         SetupStep::EnrollFido2 { volume_id, .. } => {
             require_root_volume(volume_id)?;
             Ok(Some(EnrollmentAction::EnrollFido2))
+        }
+        SetupStep::EnrollRecoveryKey { volume_id } => {
+            require_root_volume(volume_id)?;
+            Ok(Some(EnrollmentAction::EnrollRecoveryKey))
+        }
+        SetupStep::EnrollTpm2 { volume_id } => {
+            require_root_volume(volume_id)?;
+            Ok(Some(EnrollmentAction::EnrollTpm2))
         }
         SetupStep::EnrollFingerprint => Ok(Some(EnrollmentAction::EnrollFingerprint)),
         SetupStep::Skip { .. } => Ok(None),
@@ -211,11 +209,8 @@ pub fn plan(report: &HardwareReport, _opts: &SetupOptions) -> SetupPlan {
         ));
     }
 
-    // Per-volume steps. TPM and FIDO2 enrollment depend on the
-    // machine having those credentials available; password rotation
-    // does not. We pass machine-level state in so the planner can
-    // skip TPM steps on TPM-less hosts instead of generating a plan
-    // that will fail at execute time.
+    // Per-volume steps. Establish a durable human fallback before TPM
+    // auto-unlock, then rotate the default installer password.
     let tpm_available = matches!(report.machine.tpm2, probe::TpmDeviceState::Present);
     for v in &report.volumes {
         steps.extend(plan_volume(v, &report.machine.fido2_devices, tpm_available));
@@ -309,42 +304,52 @@ fn plan_volume(
     tpm_available: bool,
 ) -> Vec<SetupStep> {
     let mut steps = Vec::new();
-    if v.slots.password.is_default {
-        steps.push(SetupStep::RotateDefaultPassword {
-            volume_id: v.id.clone(),
-        });
-    }
-    // EnrollRecoveryAndTpm2 covers both the recovery key slot and the
-    // TPM2 token in one systemd-cryptenroll invocation pair. If TPM2
-    // isn't available, skip the whole step with an explicit reason
-    // so the user sees why it's missing in the dry-run.
-    if !v.slots.recovery.enrolled || !v.slots.tpm2.enrolled {
-        if tpm_available {
-            steps.push(SetupStep::EnrollRecoveryAndTpm2 {
-                volume_id: v.id.clone(),
-                already_recovery: v.slots.recovery.enrolled,
-                already_tpm2: v.slots.tpm2.enrolled,
-            });
-        } else {
-            steps.push(SetupStep::Skip {
-                reason: format!(
-                    "no TPM2 device on this host — skipping recovery+TPM2 on `{}`",
-                    v.id
-                ),
-            });
-        }
-    }
-    // Opportunistic FIDO2 enrollment: if a device is plugged in *now*
-    // and this volume doesn't already have a FIDO2 token, pair the
-    // first detected device. Re-running setup later with the device
-    // unplugged will skip this step automatically.
+    let mut strong_fallback_planned = false;
+
     if !v.slots.fido2.enrolled {
         if let Some(dev) = fido2_devices.first() {
             steps.push(SetupStep::EnrollFido2 {
                 volume_id: v.id.clone(),
                 device_label: dev.label.clone(),
             });
+            strong_fallback_planned = true;
         }
+    }
+
+    let strong_fallback_exists = v.slots.fido2.enrolled || v.slots.recovery.enrolled;
+    if !strong_fallback_exists && !strong_fallback_planned {
+        steps.push(SetupStep::EnrollRecoveryKey {
+            volume_id: v.id.clone(),
+        });
+        strong_fallback_planned = true;
+    }
+
+    if !v.slots.tpm2.enrolled {
+        if tpm_available && (strong_fallback_exists || strong_fallback_planned) {
+            steps.push(SetupStep::EnrollTpm2 {
+                volume_id: v.id.clone(),
+            });
+        } else if tpm_available {
+            steps.push(SetupStep::Skip {
+                reason: format!(
+                    "TPM2 automatic unlock on `{}` needs a FIDO2 or recovery fallback first",
+                    v.id
+                ),
+            });
+        } else {
+            steps.push(SetupStep::Skip {
+                reason: format!(
+                    "no TPM2 device on this host — skipping TPM2 automatic unlock on `{}`",
+                    v.id
+                ),
+            });
+        }
+    }
+
+    if v.slots.password.is_default {
+        steps.push(SetupStep::RotateDefaultPassword {
+            volume_id: v.id.clone(),
+        });
     }
     steps
 }
@@ -378,6 +383,9 @@ pub async fn execute<P: SetupPrompts>(
         prompts
             .say("(dry run — would execute the following plan:)")
             .await;
+        for line in setup_model_lines() {
+            prompts.say(line).await;
+        }
         for s in &full_plan.steps {
             prompts.say(&format!("  • {}", s.label())).await;
         }
@@ -420,20 +428,15 @@ pub async fn execute<P: SetupPrompts>(
                     .await
                     .context("rotating default password")?;
             }
-            Some(EnrollmentAction::EnrollRecoveryAndTpm2) => {
-                enroll::enroll_recovery()
+            Some(EnrollmentAction::EnrollRecoveryKey) => {
+                enroll::enroll_recovery_key()
                     .await
-                    .context("enrolling recovery + TPM2")?;
+                    .context("enrolling recovery key")?;
             }
-            Some(EnrollmentAction::EnrollTpm2Only) => {
-                // If the recovery key is already enrolled but TPM2 is
-                // missing, don't run the full enroll_recovery (which
-                // would generate a *new* recovery key and overwrite
-                // the user's existing one). Fall back to the
-                // standalone TPM2 enrollment instead.
+            Some(EnrollmentAction::EnrollTpm2) => {
                 enroll::enroll_tpm()
                     .await
-                    .context("enrolling TPM2 (recovery already present)")?;
+                    .context("enrolling TPM2 automatic unlock")?;
             }
             Some(EnrollmentAction::EnrollFingerprint) => {
                 // Fingerprint enrollment is best-effort: fprintd may be
@@ -472,6 +475,9 @@ pub struct CliPrompts;
 impl SetupPrompts for CliPrompts {
     async fn confirm_plan(&self, plan: &SetupPlan) -> Result<bool> {
         println!("\nSetup plan:");
+        for line in setup_model_lines() {
+            println!("{}", line);
+        }
         for s in &plan.steps {
             println!("  • {}", s.label());
         }
@@ -495,6 +501,18 @@ impl SetupPrompts for CliPrompts {
     async fn say(&self, text: &str) {
         println!("{}", text);
     }
+}
+
+fn setup_model_lines() -> &'static [&'static str] {
+    &[
+        "Unlock model:",
+        "  FIDO2/YubiKey is the preferred human fallback when present.",
+        "  Recovery keys are high-entropy and reliable, but hard to type and store.",
+        "  Passwords are manual fallback; use a host-unique passphrase, not your login password.",
+        "  TPM2 provides automatic full-disk unlock after Secure Boot is active.",
+        "  Fingerprints are for login/sudo convenience, not disk unlock.",
+        "",
+    ]
 }
 
 /// Top-level CLI entry for `ks hardware setup`.
@@ -523,8 +541,8 @@ pub async fn execute_cli(opts: SetupOptions) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::probe::{
-        BootStage, HardwareReport, LuksVolume, MachineState, SecureBootState, SlotMap, SlotState,
-        TpmDeviceState, VolumeRole,
+        BootStage, Fido2Device, HardwareReport, LuksVolume, MachineState, SecureBootState, SlotMap,
+        SlotState, TpmDeviceState, VolumeRole,
     };
     use super::*;
     use std::path::PathBuf;
@@ -557,21 +575,28 @@ mod tests {
     }
 
     #[test]
-    fn plan_for_fresh_install_starts_with_password_rotation() {
+    fn plan_for_fresh_install_starts_with_recovery_fallback() {
         let p = plan(&fresh_install_report(), &SetupOptions::default());
         assert!(matches!(
             p.steps[0],
-            SetupStep::RotateDefaultPassword { ref volume_id } if volume_id == "root"
+            SetupStep::EnrollRecoveryKey { ref volume_id } if volume_id == "root"
         ));
     }
 
     #[test]
-    fn plan_includes_recovery_and_tpm2_step() {
+    fn plan_includes_tpm2_after_recovery() {
         let p = plan(&fresh_install_report(), &SetupOptions::default());
-        assert!(p
+        let recovery = p
             .steps
             .iter()
-            .any(|s| matches!(s, SetupStep::EnrollRecoveryAndTpm2 { .. })));
+            .position(|s| matches!(s, SetupStep::EnrollRecoveryKey { .. }))
+            .expect("recovery step");
+        let tpm = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::EnrollTpm2 { .. }))
+            .expect("TPM2 step");
+        assert!(recovery < tpm);
     }
 
     #[test]
@@ -586,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_skips_recovery_when_everything_already_enrolled() {
+    fn plan_skips_recovery_and_tpm_when_everything_already_enrolled() {
         let mut r = fresh_install_report();
         r.volumes[0].slots.password.is_default = false;
         r.volumes[0].slots.recovery.enrolled = true;
@@ -595,7 +620,11 @@ mod tests {
         assert!(!p
             .steps
             .iter()
-            .any(|s| matches!(s, SetupStep::EnrollRecoveryAndTpm2 { .. })));
+            .any(|s| matches!(s, SetupStep::EnrollRecoveryKey { .. })));
+        assert!(!p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::EnrollTpm2 { .. })));
     }
 
     #[test]
@@ -695,28 +724,80 @@ mod tests {
     }
 
     #[test]
-    fn action_for_step_preserves_existing_recovery_key() {
-        let step = SetupStep::EnrollRecoveryAndTpm2 {
+    fn plan_enrolls_fido2_before_tpm_when_device_is_plugged_in() {
+        let mut r = fresh_install_report();
+        r.machine.fido2_devices = vec![Fido2Device {
+            path: "/dev/hidraw0".into(),
+            label: "Yubico YubiKey OTP+FIDO+CCID".into(),
+        }];
+        let p = plan(&r, &SetupOptions::default());
+        let fido = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::EnrollFido2 { .. }))
+            .expect("FIDO2 step");
+        let tpm = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::EnrollTpm2 { .. }))
+            .expect("TPM2 step");
+        assert!(fido < tpm);
+        assert!(!p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::EnrollRecoveryKey { .. })));
+    }
+
+    #[test]
+    fn plan_uses_existing_recovery_before_tpm() {
+        let mut r = fresh_install_report();
+        r.volumes[0].slots.recovery.enrolled = true;
+        let p = plan(&r, &SetupOptions::default());
+        assert!(!p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::EnrollRecoveryKey { .. })));
+        assert!(p
+            .steps
+            .iter()
+            .any(|s| matches!(s, SetupStep::EnrollTpm2 { .. })));
+    }
+
+    #[test]
+    fn plan_rotates_default_password_after_tpm() {
+        let p = plan(&fresh_install_report(), &SetupOptions::default());
+        let tpm = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::EnrollTpm2 { .. }))
+            .expect("TPM2 step");
+        let password = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::RotateDefaultPassword { .. }))
+            .expect("password step");
+        assert!(tpm < password);
+    }
+
+    #[test]
+    fn action_for_recovery_step_generates_recovery_key_only() {
+        let step = SetupStep::EnrollRecoveryKey {
             volume_id: "root".into(),
-            already_recovery: true,
-            already_tpm2: false,
         };
         assert_eq!(
             action_for_step(&step).expect("valid step"),
-            Some(EnrollmentAction::EnrollTpm2Only)
+            Some(EnrollmentAction::EnrollRecoveryKey)
         );
     }
 
     #[test]
-    fn action_for_step_uses_full_recovery_flow_when_recovery_missing() {
-        let step = SetupStep::EnrollRecoveryAndTpm2 {
+    fn action_for_tpm_step_enrolls_tpm_only() {
+        let step = SetupStep::EnrollTpm2 {
             volume_id: "root".into(),
-            already_recovery: false,
-            already_tpm2: false,
         };
         assert_eq!(
             action_for_step(&step).expect("valid step"),
-            Some(EnrollmentAction::EnrollRecoveryAndTpm2)
+            Some(EnrollmentAction::EnrollTpm2)
         );
     }
 }

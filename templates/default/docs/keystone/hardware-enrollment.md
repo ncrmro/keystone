@@ -35,19 +35,32 @@ post-install hardening on a new host.
 
 ## What Keystone is trying to achieve
 
-After enrollment, a fully configured machine aims for this layered fallback:
+After enrollment, a fully configured machine aims for this layered unlock
+model:
 
 | Method | What it is | Used when |
 |---|---|---|
-| Password | Your chosen LUKS passphrase | Manual fallback if automatic methods fail |
-| Recovery key | An 8-word paper key | Disaster recovery |
+| FIDO2 | YubiKey or other hardware-key unlock | Preferred human fallback when the key is present |
+| Recovery key | An 8-word paper key | High-entropy disaster recovery |
+| Password | Your chosen LUKS passphrase | Manual fallback |
 | TPM2 | Automatic unlock bound to Secure Boot + measured boot state | Normal day-to-day boot |
-| FIDO2 | Optional hardware-key unlock | Manual fallback after TPM rebinding or hardware changes |
 | Fingerprint | `fprintd` enrollment for login/sudo | Desktop convenience, not disk unlock |
 
 The important model is: Keystone does not want a single magic unlock path.
 It wants automatic boot when the machine is healthy, plus at least one human
 recovery path when it is not.
+
+Keystone prefers human disk-unlock fallbacks in this order:
+
+1. FIDO2/YubiKey, because it gives recovery-key-like protection with easier
+   day-to-day ergonomics when the key is present.
+2. Recovery key, because it is high-entropy and reliable, but awkward to type
+   and store safely.
+3. Password, because it is the most familiar fallback but should be unique per
+   host and different from your login password.
+
+TPM2 is different: it is the automatic full-disk unlock path for normal boots,
+not the credential you rely on when hardware or firmware state changes.
 
 ## Which command to use
 
@@ -82,9 +95,8 @@ What to look for:
   TPM2 / recovery / FIDO2 as missing.
 - The dry-run should show either the full enrollment plan or the Secure Boot
   staging work that must happen before TPM enrollment can continue.
-- The interactive setup should rotate the default password first, then show
-  the recovery key once, then enroll TPM2, then optionally enroll FIDO2 or
-  fingerprint if the hardware is present.
+- The interactive setup should establish a FIDO2 or recovery fallback first,
+  enroll TPM2 automatic unlock, then rotate the default password.
 - If Secure Boot is not active yet, `ks hardware setup` now stages that work
   too: it can generate keys or enroll them in Setup Mode, then stop cleanly
   for the required firmware change or reboot before you rerun it.
@@ -135,17 +147,25 @@ methods.
 
 ```text
 (dry run — would execute the following plan:)
+Unlock model:
+  FIDO2/YubiKey is the preferred human fallback when present.
+  Recovery keys are high-entropy and reliable, but hard to type and store.
+  Passwords are manual fallback; use a host-unique passphrase, not your login password.
+  TPM2 provides automatic full-disk unlock after Secure Boot is active.
+  Fingerprints are for login/sudo convenience, not disk unlock.
+
   • Enroll Secure Boot keys
   • Reboot and re-run setup: Secure Boot keys will be active after reboot. Re-run `ks hardware setup` to continue TPM enrollment.
+  • Generate recovery key for `root`
+  • Enroll TPM2 automatic unlock on `root`
   • Rotate default password on `root`
-  • Generate recovery key + enroll TPM2 on `root`
   • Skip: no fingerprint reader detected
 ```
 
 If a FIDO2 key is plugged in, you should also see a step like:
 
 ```text
-  • Enroll FIDO2 (Yubico YubiKey OTP+FIDO+CCID) on `root`
+  • Enroll FIDO2 hardware key (Yubico YubiKey OTP+FIDO+CCID) on `root`
 ```
 
 On a host where Secure Boot is disabled entirely, the dry-run will instead
@@ -163,9 +183,16 @@ start with a staging step like:
 
 ```text
 Setup plan:
+Unlock model:
+  FIDO2/YubiKey is the preferred human fallback when present.
+  Recovery keys are high-entropy and reliable, but hard to type and store.
+  Passwords are manual fallback; use a host-unique passphrase, not your login password.
+  TPM2 provides automatic full-disk unlock after Secure Boot is active.
+  Fingerprints are for login/sudo convenience, not disk unlock.
+
+  • Enroll FIDO2 hardware key (Yubico YubiKey OTP+FIDO+CCID) on `root`
+  • Enroll TPM2 automatic unlock on `root`
   • Rotate default password on `root`
-  • Generate recovery key + enroll TPM2 on `root`
-  • Enroll FIDO2 (Yubico YubiKey OTP+FIDO+CCID) on `root`
   • Skip: no fingerprint reader detected
 
 Continue? [y/N]:
@@ -174,36 +201,24 @@ Continue? [y/N]:
 After confirmation, a representative run looks like:
 
 ```text
+→ Enroll FIDO2 hardware key (Yubico YubiKey OTP+FIDO+CCID) on `root`
+=== Keystone enrollment: FIDO2 hardware key ===
+
+Detected FIDO2 device: Yubico YubiKey OTP+FIDO+CCID
+Touch your FIDO2 device when it blinks...
+[OK] FIDO2 enrolled.
+
+→ Enroll TPM2 automatic unlock on `root`
+=== Keystone enrollment: TPM2 (standalone) ===
+
+Enrolling TPM2 (PCRs 1,7)...
+[OK] TPM2 enrolled.
+
 → Rotate default password on `root`
 === Keystone enrollment: rotate LUKS password ===
 
 Rotating slot 0 to the new passphrase...
 [OK] LUKS slot 0 rotated.
-
-→ Generate recovery key + enroll TPM2 on `root`
-=== Keystone enrollment: recovery key + TPM2 ===
-
-[Step 1/3] Generating recovery key...
-
-+-------------------------------------------------------------------------+
-|                       YOUR RECOVERY KEY                                 |
-+-------------------------------------------------------------------------+
-|                                                                         |
-|  aaaaaaaa-bbbbbbbb-cccccccc-dddddddd-eeeeeeee-ffffffff-gggggggg-hhhhhhhh  |
-|                                                                         |
-+-------------------------------------------------------------------------+
-
-[!] Save this key immediately. It will not be shown again.
-
-Store in:
-  - Password manager with offline backup
-  - Printed paper in physical safe
-
-[Step 2/3] Enrolling TPM2 (PCRs 1,7)...
-[OK] TPM2 enrolled (password slot preserved as manual fallback).
-
-[Step 3/3] Writing enrollment marker...
-[OK] Done. Test with: sudo reboot
 
 ✓ Setup complete. Run `ks hardware report` to verify.
 ```
@@ -258,9 +273,15 @@ You will be prompted to touch the hardware key when it blinks.
 
 ### Enroll fingerprint for login and sudo
 
+Fingerprint enrollment does not unlock the encrypted disk. It only improves
+login and sudo ergonomics after the machine has booted.
+
 ```bash
 ks hardware enroll fingerprint
 ```
+
+The sensor will ask for the same finger several times. Lift and place your
+finger each time so it can capture enough samples; failed scans can be retried.
 
 This is not part of LUKS unlock. It controls user auth above the disk layer.
 

@@ -10,6 +10,7 @@
   bash,
   coreutils,
   cups,
+  e2fsprogs,
   fzf,
   git,
   glow,
@@ -69,6 +70,7 @@ let
     ]
     ++ lib.optionals stdenv.hostPlatform.isLinux [
       cups
+      e2fsprogs
       polkit
       sudo
       systemd

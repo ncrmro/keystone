@@ -144,8 +144,8 @@ in
     # via `ks hardware setup` (or the per-method `ks hardware enroll
     # <method>` primitives). The tpm2-device=auto crypttab hint in
     # storage.nix tells systemd-cryptsetup to attempt TPM unlock, but
-    # when no TPM token is enrolled in the LUKS header, it falls back
-    # to password (fallbackToPassword = true).
+    # when no TPM token is enrolled in the LUKS header, systemd initrd
+    # still asks for the passphrase.
     environment.systemPackages = [
       # Root helper to refresh the world-readable disk unlock status
       # file. Invoked from the keystone-tpm-check systemd service.

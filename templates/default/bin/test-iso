@@ -31,7 +31,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ISO_RESULT="/tmp/keystone-test-iso"
-VM_DISK_PATH="/tmp/keystone-test-iso-disk.qcow2"
+VM_DISK_PATH="${VM_DISK_PATH:-}"
 SSH_PORT=12222
 # Full installs regularly realize large target closures, so use the same
 # baseline we needed in manual verification instead of the old 4 GiB / 2 vCPU
@@ -134,6 +134,8 @@ Options:
                         Default: all ~/.ssh/id_*.pub files.
   --build-only          Build the ISO but do not start the VM.
   --no-build            Skip the build step and boot an existing ISO.
+  --no-delete           Preserve the VM, disk image, and screenshots on exit.
+                        Use this when debugging e2e failures manually.
   --dev                 Allow building from a dirty working tree snapshot.
                         In --dev mode, the script prefers a repo-local
                         gitignored SSH key at $DEV_SSH_KEY_PATH and generates
@@ -167,7 +169,7 @@ Options:
                         desktop-class laptop configs — and first-boot).
   --disk-size GB        Size of the attached install disk image in GB (default: $VM_DISK_SIZE).
   --disk-path PATH      Path to the attached install disk image
-                        (default: $VM_DISK_PATH).
+                        (default: per-run path under /tmp).
   -m, --memory MB       QEMU RAM in MB (default: $QEMU_MEM).
   -c, --cpus N          QEMU vCPU count (default: $QEMU_CPUS).
   -p, --port PORT       Host SSH port to forward (default: $SSH_PORT).
@@ -205,6 +207,7 @@ DIRECT_MODE=false
 DIRECT_HOST="laptop"
 UPDATE_KEYSTONE_INPUT=false
 DEV_MODE=false
+NO_DELETE=false
 
 # Admin identity — read from flake outputs (mkSystemFlake exposes these).
 ADMIN_USERNAME=""
@@ -224,6 +227,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-build)
             BUILD=false
+            shift
+            ;;
+        --no-delete)
+            NO_DELETE=true
             shift
             ;;
         --update-keystone-input)
@@ -649,15 +656,19 @@ set -eo pipefail
 esp=/mnt/boot
 disk=$(printf '%q' "$E2E_DISK_DEVICE")
 label='Keystone E2E Boot'
+fallback_loader="\$esp/EFI/BOOT/BOOTX64.EFI"
 loader_abs=""
 
-if [ -f "\$esp/EFI/BOOT/BOOTX64.EFI" ]; then
-    loader_abs="\$esp/EFI/BOOT/BOOTX64.EFI"
-else
-    loader_abs="\$(find "\$esp/EFI/Linux" -maxdepth 1 -type f -name '*.efi' | sort | head -n1)"
+mkdir -p "\$esp/EFI/BOOT"
+
+if [ ! -f "\$fallback_loader" ]; then
+    linux_loader="\$(find "\$esp/EFI/Linux" -maxdepth 1 -type f -name '*.efi' | sort | head -n1)"
+    [ -n "\$linux_loader" ]
+    [ -f "\$linux_loader" ]
+    cp "\$linux_loader" "\$fallback_loader"
 fi
 
-[ -n "\$loader_abs" ]
+loader_abs="\$fallback_loader"
 [ -f "\$loader_abs" ]
 
 loader_rel="\${loader_abs#\$esp}"
@@ -939,6 +950,9 @@ run_direct_image() {
     # so virsh --reset got an empty domain name and the VM leaked.
     DIRECT_VM_NAME="keystone-direct-$$"
     DIRECT_RESULT="/tmp/keystone-vm-image-${host}-$$"
+    if [[ -z "$VM_DISK_PATH" ]]; then
+        VM_DISK_PATH="/tmp/${DIRECT_VM_NAME}-disk.qcow2"
+    fi
     # Local aliases so the rest of the function reads naturally.
     local direct_result="$DIRECT_RESULT"
     local direct_vm_name="$DIRECT_VM_NAME"
@@ -1463,6 +1477,9 @@ fi
 
 VM_SCRIPT="$KEYSTONE_LOCKED_PATH/bin/virtual-machine"
 VM_NAME="keystone-e2e-$$"
+if [[ -z "$VM_DISK_PATH" ]]; then
+    VM_DISK_PATH="/tmp/${VM_NAME}-disk.qcow2"
+fi
 NIX_SERVE_PID=""
 NIX_SERVE_PORT=""
 
@@ -1496,14 +1513,41 @@ cleanup_vm() {
     if [[ -n "${NIX_SERVE_PID:-}" ]]; then
         kill "$NIX_SERVE_PID" 2>/dev/null || true
     fi
+    if [[ "$NO_DELETE" == "true" ]]; then
+        log_warn "Preserving VM artifacts (--no-delete):"
+        [[ -n "${VM_NAME:-}" ]] && log_warn "  VM: $VM_NAME"
+        log_warn "  disk: $VM_DISK_PATH"
+        [[ -n "${E2E_SCREENSHOT_DIR:-}" ]] && log_warn "  screenshots: $E2E_SCREENSHOT_DIR"
+        log_warn "  SSH: ssh -i $DEV_SSH_KEY_PATH -p $SSH_PORT -o StrictHostKeyChecking=no ${ADMIN_USERNAME}@localhost"
+        return
+    fi
     if [[ -n "${VM_NAME:-}" ]]; then
         "$VM_SCRIPT" --reset "$VM_NAME" 2>/dev/null || true
     fi
     rm -f "$ISO_RESULT" "$VM_DISK_PATH"
+    rm -rf "${E2E_SCREENSHOT_DIR:-}"
 }
 
 trap 'cleanup_vm; cleanup_project_snapshot' EXIT
 
+prepare_fresh_vm_artifacts() {
+    local vm=""
+
+    while IFS= read -r vm; do
+        [[ -n "$vm" ]] || continue
+        if virsh -c qemu:///session domblklist "$vm" 2>/dev/null | grep -F "$VM_DISK_PATH" >/dev/null; then
+            log_warn "Removing stale e2e VM that still references $VM_DISK_PATH: $vm"
+            "$VM_SCRIPT" --reset "$vm" 2>/dev/null || true
+        fi
+    done < <(virsh -c qemu:///session list --all --name 2>/dev/null | grep '^keystone-e2e-' || true)
+
+    if [[ -e "$VM_DISK_PATH" ]]; then
+        log_warn "Removing stale VM disk before fresh installer boot: $VM_DISK_PATH"
+        rm -f "$VM_DISK_PATH"
+    fi
+}
+
+prepare_fresh_vm_artifacts
 start_nix_serve
 
 # ── boot the VM ──────────────────────────────────────────────────────────────

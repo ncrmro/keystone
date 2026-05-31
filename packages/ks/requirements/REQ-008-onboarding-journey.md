@@ -115,8 +115,14 @@ marker and enter the first-boot wizard.
 **REQ-008.21** The first-boot wizard MUST guide the user through Secure
 Boot key enrollment via `sbctl enroll-keys --microsoft`.
 
-**REQ-008.22** The first-boot wizard MUST guide the user through TPM2
-enrollment for automatic disk unlock.
+**REQ-008.22** The first-boot wizard MUST guide the user through disk-unlock
+hardening before TPM2 automatic unlock. It MUST establish or preserve a
+durable non-TPM fallback before enrolling TPM2. Preferred fallback order is
+FIDO2/YubiKey hardware key when present, then recovery key, then a
+host-unique LUKS password that differs from the login password.
+
+**REQ-008.22a** The first-boot wizard MUST describe TPM2 as automatic
+full-disk unlock for normal boots, not as the user's recovery credential.
 
 **REQ-008.23** After Secure Boot and TPM enrollment, the TUI SHOULD
 prompt the user to reboot so the new security settings take effect.
@@ -130,6 +136,11 @@ and skip those steps on subsequent boots.
 MUST include: importing public keys from GitHub, generating a new
 ed25519 key pair, or enrolling a FIDO2 hardware key (YubiKey) via
 `ssh-keygen -t ed25519-sk`.
+
+**REQ-008.25a** If fingerprint enrollment is offered, the TUI MUST explain
+that fingerprints are for login/sudo, not disk unlock, and that enrollment
+requires repeatedly lifting and placing the same finger until enough samples
+are captured.
 
 **REQ-008.26** Once SSH keys are configured, the TUI MUST prompt the user
 to push the pending install commit from Stage 4 to the remote repository.

@@ -366,6 +366,7 @@ let
                 ".hg"
                 ".svn"
                 ".jj"
+                "target"
               ];
               prefix = [
                 "result-"
@@ -392,6 +393,11 @@ let
                   name = "${repoName}-source";
                   filter = path: _: !(isTransientArtifact (baseNameOf (toString path)));
                 };
+            keystoneSource = builtins.path {
+              path = self.outPath;
+              name = "keystone-source";
+              filter = path: _: !(isTransientArtifact (baseNameOf (toString path)));
+            };
 
             installRepo =
               if repoSource == null then
@@ -485,7 +491,7 @@ let
             environment.etc = lib.mkIf (installRepo != null) (
               {
                 "keystone/install-repo".source = installRepo;
-                "keystone/install-keystone".source = self.outPath;
+                "keystone/install-keystone".source = keystoneSource;
                 "keystone/install-metadata/admin-username".text = "${adminUsername}\n";
                 "keystone/install-metadata/repo-owner".text = "${repoOwner}\n";
                 "keystone/install-metadata/repo-name".text = "${repoName}\n";

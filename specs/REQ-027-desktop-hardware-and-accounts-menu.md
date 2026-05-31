@@ -67,7 +67,8 @@ hardware menu.
 
 - **dhw-enroll-001.1**: The hardware menu MUST provide an action to enroll a
   FIDO2 hardware key for disk unlock on the configured credstore or root LUKS
-  device.
+  device. FIDO2/YubiKey disk unlock is the preferred human fallback when a
+  key is present; TPM2 remains the automatic unlock path for normal boots.
 - **dhw-enroll-001.2**: The enrollment flow MUST use `systemd-cryptenroll`
   rather than a custom token format.
 - **dhw-enroll-001.3**: The enrollment flow MUST run in a detached terminal

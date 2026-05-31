@@ -1,0 +1,1 @@
+../../templates/default/docs/keystone/hardware-enrollment.md

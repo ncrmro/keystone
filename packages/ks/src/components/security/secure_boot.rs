@@ -9,10 +9,12 @@
 //! 4. Prompt reboot
 
 use anyhow::Context;
+use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
 const PKI_BUNDLE: &str = "/var/lib/sbctl";
 const DB_PEM: &str = "/var/lib/sbctl/keys/db/db.pem";
+const EFIVARS_DIR: &str = "/sys/firmware/efi/efivars";
 
 /// Secure Boot enrollment state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +124,10 @@ pub async fn generate_keys() -> anyhow::Result<String> {
 
 /// Enroll Secure Boot keys via `sbctl enroll-keys`.
 pub async fn enroll_keys() -> anyhow::Result<String> {
+    clear_secure_boot_efivar_immutable_bits()
+        .await
+        .context("preparing EFI variables for Secure Boot enrollment")?;
+
     let output = Command::new("sbctl")
         .args(["enroll-keys", "--yes-this-might-brick-my-machine"])
         .output()
@@ -140,6 +146,58 @@ pub async fn enroll_keys() -> anyhow::Result<String> {
             stderr.trim()
         )
     }
+}
+
+async fn clear_secure_boot_efivar_immutable_bits() -> anyhow::Result<()> {
+    for path in secure_boot_efivar_paths(Path::new(EFIVARS_DIR)).await? {
+        let output = Command::new("chattr")
+            .arg("-i")
+            .arg(&path)
+            .output()
+            .await
+            .with_context(|| format!("failed to run chattr -i {}", path.display()))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "could not clear immutable bit on {}. Run `chattr -i {}` and re-run `ks hardware setup`.{}{}",
+                path.display(),
+                path.display(),
+                if stderr.trim().is_empty() { "" } else { " Error: " },
+                stderr.trim()
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn secure_boot_efivar_paths(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(paths),
+        Err(e) => return Err(e).with_context(|| format!("failed to read {}", dir.display())),
+    };
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .with_context(|| format!("failed to read {}", dir.display()))?
+    {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if is_secure_boot_enrollment_var(&name) {
+            paths.push(entry.path());
+        }
+    }
+
+    Ok(paths)
+}
+
+fn is_secure_boot_enrollment_var(name: &str) -> bool {
+    ["PK-", "KEK-", "db-", "dbx-"]
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
 }
 
 /// Check whether SB keys have been generated at the expected PKI bundle path.
@@ -186,7 +244,7 @@ pub async fn provision() -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{status_from_facts, Status};
+    use super::{is_secure_boot_enrollment_var, status_from_facts, Status};
 
     #[test]
     fn setup_mode_takes_priority_over_existing_keys() {
@@ -214,5 +272,27 @@ mod tests {
             status_from_facts(false, false, false, false),
             Status::Unknown
         );
+    }
+
+    #[test]
+    fn secure_boot_efivar_matcher_is_narrow() {
+        assert!(is_secure_boot_enrollment_var(
+            "PK-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ));
+        assert!(is_secure_boot_enrollment_var(
+            "KEK-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ));
+        assert!(is_secure_boot_enrollment_var(
+            "db-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+        ));
+        assert!(is_secure_boot_enrollment_var(
+            "dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+        ));
+        assert!(!is_secure_boot_enrollment_var(
+            "SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ));
+        assert!(!is_secure_boot_enrollment_var(
+            "BootOrder-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ));
     }
 }

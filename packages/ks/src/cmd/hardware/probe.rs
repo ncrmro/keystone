@@ -412,6 +412,23 @@ pub fn slotmap_from_dump(dump: &ParsedLuksDump, password_is_default: bool) -> Sl
 /// Compute the warnings that apply to a [`HardwareReport`] given its
 /// observed state. Pure / testable.
 pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
+    warnings_from_context(report_without_warnings, WarningContext::InstalledSystem)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WarningContext {
+    InstalledSystem,
+    LiveInstaller,
+}
+
+fn warnings_from_context(
+    report_without_warnings: &HardwareReport,
+    context: WarningContext,
+) -> Vec<Warning> {
+    if matches!(context, WarningContext::LiveInstaller) {
+        return Vec::new();
+    }
+
     let mut out = Vec::new();
 
     match report_without_warnings.machine.secure_boot {
@@ -455,24 +472,32 @@ pub fn warnings_from(report_without_warnings: &HardwareReport) -> Vec<Warning> {
                 )),
             });
         }
-        let enrolled_count = [
-            v.slots.password.enrolled,
-            v.slots.recovery.enrolled,
-            v.slots.tpm2.enrolled,
-            v.slots.fido2.enrolled,
-        ]
-        .iter()
-        .filter(|x| **x)
-        .count();
-        if enrolled_count < 2 {
+        if !v.slots.tpm2.enrolled {
             out.push(Warning {
                 severity: Severity::Warning,
                 scope: WarningScope::Volume { id: v.id.clone() },
                 message: format!(
-                    "Volume `{}` has fewer than 2 unlock methods — loss of the enrolled credential locks the disk.",
+                    "Volume `{}` does not have TPM2 automatic unlock enrolled.",
                     v.id
                 ),
-                remediation: Some("Enroll at least one fallback method (recovery or TPM2).".into()),
+                remediation: Some(format!(
+                    "Run `ks hardware setup` after enrolling Secure Boot to add TPM2 automatic unlock on `{}`.",
+                    v.id
+                )),
+            });
+        }
+
+        if !v.slots.recovery.enrolled && !v.slots.fido2.enrolled {
+            out.push(Warning {
+                severity: Severity::Warning,
+                scope: WarningScope::Volume { id: v.id.clone() },
+                message: format!(
+                    "Volume `{}` has no strong human fallback unlock method.",
+                    v.id
+                ),
+                remediation: Some(
+                    "Enroll a FIDO2 hardware key or recovery key; keep a unique host passphrase as manual fallback.".into(),
+                ),
             });
         }
     }
@@ -506,8 +531,23 @@ pub async fn probe() -> HardwareReport {
         volumes,
         warnings: Vec::new(),
     };
-    report.warnings = warnings_from(&report);
+    let warning_context = if is_live_installer_environment() {
+        WarningContext::LiveInstaller
+    } else {
+        WarningContext::InstalledSystem
+    };
+    report.warnings = warnings_from_context(&report, warning_context);
     report
+}
+
+fn is_live_installer_environment() -> bool {
+    [
+        "/etc/keystone/install-repo",
+        "/etc/keystone/install-config",
+        "/etc/keystone/install-metadata",
+    ]
+    .iter()
+    .any(|p| Path::new(p).exists())
 }
 
 async fn probe_secure_boot() -> SecureBootState {
@@ -854,7 +894,40 @@ Tokens:
     }
 
     #[test]
-    fn warnings_flag_too_few_unlock_methods() {
+    fn warnings_are_suppressed_in_live_installer_context() {
+        let r = HardwareReport {
+            machine: MachineState {
+                secure_boot: SecureBootState::Disabled,
+                tpm2: TpmDeviceState::Absent,
+                fido2_devices: vec![],
+                fingerprint: FingerprintState::NotDetected,
+            },
+            volumes: vec![LuksVolume {
+                id: "root".into(),
+                device: PathBuf::from("/dev/zvol/rpool/credstore"),
+                role: VolumeRole::Primary,
+                boot_stage: BootStage::Initrd,
+                holds: "rootfs encryption keys".into(),
+                slots: SlotMap {
+                    password: SlotState {
+                        enrolled: true,
+                        is_default: true,
+                        detail: None,
+                    },
+                    recovery: SlotState::default(),
+                    tpm2: SlotState::default(),
+                    fido2: SlotState::default(),
+                },
+            }],
+            warnings: vec![],
+        };
+
+        assert!(warnings_from_context(&r, WarningContext::LiveInstaller).is_empty());
+        assert!(warnings_from_context(&r, WarningContext::InstalledSystem).len() >= 3);
+    }
+
+    #[test]
+    fn warnings_flag_missing_strong_human_fallback() {
         let r = HardwareReport {
             machine: MachineState {
                 secure_boot: SecureBootState::Enrolled,
@@ -882,7 +955,91 @@ Tokens:
         let w = warnings_from(&r);
         assert!(w.iter().any(|x| matches!(x.severity, Severity::Warning)
             && matches!(&x.scope, WarningScope::Volume { id } if id == "tank")
-            && x.message.contains("fewer than 2")));
+            && x.message.contains("strong human fallback")));
+        assert!(w.iter().any(|x| x
+            .remediation
+            .as_deref()
+            .unwrap_or_default()
+            .contains("FIDO2 hardware key or recovery key")));
+    }
+
+    #[test]
+    fn warnings_flag_missing_tpm_automatic_unlock_separately() {
+        let r = HardwareReport {
+            machine: MachineState {
+                secure_boot: SecureBootState::Enrolled,
+                tpm2: TpmDeviceState::Present,
+                fido2_devices: vec![],
+                fingerprint: FingerprintState::NotDetected,
+            },
+            volumes: vec![LuksVolume {
+                id: "root".into(),
+                device: PathBuf::from("/dev/zvol/rpool/credstore"),
+                role: VolumeRole::Primary,
+                boot_stage: BootStage::Initrd,
+                holds: "rootfs".into(),
+                slots: SlotMap {
+                    password: SlotState {
+                        enrolled: true,
+                        is_default: false,
+                        detail: None,
+                    },
+                    recovery: SlotState {
+                        enrolled: true,
+                        is_default: false,
+                        detail: Some("paper key".into()),
+                    },
+                    ..Default::default()
+                },
+            }],
+            warnings: vec![],
+        };
+        let w = warnings_from(&r);
+        assert!(w
+            .iter()
+            .any(|x| x.message.contains("TPM2 automatic unlock")));
+        assert!(!w
+            .iter()
+            .any(|x| x.message.contains("strong human fallback")));
+    }
+
+    #[test]
+    fn warnings_clear_when_password_recovery_and_tpm_are_enrolled() {
+        let r = HardwareReport {
+            machine: MachineState {
+                secure_boot: SecureBootState::Enrolled,
+                tpm2: TpmDeviceState::Present,
+                fido2_devices: vec![],
+                fingerprint: FingerprintState::NotDetected,
+            },
+            volumes: vec![LuksVolume {
+                id: "root".into(),
+                device: PathBuf::from("/dev/zvol/rpool/credstore"),
+                role: VolumeRole::Primary,
+                boot_stage: BootStage::Initrd,
+                holds: "rootfs".into(),
+                slots: SlotMap {
+                    password: SlotState {
+                        enrolled: true,
+                        is_default: false,
+                        detail: Some("user passphrase".into()),
+                    },
+                    recovery: SlotState {
+                        enrolled: true,
+                        is_default: false,
+                        detail: Some("paper key".into()),
+                    },
+                    tpm2: SlotState {
+                        enrolled: true,
+                        is_default: false,
+                        detail: Some("systemd-tpm2 token".into()),
+                    },
+                    ..Default::default()
+                },
+            }],
+            warnings: vec![],
+        };
+        assert!(warnings_from(&r).is_empty());
     }
 
     #[test]

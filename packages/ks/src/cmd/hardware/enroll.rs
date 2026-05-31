@@ -136,6 +136,32 @@ pub async fn enroll_recovery() -> Result<()> {
     Ok(())
 }
 
+/// Generate and display a recovery key without enrolling TPM2. Used by
+/// `ks hardware setup` so it can establish a durable human fallback
+/// before adding TPM automatic unlock.
+pub async fn enroll_recovery_key() -> Result<()> {
+    println!("=== Keystone enrollment: recovery key ===\n");
+    preflight(PreflightSpec::PASSWORD_ROTATION).await?;
+    let keyfile = current_passphrase_keyfile().await?;
+    let device = credstore_device();
+    let device_str = device.to_string_lossy().to_string();
+    let unlock_arg = format!("--unlock-key-file={}", keyfile.path().display());
+
+    println!("[Step 1/2] Generating recovery key...");
+    let stdout = run_systemd_cryptenroll(&[&device_str, "--recovery-key", &unlock_arg])
+        .await
+        .context("generating recovery key")?;
+
+    let recovery_key = parse_recovery_key(&stdout)
+        .ok_or_else(|| anyhow!("could not extract recovery key from systemd-cryptenroll output"))?;
+    display_recovery_key(&recovery_key);
+
+    println!("[Step 2/2] Writing enrollment marker...");
+    write_enrollment_marker("recovery-key").await?;
+    println!("[OK] Recovery key enrolled.\n");
+    Ok(())
+}
+
 /// Standalone TPM2 enrollment — used for re-binding after PCR drift
 /// (kernel upgrade, BIOS change, etc.). Assumes a non-default
 /// passphrase already exists; the current-passphrase probe will
@@ -197,6 +223,10 @@ pub async fn enroll_fingerprint() -> Result<()> {
             "fprintd-enroll is not installed; fingerprint enrollment is unavailable on this host"
         );
     }
+    println!("=== Keystone enrollment: fingerprint for login/sudo ===\n");
+    println!("Fingerprint does not unlock the encrypted disk.");
+    println!("The sensor will ask for the same finger several times.");
+    println!("Lift and place your finger each time so it can capture enough samples.\n");
     let status = Command::new("fprintd-enroll")
         .status()
         .await

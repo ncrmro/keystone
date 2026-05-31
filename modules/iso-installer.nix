@@ -63,6 +63,15 @@ in
     # environment so `nixos-install` has some headroom when the cache is cold.
     zramSwap.enable = true;
 
+    # The live installer must evaluate flakes and create derivations while
+    # running disko/nixos-install. Keep the ISO overlay mutable for those tools;
+    # the default stage-2 read-only bind mount breaks root-run Nix evaluation.
+    boot.nixStoreMountOpts = lib.mkForce [
+      "rw"
+      "nodev"
+      "nosuid"
+    ];
+
     # Enable SSH daemon for remote access
     # mkForce overrides keystone.os.ssh's "prohibit-password" — the installer
     # needs key-based root login for remote installation workflows

@@ -42,6 +42,7 @@ const INSTALL_KEYSTONE_PATH: &str = "/etc/keystone/install-keystone";
 const INSTALL_METADATA_DIR: &str = "/etc/keystone/install-metadata";
 const WRITABLE_INSTALL_REPO_PATH: &str = "/tmp/keystone-install-repo";
 const VENDORED_KEYSTONE_INPUT_DIR: &str = ".keystone-input";
+const REWRITTEN_KEYSTONE_LOCK_MARKER: &str = ".keystone-install-lock-rewritten";
 const DEFAULT_INSTALLED_REPO_NAME: &str = "keystone-config";
 const GENERATED_HARDWARE_FILENAME: &str = "hardware-generated.nix";
 const FIRST_BOOT_MARKER: &str = ".first-boot-pending";
@@ -551,42 +552,71 @@ fn copy_repo_to_writable(src: &Path, dst: &Path) -> AnyhowResult<()> {
     Ok(())
 }
 
-fn rewrite_keystone_lock_input(repo_dir: &Path, keystone_input_dir: &Path) -> AnyhowResult<()> {
-    let status = StdCommand::new("nix")
-        .args([
-            "--extra-experimental-features",
-            "nix-command flakes",
-            "flake",
-            "lock",
-            "--override-input",
-            "keystone",
-            &format!("path:{}", keystone_input_dir.display()),
-        ])
-        .current_dir(repo_dir)
-        .status()
-        .with_context(|| {
-            format!(
-                "Failed to rewrite keystone flake input in {}",
-                repo_dir.display()
-            )
-        })?;
+fn rewrite_keystone_lock_value(
+    lock: &mut serde_json::Value,
+    keystone_input_dir: &Path,
+    nar_hash: &str,
+    last_modified: u64,
+) -> AnyhowResult<()> {
+    let nodes = lock
+        .get_mut("nodes")
+        .and_then(serde_json::Value::as_object_mut)
+        .context("flake.lock is missing object field `nodes`")?;
+    let keystone = nodes
+        .get_mut("keystone")
+        .and_then(serde_json::Value::as_object_mut)
+        .context("flake.lock is missing object node `nodes.keystone`")?;
 
-    if !status.success() {
-        anyhow::bail!(
-            "nix flake lock --override-input keystone failed in {}",
-            repo_dir.display()
-        );
-    }
-
+    keystone.insert(
+        "locked".to_string(),
+        serde_json::json!({
+            "type": "path",
+            "path": keystone_input_dir,
+            "narHash": nar_hash,
+            "lastModified": last_modified,
+        }),
+    );
     Ok(())
 }
 
-fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBuf>> {
-    let embedded_keystone = Path::new(INSTALL_KEYSTONE_PATH);
-    if !embedded_keystone.exists() {
-        return Ok(None);
+fn path_last_modified_secs(path: &Path) -> AnyhowResult<u64> {
+    Ok(std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .with_context(|| format!("Failed to read mtime for {}", path.display()))?
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs())
+}
+
+fn nix_path_nar_hash(path: &Path) -> AnyhowResult<String> {
+    let output = StdCommand::new("nix")
+        .args([
+            "--extra-experimental-features",
+            "nix-command",
+            "hash",
+            "path",
+            "--sri",
+            &path.display().to_string(),
+        ])
+        .output()
+        .with_context(|| format!("Failed to hash {}", path.display()))?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "nix hash path failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
 
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn point_lock_at_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<bool> {
+    let embedded_keystone = Path::new(INSTALL_KEYSTONE_PATH);
+    if !embedded_keystone.exists() {
+        return Ok(false);
+    }
     let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
     copy_repo_to_writable(embedded_keystone, &vendored_dir).with_context(|| {
         format!(
@@ -596,13 +626,27 @@ fn vendor_embedded_keystone_input(repo_dir: &Path) -> AnyhowResult<Option<PathBu
         )
     })?;
 
-    rewrite_keystone_lock_input(repo_dir, &vendored_dir)?;
-    Ok(Some(vendored_dir))
+    let lock_path = repo_dir.join("flake.lock");
+    let mut lock: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&lock_path)
+            .with_context(|| format!("Failed to read {}", lock_path.display()))?,
+    )
+    .with_context(|| format!("Failed to parse {}", lock_path.display()))?;
+    let nar_hash = nix_path_nar_hash(&vendored_dir)?;
+    let last_modified = path_last_modified_secs(&vendored_dir)?;
+    rewrite_keystone_lock_value(&mut lock, &vendored_dir, &nar_hash, last_modified)?;
+    std::fs::write(&lock_path, serde_json::to_vec_pretty(&lock)?)
+        .with_context(|| format!("Failed to write {}", lock_path.display()))?;
+    std::fs::write(repo_dir.join(REWRITTEN_KEYSTONE_LOCK_MARKER), "")
+        .with_context(|| "Failed to write Keystone lock rewrite marker")?;
+
+    Ok(true)
 }
 
 fn normalize_staged_install_repo(repo_dir: &Path, source_lock_path: &Path) -> Result<(), String> {
     let vendored_dir = repo_dir.join(VENDORED_KEYSTONE_INPUT_DIR);
-    if !vendored_dir.exists() {
+    let marker_path = repo_dir.join(REWRITTEN_KEYSTONE_LOCK_MARKER);
+    if !vendored_dir.exists() && !marker_path.exists() {
         return Ok(());
     }
 
@@ -626,8 +670,14 @@ fn normalize_staged_install_repo(repo_dir: &Path, source_lock_path: &Path) -> Re
         )
     })?;
 
-    std::fs::remove_dir_all(&vendored_dir)
-        .map_err(|e| format!("Failed to remove {}: {}", vendored_dir.display(), e))?;
+    if vendored_dir.exists() {
+        std::fs::remove_dir_all(&vendored_dir)
+            .map_err(|e| format!("Failed to remove {}: {}", vendored_dir.display(), e))?;
+    }
+    if marker_path.exists() {
+        std::fs::remove_file(&marker_path)
+            .map_err(|e| format!("Failed to remove {}: {}", marker_path.display(), e))?;
+    }
 
     Ok(())
 }
@@ -1487,11 +1537,16 @@ impl InstallScreen {
             self.phase = InstallPhase::Failed(format!("Failed to prepare installer repo: {error}"));
             return;
         }
-        if let Err(error) = vendor_embedded_keystone_input(&writable_repo) {
-            self.phase =
-                InstallPhase::Failed(format!("Failed to vendor embedded keystone input: {error}"));
+        if let Err(error) = point_lock_at_embedded_keystone_input(&writable_repo) {
+            self.phase = InstallPhase::Failed(format!(
+                "Failed to prepare embedded keystone input: {error}"
+            ));
             return;
         }
+        // TODO: add an explicit "update installer" flow if users need to
+        // refresh flake inputs from a live ISO. Normal installs only rewrite a
+        // path lock from build-machine-local storage to the Keystone source
+        // already embedded in the ISO; it must not run `nix flake lock`.
 
         let hardware_path = writable_repo.join(&selected.hardware_path);
         let disk_device = parse_hardware_disk_device(&hardware_path).filter(|path| {
@@ -3735,6 +3790,44 @@ mod tests {
     }
 
     #[test]
+    fn test_rewrite_keystone_lock_value_points_locked_input_at_embedded_path() {
+        let mut lock = serde_json::json!({
+            "nodes": {
+                "keystone": {
+                    "locked": {
+                        "type": "path",
+                        "path": "/tmp/keystone-src",
+                        "narHash": "sha256-old",
+                        "lastModified": 1
+                    },
+                    "original": {
+                        "type": "github",
+                        "owner": "ncrmro",
+                        "repo": "keystone"
+                    }
+                }
+            }
+        });
+
+        rewrite_keystone_lock_value(
+            &mut lock,
+            Path::new("/tmp/keystone-install-repo/.keystone-input"),
+            "sha256-new",
+            42,
+        )
+        .unwrap();
+
+        assert_eq!(
+            lock["nodes"]["keystone"]["locked"]["path"],
+            "/tmp/keystone-install-repo/.keystone-input"
+        );
+        assert_eq!(lock["nodes"]["keystone"]["locked"]["narHash"], "sha256-new");
+        assert_eq!(lock["nodes"]["keystone"]["locked"]["lastModified"], 42);
+        assert_eq!(lock["nodes"]["keystone"]["locked"]["type"], "path");
+        assert_eq!(lock["nodes"]["keystone"]["original"]["type"], "github");
+    }
+
+    #[test]
     fn test_normalize_staged_install_repo_restores_lock_and_removes_vendored_input() {
         let temp = tempfile::tempdir().unwrap();
         let source_lock = temp.path().join("source-flake.lock");
@@ -3753,6 +3846,27 @@ mod tests {
             "original-lock"
         );
         assert!(!vendored_dir.exists());
+    }
+
+    #[test]
+    fn test_normalize_staged_install_repo_restores_lock_and_removes_rewrite_marker() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_lock = temp.path().join("source-flake.lock");
+        let repo_dir = temp.path().join("repo");
+        let marker_path = repo_dir.join(REWRITTEN_KEYSTONE_LOCK_MARKER);
+
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        std::fs::write(&source_lock, "original-lock").unwrap();
+        std::fs::write(repo_dir.join("flake.lock"), "store-path-lock").unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        normalize_staged_install_repo(&repo_dir, &source_lock).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(repo_dir.join("flake.lock")).unwrap(),
+            "original-lock"
+        );
+        assert!(!marker_path.exists());
     }
 
     #[test]
