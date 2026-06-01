@@ -2773,7 +2773,13 @@ async fn amend_install_commit(
         .map_err(|e| format!("Failed to stage normalized install repo: {e}"))?;
     run_command_quiet(
         "git",
-        &["commit", "--amend", "--no-edit", "--no-gpg-sign"],
+        &[
+            "commit",
+            "--amend",
+            "--allow-empty",
+            "--no-edit",
+            "--no-gpg-sign",
+        ],
         Some(config_dir),
         false,
     )
@@ -3961,6 +3967,44 @@ mod tests {
 
         let unchanged = ensure_marker_gitignore_contents(Some(".first-boot-pending\n"));
         assert_eq!(unchanged, ".first-boot-pending\n");
+    }
+
+    #[tokio::test]
+    async fn test_install_commit_amend_allows_empty_install_delta() {
+        let repo = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "fixture"])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "fixture@keystone.local"])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+
+        std::fs::write(repo.path().join(".gitignore"), ".first-boot-pending\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "installer snapshot"])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        create_install_commit(repo.path(), "fixture", &tx)
+            .await
+            .unwrap();
+        amend_install_commit(repo.path(), &tx).await.unwrap();
     }
 
     #[test]
