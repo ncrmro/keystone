@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  echo "error: run with sudo: sudo $0" >&2
+  exit 1
+fi
+
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+log="/tmp/keystone-secureboot-debug-${timestamp}.log"
+
+run() {
+  local title="$1"
+  shift
+  {
+    printf '\n## %s\n' "${title}"
+    printf '+'
+    printf ' %q' "$@"
+    printf '\n'
+    "$@"
+    local status=$?
+    printf '\n[exit %s]\n' "${status}"
+  } 2>&1
+}
+
+section() {
+  printf '\n# %s\n' "$1"
+}
+
+{
+  section "Keystone Secure Boot debug"
+  printf 'timestamp_utc=%s\n' "${timestamp}"
+  printf 'hostname=%s\n' "$(hostname 2>/dev/null || true)"
+  printf 'kernel=%s\n' "$(uname -a 2>/dev/null || true)"
+  printf 'euid=%s\n' "${EUID}"
+  printf 'caller=%s\n' "${SUDO_USER:-root}"
+  printf 'pwd=%s\n' "$(pwd)"
+
+  section "System generation"
+  run "current system symlink" readlink -f /run/current-system
+  run "system profile symlink" readlink -f /nix/var/nix/profiles/system
+  run "current system flake marker" sh -c 'test -e /run/current-system/keystone-system-flake && cat /run/current-system/keystone-system-flake || true'
+
+  section "UEFI and boot loader"
+  if command -v bootctl >/dev/null 2>&1; then
+    run "bootctl status" bootctl status
+  else
+    printf 'bootctl not found\n'
+  fi
+
+  section "sbctl"
+  if command -v sbctl >/dev/null 2>&1; then
+    run "sbctl status" sbctl status
+    run "sbctl status --json" sbctl status --json
+    run "sbctl verify" sbctl verify
+    run "sbctl verify --json" sbctl verify --json
+    run "sbctl list-files" sbctl list-files
+    run "sbctl list-files --json" sbctl list-files --json
+  else
+    printf 'sbctl not found\n'
+  fi
+
+  section "Secure Boot key files"
+  run "sbctl directory tree" sh -c '
+    if [ -d /var/lib/sbctl ]; then
+      find /var/lib/sbctl -maxdepth 4 -printf "%M %u %g %s %p\n" | sort
+    else
+      echo "/var/lib/sbctl missing"
+    fi
+  '
+
+  section "EFI system partition"
+  run "boot EFI tree" sh -c '
+    if [ -d /boot/EFI ]; then
+      find /boot/EFI -maxdepth 4 -printf "%M %u %g %s %p\n" | sort
+    else
+      echo "/boot/EFI missing"
+    fi
+  '
+
+  section "Mounted filesystems"
+  run "findmnt boot and efivarfs" sh -c 'findmnt /boot || true; findmnt /sys/firmware/efi/efivars || true'
+
+  section "EFI variables"
+  run "secure boot efivars" sh -c '
+    if [ -d /sys/firmware/efi/efivars ]; then
+      ls -l /sys/firmware/efi/efivars/{SecureBoot,SetupMode,PK,KEK,db,dbx}-* 2>/dev/null || true
+    else
+      echo "efivarfs missing"
+    fi
+  '
+} | tee "${log}"
+
+printf '\nWrote %s\n' "${log}"

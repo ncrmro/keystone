@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [[ ${EUID} -ne 0 ]]; then
+  echo "error: run with sudo: sudo $0" >&2
+  exit 1
+fi
+
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+log="/tmp/keystone-hardware-debug-${timestamp}.log"
+
+run() {
+  local title="$1"
+  shift
+  {
+    printf '\n## %s\n' "${title}"
+    printf '+'
+    printf ' %q' "$@"
+    printf '\n'
+    "$@"
+    local status=$?
+    printf '\n[exit %s]\n' "${status}"
+  } 2>&1
+}
+
+section() {
+  printf '\n# %s\n' "$1"
+}
+
+detect_root_luks() {
+  local candidates=(
+    /dev/zvol/rpool/credstore
+    /dev/disk/by-partlabel/disk-root-root
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -e "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  if command -v lsblk >/dev/null 2>&1; then
+    lsblk -rpno NAME,TYPE 2>/dev/null | awk '$2 == "crypt" { print $1; exit }'
+  fi
+}
+
+root_luks="$(detect_root_luks || true)"
+
+{
+  section "Keystone hardware enrollment debug"
+  printf 'timestamp_utc=%s\n' "${timestamp}"
+  printf 'hostname=%s\n' "$(hostname 2>/dev/null || true)"
+  printf 'kernel=%s\n' "$(uname -a 2>/dev/null || true)"
+  printf 'euid=%s\n' "${EUID}"
+  printf 'caller=%s\n' "${SUDO_USER:-root}"
+  printf 'pwd=%s\n' "$(pwd)"
+  printf 'root_luks=%s\n' "${root_luks:-unknown}"
+
+  section "Keystone hardware report"
+  if command -v ks >/dev/null 2>&1; then
+    run "ks version" ks --version
+    run "ks hardware report" ks hardware report
+    run "ks hardware report --json" ks hardware report --json
+    run "ks hardware setup --dry-run" timeout 20 ks hardware setup --dry-run
+  else
+    printf 'ks not found\n'
+  fi
+
+  section "LUKS enrollment"
+  if [[ -n "${root_luks:-}" ]]; then
+    if command -v cryptsetup >/dev/null 2>&1; then
+      run "cryptsetup luksDump root" cryptsetup luksDump "${root_luks}"
+    else
+      printf 'cryptsetup not found\n'
+    fi
+    if command -v systemd-cryptenroll >/dev/null 2>&1; then
+      run "systemd-cryptenroll root" systemd-cryptenroll "${root_luks}"
+    else
+      printf 'systemd-cryptenroll not found\n'
+    fi
+  else
+    printf 'root LUKS device not detected\n'
+  fi
+
+  section "TPM"
+  run "TPM device nodes" sh -c 'ls -l /dev/tpm* 2>/dev/null || true'
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    run "systemd-analyze has-tpm2" systemd-analyze has-tpm2
+  else
+    printf 'systemd-analyze not found\n'
+  fi
+  run "TPM kernel messages" sh -c 'dmesg 2>/dev/null | grep -Ei "tpm|trusted platform" | tail -n 80 || true'
+
+  section "FIDO2"
+  if command -v systemd-cryptenroll >/dev/null 2>&1; then
+    run "systemd-cryptenroll --fido2-device=list" systemd-cryptenroll --fido2-device=list
+  fi
+  run "hidraw devices" sh -c 'ls -l /dev/hidraw* 2>/dev/null || true'
+
+  section "Fingerprint"
+  if command -v fprintd-list >/dev/null 2>&1; then
+    user="${SUDO_USER:-$(id -un 2>/dev/null || echo root)}"
+    run "fprintd-list caller" fprintd-list "${user}"
+  else
+    printf 'fprintd-list not found\n'
+  fi
+  run "fprintd service state" sh -c 'systemctl status fprintd.service --no-pager 2>&1 | sed -n "1,80p" || true'
+
+  section "Boot state"
+  if command -v bootctl >/dev/null 2>&1; then
+    run "bootctl status" bootctl status
+  fi
+  if command -v sbctl >/dev/null 2>&1; then
+    run "sbctl status" sbctl status
+    run "sbctl verify" sbctl verify
+  fi
+} | tee "${log}"
+
+printf '\nWrote %s\n' "${log}"
