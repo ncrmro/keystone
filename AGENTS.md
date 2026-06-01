@@ -21,6 +21,21 @@ A typical deployment:
 `ks update --lock` deploys the current host by default. Pass a comma-separated
 list to deploy multiple: `ks update --lock ocean,mercury`.
 
+## Host kinds
+
+`mkSystemFlake` dispatches each host through a `kind` to one of four builders:
+
+- `laptop` — ext4 single-disk desktop, UEFI + secureBoot + TPM2.
+- `workstation` — ZFS desktop with kernel pinning, UEFI + secureBoot + TPM2.
+- `server` — baremetal ZFS server, optional data pool, UEFI + secureBoot + TPM2.
+- `server-vm` — cloud / hosted-VM server. UEFI is the default and recommended
+  path (grub-in-ESP with `efiInstallAsRemovable = true` for cloud-image
+  friendliness); pass `bios = true` to opt into legacy grub-BIOS for old
+  hardware or hobby/legacy VMs. Keystone does not install or touch the
+  bootloader on `server-vm` hosts — it only writes the grub config the
+  provider's firmware already manages. SecureBoot, TPM, ZFS root, and
+  lm_sensors are off by default; opt into any of them per-host.
+
 ## Modules
 
 - `modules/os/` — Core OS: storage, Secure Boot, TPM, users, SSH, agents, containers, Tailscale

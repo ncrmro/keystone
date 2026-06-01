@@ -739,6 +739,68 @@ rec {
       }
     );
 
+  # mkServerVm — cloud/VPS/hosted-VM servers.
+  #
+  # Keystone targets modern UEFI + TPM2 + SecureBoot hardware by default. VPS
+  # providers ship cloud images whose ESP already has a bootloader (grub-in-ESP)
+  # and whose firmware lacks TPM2/SecureBoot. mkLinuxHost's unconditional
+  # `boot.loader.systemd-boot.enable = lib.mkDefault true` would otherwise drive
+  # the activation step into `bootctl install`, which fails on these hosts.
+  #
+  # UEFI is the recommended path; pass `bios = true` to opt into legacy
+  # grub-BIOS for old hardware or hobby/legacy VMs.
+  mkServerVm =
+    {
+      bios ? false,
+      storage ? { },
+      modules ? [ ],
+      ...
+    }@args:
+    mkLinuxHost (
+      (builtins.removeAttrs args [
+        "bios"
+        "modules"
+      ])
+      // {
+        # Cloud images ship without secureBoot / TPM2.
+        secureBoot = lib.recursiveUpdate { enable = false; } (args.secureBoot or { });
+        tpm = lib.recursiveUpdate { enable = false; } (args.tpm or { });
+
+        # Default to ext4 single-disk — typical VPS layout. ZFS root opt-in
+        # via storage override (e.g. nixos-anywhere with custom disko).
+        storage = lib.recursiveUpdate {
+          type = "ext4";
+          mode = "single";
+        } storage;
+
+        modules = modules ++ [
+          # Inline module: bootloader for this kind.
+          (
+            { lib, ... }:
+            {
+              # CRITICAL: mkLinuxHost sets systemd-boot via mkDefault. mkForce
+              # is required here because mkDefault loses to itself, not to the
+              # absence of a setter — a second mkDefault would not unset it.
+              boot.loader.systemd-boot.enable = lib.mkForce false;
+              boot.loader.grub = {
+                enable = lib.mkDefault true;
+                efiSupport = lib.mkDefault (!bios);
+                efiInstallAsRemovable = lib.mkDefault (!bios);
+              }
+              // lib.optionalAttrs (!bios) {
+                # UEFI grub mounts /boot as the ESP; device is "nodev" because
+                # nothing is written to the MBR. BIOS hosts must declare their
+                # own boot.loader.grub.device = "/dev/vda" (or similar) — we
+                # can't guess the disk path, and the option is typed as a
+                # non-null string (default ""), so we leave it unset.
+                device = lib.mkDefault "nodev";
+              };
+            }
+          )
+        ];
+      }
+    );
+
   mkMacosTerminal =
     {
       system ? "aarch64-darwin",
@@ -812,6 +874,13 @@ rec {
 
         server = {
           builder = mkServer;
+          system = "x86_64-linux";
+          nixosModules = [ self.nixosModules.server ];
+          desktop = false;
+        };
+
+        server-vm = {
+          builder = mkServerVm;
           system = "x86_64-linux";
           nixosModules = [ self.nixosModules.server ];
           desktop = false;
