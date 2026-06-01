@@ -31,7 +31,7 @@ pkgs.testers.nixosTest {
       # Login manager
       services.greetd = {
         enable = true;
-        settings.default_session = {
+        settings.initial_session = {
           command = "uwsm start -S -F Hyprland";
           user = "testuser";
         };
