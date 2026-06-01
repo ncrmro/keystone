@@ -359,6 +359,32 @@ in
                   else
                     echo "${username}: WARNING: CalDAV ACL request returned HTTP $ACL_STATUS" >&2
                   fi
+
+                  # Mirror of the CalDAV block above, for CardDAV.
+                  # DAV ACL XML is protocol-agnostic — same ACE list, different URL.
+                  echo "${username}: Setting CardDAV sharing ACLs..."
+
+                  # Trigger default address book creation by accessing the agent's CardDAV home
+                  curl -sf -u "${username}:$AGENT_PASS" \
+                    "http://127.0.0.1:8082/dav/card/${username}/" \
+                    -X PROPFIND -H "Content-Type: application/xml" -H "Depth: 1" \
+                    -d '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>' \
+                    -o /dev/null || true
+
+                  CARD_ACL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                    -u "${username}:$AGENT_PASS" \
+                    "http://127.0.0.1:8082/dav/card/${username}/default/" \
+                    -X ACL -H "Content-Type: application/xml" \
+                    -d '<?xml version="1.0" encoding="utf-8"?>
+                  <D:acl xmlns:D="DAV:">
+                  ${aclAces}
+                  </D:acl>')
+
+                  if [[ "$CARD_ACL_STATUS" = "200" || "$CARD_ACL_STATUS" = "204" ]]; then
+                    echo "${username}: CardDAV sharing ACLs set successfully"
+                  else
+                    echo "${username}: WARNING: CardDAV ACL request returned HTTP $CARD_ACL_STATUS" >&2
+                  fi
                 '';
             }
           ) provisionAgents
