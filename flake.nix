@@ -487,6 +487,15 @@
             inherit pkgs lib nixpkgs;
             self = self;
           };
+          serverVmEvaluation = import ./tests/module/server-vm-evaluation.nix {
+            inherit
+              pkgs
+              lib
+              nixpkgs
+              home-manager
+              ;
+            self = self;
+          };
           keystoneSecretsMenu = import ./tests/module/keystone-secrets-menu.nix {
             inherit pkgs lib;
           };
@@ -569,6 +578,7 @@
           template-update-channel = templateUpdateChannel;
           template-special-args = templateSpecialArgs;
           server-evaluation = serverEvaluation;
+          server-vm-evaluation = serverVmEvaluation;
           ks-help = ksHelp;
           keystone-photos = ksPhotos;
           keystone-secrets-menu = keystoneSecretsMenu;
@@ -610,6 +620,7 @@
             ln -s ${templateUpdateChannel} "$out/template-update-channel"
             ln -s ${templateSpecialArgs} "$out/template-special-args"
             ln -s ${serverEvaluation} "$out/server-evaluation"
+            ln -s ${serverVmEvaluation} "$out/server-vm-evaluation"
           '';
 
           # ks CLI: Rust build, lint, format, and integration tests
