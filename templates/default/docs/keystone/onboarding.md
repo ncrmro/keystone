@@ -357,6 +357,11 @@ The normal first-time flow is:
 3. `ks hardware setup` rotates the default password if needed, generates a
    recovery key, enrolls TPM2, and opportunistically enrolls FIDO2 and
    fingerprint if the hardware is present.
+4. If Secure Boot needs firmware action, Keystone explains what to change and
+   offers to reboot into firmware setup. On Dell systems, check **Boot
+   Configuration** and use **Secure Boot Mode: Audit Mode** while keys are
+   being enrolled; then enable enforcement after the signed lanzaboote boot
+   entry is in place.
 
 **Verify:**
 

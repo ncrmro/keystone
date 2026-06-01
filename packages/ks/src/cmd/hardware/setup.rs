@@ -134,6 +134,9 @@ pub trait SetupPrompts: Send + Sync {
     /// Show free-form progress text (used for "Touch your YubiKey",
     /// "Place finger 5×", etc.).
     fn say(&self, text: &str) -> impl std::future::Future<Output = ()> + Send;
+
+    /// Ask whether Keystone should reboot directly into firmware setup.
+    fn confirm_firmware_reboot(&self) -> impl std::future::Future<Output = Result<bool>> + Send;
 }
 
 /// v1.1 RC limits enrollment to the canonical `root` volume; bail
@@ -274,7 +277,7 @@ fn plan_secure_boot(
             }
             SbStatus::KeysGenerated => {
                 steps.push(SetupStep::PauseForSecureBoot {
-                    reason: "Secure Boot keys already exist. Reboot into firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup`.".into(),
+                    reason: "Secure Boot keys already exist. Reboot into firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup`.".into(),
                 });
             }
             SbStatus::Enrolled => {
@@ -285,13 +288,22 @@ fn plan_secure_boot(
             SbStatus::NotInSetupMode | SbStatus::Unknown => {
                 steps.push(SetupStep::PrepareSecureBootKeys);
                 steps.push(SetupStep::PauseForSecureBoot {
-                    reason: "Enter firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.".into(),
+                    reason: "Enter firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.".into(),
                 });
             }
         },
         SecureBootState::NotSupported | SecureBootState::Unknown => {}
     }
     steps
+}
+
+fn secure_boot_firmware_guidance() -> &'static str {
+    "Firmware step:\n\
+     - Reboot into UEFI/BIOS setup.\n\
+     - Find Secure Boot settings. On many Dell systems this is under Boot Configuration.\n\
+     - Use Setup Mode or Audit Mode while Keystone enrolls or updates Secure Boot keys; Audit Mode still lets unsigned OS entries boot while key changes are allowed.\n\
+     - After Keystone keys are enrolled and the signed lanzaboote entry boots, enable Secure Boot enforcement and re-run `ks hardware setup`.\n\
+     See `docs/keystone/hardware-enrollment.md` in your keystone-config for the longer walkthrough."
 }
 
 fn is_default_password_warning(w: &probe::Warning) -> bool {
@@ -402,6 +414,13 @@ pub async fn execute<P: SetupPrompts>(
         prompts.say(&format!("→ {}", step.label())).await;
         if let SetupStep::PauseForSecureBoot { reason } = step {
             prompts.say(reason).await;
+            prompts.say(secure_boot_firmware_guidance()).await;
+            if prompts.confirm_firmware_reboot().await? {
+                request_firmware_setup_reboot()
+                    .await
+                    .context("requesting reboot into firmware setup")?;
+                return Ok(());
+            }
             prompts
                 .say("Secure Boot work paused. Re-run `ks hardware setup` after the firmware change.")
                 .await;
@@ -409,6 +428,13 @@ pub async fn execute<P: SetupPrompts>(
         }
         if let SetupStep::RebootAndResume { reason } = step {
             prompts.say(reason).await;
+            prompts.say(secure_boot_firmware_guidance()).await;
+            if prompts.confirm_firmware_reboot().await? {
+                request_firmware_setup_reboot()
+                    .await
+                    .context("requesting reboot into firmware setup")?;
+                return Ok(());
+            }
             prompts
                 .say("Secure Boot work staged. Reboot now, then re-run `ks hardware setup` to continue.")
                 .await;
@@ -464,6 +490,40 @@ pub async fn execute<P: SetupPrompts>(
     Ok(())
 }
 
+async fn request_firmware_setup_reboot() -> Result<()> {
+    let status = tokio::process::Command::new("systemctl")
+        .args(["reboot", "--firmware-setup"])
+        .status()
+        .await
+        .context("failed to invoke systemctl reboot --firmware-setup")?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let bootctl_status = tokio::process::Command::new("bootctl")
+        .args(["reboot-to-firmware", "true"])
+        .status()
+        .await
+        .context("failed to invoke bootctl reboot-to-firmware true")?;
+    if !bootctl_status.success() {
+        anyhow::bail!(
+            "could not request firmware setup reboot. Run `sudo systemctl reboot --firmware-setup` manually, or enter firmware setup during boot."
+        );
+    }
+
+    let reboot_status = tokio::process::Command::new("systemctl")
+        .arg("reboot")
+        .status()
+        .await
+        .context("failed to invoke systemctl reboot")?;
+    if !reboot_status.success() {
+        anyhow::bail!("firmware reboot flag was set, but `systemctl reboot` failed");
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // CLI prompt implementation
 // ---------------------------------------------------------------------------
@@ -500,6 +560,20 @@ impl SetupPrompts for CliPrompts {
 
     async fn say(&self, text: &str) {
         println!("{}", text);
+    }
+
+    async fn confirm_firmware_reboot(&self) -> Result<bool> {
+        println!("Reboot into firmware setup now? [y/N]: ");
+        let line = tokio::task::spawn_blocking(|| {
+            use std::io::BufRead;
+            let mut s = String::new();
+            std::io::stdin().lock().read_line(&mut s).map(|_| s)
+        })
+        .await??;
+        Ok(matches!(
+            line.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ))
     }
 }
 
@@ -721,6 +795,14 @@ mod tests {
         };
         assert!(s.label().contains("Rotate"));
         assert!(s.label().contains("root"));
+    }
+
+    #[test]
+    fn firmware_guidance_mentions_dell_audit_mode() {
+        let guidance = secure_boot_firmware_guidance();
+        assert!(guidance.contains("Dell"));
+        assert!(guidance.contains("Audit Mode"));
+        assert!(guidance.contains("Boot Configuration"));
     }
 
     #[test]

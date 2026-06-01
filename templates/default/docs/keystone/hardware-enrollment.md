@@ -109,9 +109,36 @@ What to look for:
 - TPM2 auto-unlock requires a visible TPM device.
 - `ks hardware setup` is interactive in v1.1. There is still no
   non-interactive mode.
+- When Secure Boot needs a firmware change, `ks hardware setup` will explain
+  the state and offer to reboot directly into firmware setup. On systems that
+  support it, this uses `systemctl reboot --firmware-setup`; otherwise enter
+  firmware during boot with the vendor hotkey.
 
 If a machine does not meet those conditions, `ks hardware report` will usually
 tell you why before you change anything.
+
+### Secure Boot firmware settings
+
+The exact menu is vendor-specific. Look for these concepts rather than exact
+labels:
+
+- **Secure Boot enablement** turns enforcement on. Do this only after Keystone
+  has generated/enrolled keys and the signed lanzaboote boot entry is present.
+- **Setup Mode** or **Audit Mode** allows the OS to modify Secure Boot keys.
+  Audit Mode is useful on firmware that otherwise blocks the current OS from
+  booting while still allowing key enrollment.
+- On many Dell systems, this is under **Boot Configuration**. Enable Secure
+  Boot, then set **Secure Boot Mode** to **Audit Mode** while Keystone enrolls
+  keys. After `ks hardware setup` reports Secure Boot enrolled and the system
+  boots through lanzaboote, switch Secure Boot enforcement on and re-run
+  `ks hardware setup`.
+
+If you are already in Linux and Keystone has paused for firmware action, choose
+the prompt to reboot into firmware setup or run:
+
+```bash
+sudo systemctl reboot --firmware-setup
+```
 
 <details>
 <summary>Example: <code>ks hardware report</code> before enrollment</summary>
@@ -173,8 +200,11 @@ start with a staging step like:
 
 ```text
   • Generate Secure Boot keys
-  • Pause for firmware action: Enter firmware, enable Secure Boot or Setup Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.
+  • Pause for firmware action: Enter firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.
 ```
+
+During the real run, Keystone will offer to reboot directly into firmware
+setup at this pause.
 
 </details>
 

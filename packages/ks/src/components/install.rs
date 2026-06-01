@@ -2342,8 +2342,10 @@ impl InstallScreen {
             format!(
                 "\n  NixOS has been installed as '{}'.\n\n  \
                  Please remove the USB drive and reboot.\n\n  \
-                 After reboot, enroll Secure Boot keys with:\n    \
-                 sudo sbctl enroll-keys --microsoft",
+                 After reboot, run:\n    \
+                 ks hardware setup\n\n  \
+                 That flow enrolls Secure Boot keys when possible, offers to reboot\n  \
+                 into firmware setup, then continues disk-unlock enrollment.",
                 self.config.hostname,
             ),
             Style::default().fg(t.active),
