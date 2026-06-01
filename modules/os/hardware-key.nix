@@ -121,6 +121,39 @@ in
         enable = true;
         enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
       };
+
+      # Outbound: auto-load each declared SK private key into the user's
+      # ssh-agent at session start. Without this, the keystone.keys registry
+      # only wires authorized_keys on the receiving side; the user still has
+      # to manually `ssh-add` every YubiKey after every login.
+      # Agent users are skipped (they don't run interactive sessions and
+      # the schema asserts agents have no hardwareKeys).
+      systemd.user.services = lib.mkMerge (
+        lib.concatLists (
+          lib.mapAttrsToList (
+            username: _userCfg:
+            lib.optionals (!lib.hasPrefix "agent-" username) (
+              lib.mapAttrsToList (
+                keyname: keyCfg:
+                lib.mkIf (keyCfg.privateKeyFile != null) {
+                  "ssh-add-${username}-${keyname}" = {
+                    description = "Auto-load hardware key ${keyname} for ${username}";
+                    wantedBy = [ "default.target" ];
+                    after = [ "ssh-agent.service" ];
+                    serviceConfig = {
+                      Type = "oneshot";
+                      RemainAfterExit = true;
+                      Environment = [ "SSH_AUTH_SOCK=%t/ssh-agent" ];
+                      # -q swallows "device not found" so absent YubiKeys don't fail.
+                      ExecStart = "${pkgs.openssh}/bin/ssh-add -q ${keyCfg.privateKeyFile}";
+                    };
+                  };
+                }
+              ) (keysCfg.${username}.hardwareKeys or { })
+            )
+          ) config.keystone.os.users
+        )
+      );
     })
   ];
 }

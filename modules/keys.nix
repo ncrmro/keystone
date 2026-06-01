@@ -71,24 +71,38 @@ in
 
             hardwareKeys = mkOption {
               type = types.attrsOf (
-                types.submodule {
-                  options = {
-                    publicKey = mkOption {
-                      type = types.str;
-                      description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
+                types.submodule (
+                  { name, ... }:
+                  {
+                    options = {
+                      publicKey = mkOption {
+                        type = types.str;
+                        description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
+                      };
+                      description = mkOption {
+                        type = types.str;
+                        default = "";
+                        description = "Human-readable description (e.g. color, form factor).";
+                      };
+                      ageIdentity = mkOption {
+                        type = types.nullOr types.str;
+                        default = null;
+                        description = "age-plugin-yubikey identity string for agenix secrets.";
+                      };
+                      privateKeyFile = mkOption {
+                        type = types.nullOr types.str;
+                        default = "~/.ssh/id_ed25519_sk_${name}";
+                        description = ''
+                          Absolute path to the SK private-key file in the user's home.
+                          Defaults to ~/.ssh/id_ed25519_sk_<keyname> — every declared
+                          key auto-loads at session start unless overridden. Set to
+                          null to skip auto-load (the pubkey still authorizes inbound).
+                        '';
+                        example = "~/.ssh/id_ed25519_sk_yubi-black";
+                      };
                     };
-                    description = mkOption {
-                      type = types.str;
-                      default = "";
-                      description = "Human-readable description (e.g. color, form factor).";
-                    };
-                    ageIdentity = mkOption {
-                      type = types.nullOr types.str;
-                      default = null;
-                      description = "age-plugin-yubikey identity string for agenix secrets.";
-                    };
-                  };
-                }
+                  }
+                )
               );
               default = { };
               description = "Portable hardware keys (FIDO2/YubiKey). Work across all hosts, require physical touch.";
