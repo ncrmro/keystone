@@ -76,47 +76,51 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    # Validate rootKeys references resolve in keystone.keys
-    assertions = map (
-      ref:
-      let
-        parts = splitString "/" ref;
-        username = elemAt parts 0;
-        keyname = elemAt parts 1;
-      in
-      {
-        assertion =
-          length parts == 2 && keysCfg ? ${username} && keysCfg.${username}.hardwareKeys ? ${keyname};
-        message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
-      }
-    ) cfg.rootKeys;
+  config = mkMerge [
+    # Inbound auth: accepting a hardware-key-signed SSH session to root is
+    # just static pubkey text in authorized_keys. It does not require any
+    # hardware-key reader on THIS host, so it must not be gated on
+    # `enable` — VPS hosts with no physical YubiKey still need root SSH
+    # from clients that have one. Always wire when rootKeys is non-empty.
+    (mkIf (cfg.rootKeys != [ ]) {
+      assertions = map (
+        ref:
+        let
+          parts = splitString "/" ref;
+          username = elemAt parts 0;
+          keyname = elemAt parts 1;
+        in
+        {
+          assertion =
+            length parts == 2 && keysCfg ? ${username} && keysCfg.${username}.hardwareKeys ? ${keyname};
+          message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
+        }
+      ) cfg.rootKeys;
 
-    # Wire hardware key SSH keys into root's authorized_keys
-    users.users.root.openssh.authorizedKeys.keys = map resolveRootKey cfg.rootKeys;
+      users.users.root.openssh.authorizedKeys.keys = map resolveRootKey cfg.rootKeys;
+    })
 
-    # Enable smart card daemon for hardware key communication
-    services.pcscd.enable = true;
+    # Outbound auth + local UX: smart-card services, agent, CLI tools. Only
+    # makes sense on hosts that actually have the hardware plugged in.
+    (mkIf cfg.enable {
+      services.pcscd.enable = true;
+      hardware.gpgSmartcards.enable = true;
 
-    # Enable udev rules for YubiKey
-    hardware.gpgSmartcards.enable = true;
+      # TODO: PAM U2F authentication for sudo
+      # security.pam.services.sudo.u2fAuth = cfg.sudoTouchAuth;
 
-    # TODO: PAM U2F authentication for sudo
-    # security.pam.services.sudo.u2fAuth = cfg.sudoTouchAuth;
+      environment.systemPackages = with pkgs; [
+        yubikey-manager
+        age-plugin-yubikey
+        pam_u2f
+        yubico-piv-tool
+        yubikey-personalization
+      ];
 
-    # Required packages for hardware key management
-    environment.systemPackages = with pkgs; [
-      yubikey-manager # ykman CLI for YubiKey configuration
-      age-plugin-yubikey # age encryption with YubiKey (for agenix)
-      pam_u2f # PAM module for FIDO2 authentication
-      yubico-piv-tool # PIV operations
-      yubikey-personalization # Personalization tools
-    ];
-
-    # GPG agent with optional SSH support
-    programs.gnupg.agent = mkIf cfg.gpgAgent.enable {
-      enable = true;
-      enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
-    };
-  };
+      programs.gnupg.agent = mkIf cfg.gpgAgent.enable {
+        enable = true;
+        enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
+      };
+    })
+  ];
 }
