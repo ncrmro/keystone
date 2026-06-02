@@ -1,17 +1,17 @@
 # hardware-key evaluation test
 #
 # Verifies the auto-load wiring in modules/os/hardware-key.nix:
-#   - Each declared keystone.keys.<user>.hardwareKeys.<name> entry with a
-#     non-null privateKeyFile produces a systemd.user.services
+#   - Each declared keystone.keys.<user>.hardwareKeys.<name> entry with
+#     autoLoad = true (default) produces a systemd.user.services
 #     "ssh-add-<user>-<name>" unit on hosts with
 #     keystone.hardwareKey.enable = true.
 #   - Agent users (name starting with "agent-") are skipped — they have no
 #     interactive session and the keys.nix schema asserts they must not
 #     carry hardware keys anyway.
-#   - Setting privateKeyFile = null on an entry opts that key out of
-#     auto-load while leaving the public-key registration intact.
-#   - The unit's ExecStart references the resolved private-key path
-#     (default ~/.ssh/id_ed25519_sk_<keyname>).
+#   - Setting autoLoad = false on an entry opts that key out of auto-load
+#     while leaving the public-key registration intact.
+#   - The unit's ExecStart references the canonical absolute path
+#     ${user.home}/.ssh/id_ed25519_sk_<keyname> — there is no override.
 #
 # Build: nix build .#hardware-key-evaluation
 #
@@ -98,7 +98,7 @@ let
     };
   };
 
-  # Config B: yubi-green opted out via privateKeyFile = null.
+  # Config B: yubi-green opted out via autoLoad = false.
   configBModules = baseModules {
     keystone.keys.ncrmro.hardwareKeys = {
       yubi-black = {
@@ -106,7 +106,7 @@ let
       };
       yubi-green = {
         publicKey = "sk-ssh-ed25519@openssh.com AAAAdummy-green yubi-green";
-        privateKeyFile = null;
+        autoLoad = false;
       };
     };
   };
@@ -172,20 +172,20 @@ let
       want = "true";
     }
     {
-      name = "A: yubi-black ExecStart references ~/.ssh/id_ed25519_sk_yubi-black";
+      name = "A: yubi-black ExecStart references /home/ncrmro/.ssh/id_ed25519_sk_yubi-black";
       ok =
         execStartA-black != ""
-        && builtins.match ".*~/.ssh/id_ed25519_sk_yubi-black.*" execStartA-black != null;
+        && builtins.match ".*/home/ncrmro/.ssh/id_ed25519_sk_yubi-black$" execStartA-black != null;
       got = execStartA-black;
-      want = "matches .*~/.ssh/id_ed25519_sk_yubi-black.*";
+      want = "matches .*/home/ncrmro/.ssh/id_ed25519_sk_yubi-black$";
     }
     {
-      name = "A: yubi-green ExecStart references ~/.ssh/id_ed25519_sk_yubi-green";
+      name = "A: yubi-green ExecStart references /home/ncrmro/.ssh/id_ed25519_sk_yubi-green";
       ok =
         execStartA-green != ""
-        && builtins.match ".*~/.ssh/id_ed25519_sk_yubi-green.*" execStartA-green != null;
+        && builtins.match ".*/home/ncrmro/.ssh/id_ed25519_sk_yubi-green$" execStartA-green != null;
       got = execStartA-green;
-      want = "matches .*~/.ssh/id_ed25519_sk_yubi-green.*";
+      want = "matches .*/home/ncrmro/.ssh/id_ed25519_sk_yubi-green$";
     }
     {
       name = "A: agent-* users are skipped (no ssh-add-agent-* services)";
@@ -200,7 +200,7 @@ let
       want = "true";
     }
     {
-      name = "B: ssh-add-ncrmro-yubi-green does NOT exist (privateKeyFile = null)";
+      name = "B: ssh-add-ncrmro-yubi-green does NOT exist (autoLoad = false)";
       ok = !(hasService userServicesB "ssh-add-ncrmro-yubi-green");
       got = jsonOf (hasService userServicesB "ssh-add-ncrmro-yubi-green");
       want = "false";

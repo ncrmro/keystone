@@ -89,16 +89,17 @@ in
                         default = null;
                         description = "age-plugin-yubikey identity string for agenix secrets.";
                       };
-                      privateKeyFile = mkOption {
-                        type = types.nullOr types.str;
-                        default = "~/.ssh/id_ed25519_sk_${name}";
+                      autoLoad = mkOption {
+                        type = types.bool;
+                        default = true;
                         description = ''
-                          Absolute path to the SK private-key file in the user's home.
-                          Defaults to ~/.ssh/id_ed25519_sk_<keyname> — every declared
-                          key auto-loads at session start unless overridden. Set to
-                          null to skip auto-load (the pubkey still authorizes inbound).
+                          Auto-load this key into the user's ssh-agent at session start
+                          via the keystone.hardwareKey systemd-user unit. The on-disk
+                          path is always derived from the keyname:
+                          ${"$"}{user.home}/.ssh/id_ed25519_sk_<keyname> — there is no
+                          override. Set autoLoad = false to skip the ssh-add unit for
+                          this key while leaving the public-key registration intact.
                         '';
-                        example = "~/.ssh/id_ed25519_sk_yubi-black";
                       };
                       handleSource = mkOption {
                         type = types.nullOr types.path;

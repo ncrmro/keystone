@@ -122,59 +122,59 @@ in
         enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
       };
 
-      # Materialize each user's SK key handles into their ~/.ssh/. The
-      # handle is a pointer to the credential on the YubiKey, not a private
-      # key — the actual signing material never leaves the hardware — so
-      # we can distribute it across the fleet without re-enrolling per
-      # machine. L+ symlinks the file in (force-replace), so re-enrolling
-      # a YubiKey + committing the new bytes propagates to every host on
-      # next deploy. systemd-tmpfiles owns the symlinks (not the targets,
-      # which live in /nix/store) so the user can rm them without breaking
-      # anything — they reappear on next activation.
-      systemd.tmpfiles.rules = lib.concatLists (
-        lib.mapAttrsToList (
-          username: _userCfg:
-          lib.optionals (!lib.hasPrefix "agent-" username) (
+      # Hardware-key wiring for human users. Each (user, keyname) pair gets:
+      #   - a tmpfiles rule materializing the SK handle from /nix/store
+      #     (if handleSource is set) at the canonical path
+      #   - a systemd-user oneshot that ssh-adds the same path at login
+      #     (if autoLoad = true, the default)
+      #
+      # The canonical path is always ${user.home}/.ssh/id_ed25519_sk_${keyname}.
+      # No override option — the keyname IS the identifier.
+      #
+      # Agent users are skipped: agents don't run interactive sessions, and
+      # the schema rejects hardwareKeys on agent-* users.
+      systemd.tmpfiles.rules =
+        let
+          ruleFor =
+            username: keyname: keyCfg:
             let
               user = config.users.users.${username};
-              expandTilde =
-                path: if lib.hasPrefix "~/" path then "${user.home}/${lib.removePrefix "~/" path}" else path;
+              dst = "${user.home}/.ssh/id_ed25519_sk_${keyname}";
             in
-            # Ensure ~/.ssh exists with correct ownership before any symlink
-            # lands inside it. d/Z rules are idempotent.
-            [ "d ${user.home}/.ssh 0700 ${username} ${user.group} -" ]
-            ++ lib.concatLists (
-              lib.mapAttrsToList (
-                _keyname: keyCfg:
-                let
-                  dst = expandTilde keyCfg.privateKeyFile;
-                in
-                (lib.optional (
-                  keyCfg.handleSource != null
-                ) "L+ ${dst} - ${username} ${user.group} - ${keyCfg.handleSource}")
-                ++ (lib.optional (
-                  keyCfg.handlePubSource != null
-                ) "L+ ${dst}.pub - ${username} ${user.group} - ${keyCfg.handlePubSource}")
-              ) (keysCfg.${username}.hardwareKeys or { })
-            )
-          )
-        ) config.keystone.os.users
-      );
-
-      # Outbound: auto-load each declared SK private key into the user's
-      # ssh-agent at session start. Without this, the keystone.keys registry
-      # only wires authorized_keys on the receiving side; the user still has
-      # to manually `ssh-add` every YubiKey after every login.
-      # Agent users are skipped (they don't run interactive sessions and
-      # the schema asserts agents have no hardwareKeys).
-      systemd.user.services = lib.mkMerge (
+            (lib.optional (
+              keyCfg.handleSource != null
+            ) "L+ ${dst} - ${username} ${user.group} - ${keyCfg.handleSource}")
+            ++ (lib.optional (
+              keyCfg.handlePubSource != null
+            ) "L+ ${dst}.pub - ${username} ${user.group} - ${keyCfg.handlePubSource}");
+          dirFor =
+            username:
+            let
+              user = config.users.users.${username};
+            in
+            "d ${user.home}/.ssh 0700 ${username} ${user.group} -";
+        in
         lib.concatLists (
           lib.mapAttrsToList (
             username: _userCfg:
             lib.optionals (!lib.hasPrefix "agent-" username) (
+              [ (dirFor username) ]
+              ++ lib.concatLists (lib.mapAttrsToList (ruleFor username) (keysCfg.${username}.hardwareKeys or { }))
+            )
+          ) config.keystone.os.users
+        );
+
+      systemd.user.services = lib.mkMerge (
+        lib.concatLists (
+          lib.mapAttrsToList (
+            username: _userCfg:
+            let
+              user = config.users.users.${username};
+            in
+            lib.optionals (!lib.hasPrefix "agent-" username) (
               lib.mapAttrsToList (
                 keyname: keyCfg:
-                lib.mkIf (keyCfg.privateKeyFile != null) {
+                lib.mkIf keyCfg.autoLoad {
                   "ssh-add-${username}-${keyname}" = {
                     description = "Auto-load hardware key ${keyname} for ${username}";
                     wantedBy = [ "default.target" ];
@@ -184,7 +184,7 @@ in
                       RemainAfterExit = true;
                       Environment = [ "SSH_AUTH_SOCK=%t/ssh-agent" ];
                       # -q swallows "device not found" so absent YubiKeys don't fail.
-                      ExecStart = "${pkgs.openssh}/bin/ssh-add -q ${keyCfg.privateKeyFile}";
+                      ExecStart = "${pkgs.openssh}/bin/ssh-add -q ${user.home}/.ssh/id_ed25519_sk_${keyname}";
                     };
                   };
                 }
