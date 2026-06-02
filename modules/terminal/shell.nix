@@ -110,15 +110,11 @@ in
                 MoveTab = "Right";
               };
               # New tab: Ctrl+T
-              # Open a visible floating prompt instead of the subtle RenameTab mode UI.
+              # Force native rename mode so new tabs do not keep unclear default names.
               "bind \"Ctrl t\"" = {
-                Run = {
-                  _args = [
-                    "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
-                  ];
-                  floating = true;
-                  close_on_exit = true;
-                };
+                NewTab = { };
+                SwitchToMode = "RenameTab";
+                TabNameInput = 0;
               };
               # Close tab: Ctrl+W
               "bind \"Ctrl w\"" = {

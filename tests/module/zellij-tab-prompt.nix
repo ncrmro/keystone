@@ -43,26 +43,38 @@ pkgs.runCommand "zellij-tab-prompt-check" { } ''
   ${zshInit}
   EOF_ZSH
 
-    if ! grep -Fq 'Run "' "$zellij_config_file"; then
-      echo "FAIL: zellij config is missing the Run action for Ctrl+t" >&2
+    if ! grep -Fq 'NewTab' "$zellij_config_file"; then
+      echo "FAIL: zellij config is missing the native NewTab action for Ctrl+t" >&2
       cat "$zellij_config_file" >&2
       exit 1
     fi
 
-    if ! grep -Fq 'keystone-zellij-new-tab-prompt' "$zellij_config_file"; then
-      echo "FAIL: zellij config is missing the visible new-tab prompt command" >&2
+    if ! grep -Fq 'SwitchToMode "RenameTab"' "$zellij_config_file"; then
+      echo "FAIL: Ctrl+t must force naming through native RenameTab mode" >&2
       cat "$zellij_config_file" >&2
       exit 1
     fi
 
-    if ! grep -Fq 'floating true' "$zellij_config_file"; then
-      echo "FAIL: zellij config is missing the floating prompt setting" >&2
+    if ! grep -Fq 'TabNameInput 0' "$zellij_config_file"; then
+      echo "FAIL: Ctrl+t must initialize native tab-name input" >&2
       cat "$zellij_config_file" >&2
       exit 1
     fi
 
-    if ! grep -Fq 'close_on_exit true' "$zellij_config_file"; then
-      echo "FAIL: zellij config is missing the close_on_exit setting for the prompt" >&2
+    if grep -Fq 'keystone-zellij-new-tab-prompt' "$zellij_config_file"; then
+      echo "FAIL: Ctrl+t must not spawn the floating new-tab prompt" >&2
+      cat "$zellij_config_file" >&2
+      exit 1
+    fi
+
+    if grep -Fq 'floating true' "$zellij_config_file"; then
+      echo "FAIL: Ctrl+t must not create a floating prompt pane" >&2
+      cat "$zellij_config_file" >&2
+      exit 1
+    fi
+
+    if grep -Fq 'close_on_exit true' "$zellij_config_file"; then
+      echo "FAIL: Ctrl+t must not create a close-on-exit prompt pane" >&2
       cat "$zellij_config_file" >&2
       exit 1
     fi
