@@ -262,6 +262,25 @@ fn plan_secure_boot(
     let mut steps = Vec::new();
     match state {
         SecureBootState::Enrolled => {}
+        SecureBootState::AuditMode => match sb_status.unwrap_or(SbStatus::Unknown) {
+            SbStatus::KeysGenerated | SbStatus::Enrolled => {
+                steps.push(SetupStep::PauseForSecureBoot {
+                    reason: "Secure Boot is in Audit Mode: unsigned boot is still allowed. Run `sbctl verify` to confirm the current lanzaboote artifacts are signed, then enable Secure Boot enforcement in firmware and re-run `ks hardware setup`.".into(),
+                });
+            }
+            SbStatus::SetupMode => {
+                steps.push(SetupStep::EnrollSecureBootKeys);
+                steps.push(SetupStep::RebootAndResume {
+                    reason: "Secure Boot keys were enrolled while firmware allowed key updates. Reboot, enable Secure Boot enforcement if firmware leaves Audit Mode on, and re-run `ks hardware setup`.".into(),
+                });
+            }
+            SbStatus::NotInSetupMode | SbStatus::Unknown => {
+                steps.push(SetupStep::PrepareSecureBootKeys);
+                steps.push(SetupStep::PauseForSecureBoot {
+                    reason: "Secure Boot is in Audit Mode but Keystone keys are not ready. Generate keys, enroll them from firmware Setup/Audit Mode, then enable enforcement and re-run `ks hardware setup`.".into(),
+                });
+            }
+        },
         SecureBootState::SetupMode => {
             steps.push(SetupStep::EnrollSecureBootKeys);
             steps.push(SetupStep::RebootAndResume {
@@ -729,6 +748,50 @@ mod tests {
             .steps
             .iter()
             .any(|s| matches!(s, SetupStep::RebootAndResume { .. })));
+    }
+
+    #[test]
+    fn plan_pauses_in_audit_mode_when_keys_exist() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::AuditMode;
+        let p = plan(
+            &r,
+            &SetupOptions {
+                secure_boot_status: Some(secure_boot::Status::KeysGenerated),
+                ..SetupOptions::default()
+            },
+        );
+        assert!(!p.steps.contains(&SetupStep::PrepareSecureBootKeys));
+        assert!(!p.steps.contains(&SetupStep::EnrollSecureBootKeys));
+        assert!(p.steps.iter().any(|s| matches!(
+            s,
+            SetupStep::PauseForSecureBoot { reason }
+                if reason.contains("Audit Mode") && reason.contains("sbctl verify")
+        )));
+    }
+
+    #[test]
+    fn plan_does_not_continue_to_tpm_in_audit_mode() {
+        let mut r = fresh_install_report();
+        r.machine.secure_boot = SecureBootState::AuditMode;
+        let p = plan(
+            &r,
+            &SetupOptions {
+                secure_boot_status: Some(secure_boot::Status::KeysGenerated),
+                ..SetupOptions::default()
+            },
+        );
+        let pause = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::PauseForSecureBoot { .. }))
+            .expect("audit mode pause");
+        let tpm = p
+            .steps
+            .iter()
+            .position(|s| matches!(s, SetupStep::EnrollTpm2 { .. }))
+            .expect("TPM2 step remains visible after the blocker");
+        assert!(pause < tpm);
     }
 
     #[test]

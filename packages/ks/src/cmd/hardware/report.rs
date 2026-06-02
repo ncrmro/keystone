@@ -197,6 +197,7 @@ fn format_machine(out: &mut String, m: &MachineState) {
 fn render_secure_boot(s: SecureBootState) -> &'static str {
     match s {
         SecureBootState::Enrolled => "enrolled",
+        SecureBootState::AuditMode => "Audit Mode (enforcement disabled)",
         SecureBootState::SetupMode => "Setup Mode (ready to enroll keys)",
         SecureBootState::Disabled => "⚠ DISABLED",
         SecureBootState::NotSupported => "not supported (non-UEFI)",

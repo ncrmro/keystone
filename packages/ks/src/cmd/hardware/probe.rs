@@ -74,6 +74,9 @@ pub struct MachineState {
 pub enum SecureBootState {
     /// Secure Boot is enabled and keys are enrolled.
     Enrolled,
+    /// UEFI Audit Mode is on — key changes are allowed, but unsigned
+    /// boot artifacts are still permitted.
+    AuditMode,
     /// UEFI Setup Mode is on — ready for `sbctl enroll-keys`.
     SetupMode,
     /// Secure Boot disabled at the firmware level. No PCR-7 integrity.
@@ -284,6 +287,7 @@ impl std::str::FromStr for Method {
 pub fn secure_boot_from_efivars(
     secure_boot_var: Option<&[u8]>,
     setup_mode_var: Option<&[u8]>,
+    audit_mode_var: Option<&[u8]>,
     efivars_dir_exists: bool,
 ) -> SecureBootState {
     if !efivars_dir_exists {
@@ -291,11 +295,14 @@ pub fn secure_boot_from_efivars(
     }
     let sb_on = secure_boot_var.and_then(|b| b.get(4)).copied() == Some(1);
     let setup_on = setup_mode_var.and_then(|b| b.get(4)).copied() == Some(1);
+    let audit_on = audit_mode_var.and_then(|b| b.get(4)).copied() == Some(1);
     if sb_on {
         SecureBootState::Enrolled
+    } else if audit_on {
+        SecureBootState::AuditMode
     } else if setup_on {
         SecureBootState::SetupMode
-    } else if secure_boot_var.is_some() || setup_mode_var.is_some() {
+    } else if secure_boot_var.is_some() || setup_mode_var.is_some() || audit_mode_var.is_some() {
         SecureBootState::Disabled
     } else {
         SecureBootState::Unknown
@@ -440,6 +447,14 @@ fn warnings_from_context(
                 "Run `ks hardware setup` to stage Secure Boot keys, then enable Secure Boot in firmware so TPM PCR-7 binding has an integrity anchor.".into(),
             ),
         }),
+        SecureBootState::AuditMode => out.push(Warning {
+            severity: Severity::Info,
+            scope: WarningScope::Machine,
+            message: "UEFI in Audit Mode — Secure Boot enforcement is still disabled.".into(),
+            remediation: Some(
+                "Run `sbctl verify` to confirm current lanzaboote artifacts are signed, then enable Secure Boot enforcement in firmware and re-run `ks hardware setup`.".into(),
+            ),
+        }),
         SecureBootState::SetupMode => out.push(Warning {
             severity: Severity::Info,
             scope: WarningScope::Machine,
@@ -557,7 +572,8 @@ async fn probe_secure_boot() -> SecureBootState {
     }
     let sb = read_efivar(efivars, "SecureBoot").await;
     let setup = read_efivar(efivars, "SetupMode").await;
-    secure_boot_from_efivars(sb.as_deref(), setup.as_deref(), true)
+    let audit = read_efivar(efivars, "AuditMode").await;
+    secure_boot_from_efivars(sb.as_deref(), setup.as_deref(), audit.as_deref(), true)
 }
 
 async fn read_efivar(efivars: &Path, name_prefix: &str) -> Option<Vec<u8>> {
@@ -749,23 +765,33 @@ mod tests {
         let on = vec![0, 0, 0, 0, 1];
         let off = vec![0, 0, 0, 0, 0];
         assert_eq!(
-            secure_boot_from_efivars(Some(&on), Some(&off), true),
+            secure_boot_from_efivars(Some(&on), Some(&off), Some(&off), true),
             SecureBootState::Enrolled
         );
         assert_eq!(
-            secure_boot_from_efivars(Some(&off), Some(&on), true),
+            secure_boot_from_efivars(Some(&off), Some(&on), Some(&off), true),
             SecureBootState::SetupMode
         );
         assert_eq!(
-            secure_boot_from_efivars(Some(&off), Some(&off), true),
+            secure_boot_from_efivars(Some(&off), Some(&off), Some(&off), true),
             SecureBootState::Disabled
+        );
+    }
+
+    #[test]
+    fn efivars_audit_mode_is_not_plain_setup_mode() {
+        let off = vec![0, 0, 0, 0, 0];
+        let on = vec![0, 0, 0, 0, 1];
+        assert_eq!(
+            secure_boot_from_efivars(Some(&off), Some(&on), Some(&on), true),
+            SecureBootState::AuditMode
         );
     }
 
     #[test]
     fn efivars_missing_dir_means_not_supported() {
         assert_eq!(
-            secure_boot_from_efivars(None, None, false),
+            secure_boot_from_efivars(None, None, None, false),
             SecureBootState::NotSupported
         );
     }
@@ -773,7 +799,7 @@ mod tests {
     #[test]
     fn efivars_missing_vars_with_dir_means_unknown() {
         assert_eq!(
-            secure_boot_from_efivars(None, None, true),
+            secure_boot_from_efivars(None, None, None, true),
             SecureBootState::Unknown
         );
     }

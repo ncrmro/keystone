@@ -79,11 +79,13 @@ pub async fn check_status() -> Status {
 
     let secure_boot_enabled = text
         .lines()
-        .any(|l| l.contains("Secure Boot:") && l.contains("Enabled"));
+        .find(|l| l.contains("Secure Boot:"))
+        .is_some_and(sbctl_status_line_is_enabled);
 
     let setup_mode_enabled = text
         .lines()
-        .any(|l| l.contains("Setup Mode:") && l.contains("Enabled"));
+        .find(|l| l.contains("Setup Mode:"))
+        .is_some_and(sbctl_status_line_is_enabled);
     let saw_setup_mode_line = text.lines().any(|l| l.contains("Setup Mode:"));
 
     status_from_facts(
@@ -92,6 +94,10 @@ pub async fn check_status() -> Status {
         keys_exist(),
         saw_setup_mode_line,
     )
+}
+
+fn sbctl_status_line_is_enabled(line: &str) -> bool {
+    line.contains('✓') && line.contains("Enabled")
 }
 
 /// Generate Secure Boot keys via `sbctl create-keys`.
@@ -244,7 +250,9 @@ pub async fn provision() -> anyhow::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_secure_boot_enrollment_var, status_from_facts, Status};
+    use super::{
+        is_secure_boot_enrollment_var, sbctl_status_line_is_enabled, status_from_facts, Status,
+    };
 
     #[test]
     fn setup_mode_takes_priority_over_existing_keys() {
@@ -294,5 +302,12 @@ mod tests {
         assert!(!is_secure_boot_enrollment_var(
             "BootOrder-8be4df61-93ca-11d2-aa0d-00e098032b8c"
         ));
+    }
+
+    #[test]
+    fn sbctl_status_parser_requires_checkmark() {
+        assert!(sbctl_status_line_is_enabled("Secure Boot:\t✓ Enabled"));
+        assert!(!sbctl_status_line_is_enabled("Setup Mode:\t✗ Enabled"));
+        assert!(!sbctl_status_line_is_enabled("Secure Boot:\t✗ Disabled"));
     }
 }
