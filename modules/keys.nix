@@ -100,6 +100,31 @@ in
                         '';
                         example = "~/.ssh/id_ed25519_sk_yubi-black";
                       };
+                      handleSource = mkOption {
+                        type = types.nullOr types.path;
+                        default = null;
+                        description = ''
+                          Nix path to the SK key handle binary (what `ssh-keygen -t ed25519-sk
+                          -O resident` produced). When set, the handle is materialized as a
+                          symlink at `privateKeyFile` on every host with
+                          `keystone.hardwareKey.enable = true`, so a single YubiKey works
+                          across the fleet with no per-machine enrollment. The handle is
+                          *not* a private key — the actual signing material never leaves
+                          the hardware — so committing it to the consumer flake is fine
+                          even though the file is normally chmod 600.
+                        '';
+                        example = lib.literalExpression "./hardware-keys/yubi-black";
+                      };
+                      handlePubSource = mkOption {
+                        type = types.nullOr types.path;
+                        default = null;
+                        description = ''
+                          Nix path to the matching .pub file. Deployed alongside
+                          handleSource at `${privateKeyFile}.pub`. Some SSH tooling
+                          (e.g. ssh-add -L parsing, ssh-keygen -y) expects this.
+                        '';
+                        example = lib.literalExpression "./hardware-keys/yubi-black.pub";
+                      };
                     };
                   }
                 )
