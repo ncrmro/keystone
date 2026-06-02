@@ -296,7 +296,7 @@ fn plan_secure_boot(
             }
             SbStatus::KeysGenerated => {
                 steps.push(SetupStep::PauseForSecureBoot {
-                    reason: "Secure Boot keys already exist. Reboot into firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup`.".into(),
+                    reason: "Secure Boot keys already exist. Reboot into firmware, enable Secure Boot Custom Mode, then re-run `ks hardware setup`.".into(),
                 });
             }
             SbStatus::Enrolled => {
@@ -307,7 +307,7 @@ fn plan_secure_boot(
             SbStatus::NotInSetupMode | SbStatus::Unknown => {
                 steps.push(SetupStep::PrepareSecureBootKeys);
                 steps.push(SetupStep::PauseForSecureBoot {
-                    reason: "Enter firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.".into(),
+                    reason: "Enter firmware, enable Secure Boot Custom Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.".into(),
                 });
             }
         },
@@ -320,8 +320,9 @@ fn secure_boot_firmware_guidance() -> &'static str {
     "Firmware step:\n\
      - Reboot into UEFI/BIOS setup.\n\
      - Find Secure Boot settings. On many Dell systems this is under Boot Configuration.\n\
-     - Use Setup Mode or Audit Mode while Keystone enrolls or updates Secure Boot keys; Audit Mode still lets unsigned OS entries boot while key changes are allowed.\n\
-     - After Keystone keys are enrolled and the signed lanzaboote entry boots, enable Secure Boot enforcement and re-run `ks hardware setup`.\n\
+     - Enable Secure Boot and set Secure Boot Mode to Custom Mode so Keystone can enroll its own keys.\n\
+     - Keystone custom keys make firmware trust this system's signed lanzaboote bootloader and initrd, protecting against bootloader/initrd tampering and evil-maid attacks.\n\
+     - Audit Mode is non-enforcing; if firmware lands there, verify signatures with `sbctl verify`, then enable Secure Boot enforcement with the custom keys and re-run `ks hardware setup`.\n\
      See `docs/keystone/hardware-enrollment.md` in your keystone-config for the longer walkthrough."
 }
 
@@ -861,10 +862,11 @@ mod tests {
     }
 
     #[test]
-    fn firmware_guidance_mentions_dell_audit_mode() {
+    fn firmware_guidance_mentions_dell_custom_mode() {
         let guidance = secure_boot_firmware_guidance();
         assert!(guidance.contains("Dell"));
-        assert!(guidance.contains("Audit Mode"));
+        assert!(guidance.contains("Custom Mode"));
+        assert!(guidance.contains("evil-maid"));
         assert!(guidance.contains("Boot Configuration"));
     }
 

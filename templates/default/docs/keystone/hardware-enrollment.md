@@ -124,14 +124,21 @@ labels:
 
 - **Secure Boot enablement** turns enforcement on. Do this only after Keystone
   has generated/enrolled keys and the signed lanzaboote boot entry is present.
-- **Setup Mode** or **Audit Mode** allows the OS to modify Secure Boot keys.
-  Audit Mode is useful on firmware that otherwise blocks the current OS from
-  booting while still allowing key enrollment.
+- **Custom Mode** is required on many vendor BIOSes when you want to use your
+  own Secure Boot keys instead of the vendor defaults. Keystone uses custom
+  keys so the firmware trusts the signed lanzaboote bootloader and initrd that
+  belong to this system. That protects against bootloader/initrd tampering and
+  evil-maid attacks before TPM2 auto-unlock releases the disk.
+- **Setup Mode** allows key enrollment when no Platform Key is installed.
+- **Audit Mode** is non-enforcing: it may allow key changes and unsigned boot,
+  but it is not the final secure state. If `ks hardware report` says Audit
+  Mode, confirm `sbctl verify`, then return to firmware and enable Secure Boot
+  enforcement with Keystone's custom keys.
 - On many Dell systems, this is under **Boot Configuration**. Enable Secure
-  Boot, then set **Secure Boot Mode** to **Audit Mode** while Keystone enrolls
-  keys. After `ks hardware setup` reports Secure Boot enrolled and the system
-  boots through lanzaboote, switch Secure Boot enforcement on and re-run
-  `ks hardware setup`.
+  Boot, then set **Secure Boot Mode** to **Custom Mode** so Keystone can enroll
+  and use its own keys. After `ks hardware setup` reports that keys are staged
+  and the system boots through signed lanzaboote entries, keep Secure Boot
+  enforcement enabled and re-run `ks hardware setup`.
 
 If you are already in Linux and Keystone has paused for firmware action, choose
 the prompt to reboot into firmware setup or run:
@@ -200,7 +207,7 @@ start with a staging step like:
 
 ```text
   • Generate Secure Boot keys
-  • Pause for firmware action: Enter firmware, enable Secure Boot or Setup/Audit Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.
+  • Pause for firmware action: Enter firmware, enable Secure Boot Custom Mode, then re-run `ks hardware setup` to enroll the generated keys and continue TPM enrollment.
 ```
 
 During the real run, Keystone will offer to reboot directly into firmware

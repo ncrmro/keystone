@@ -359,9 +359,12 @@ The normal first-time flow is:
    fingerprint if the hardware is present.
 4. If Secure Boot needs firmware action, Keystone explains what to change and
    offers to reboot into firmware setup. On Dell systems, check **Boot
-   Configuration** and use **Secure Boot Mode: Audit Mode** while keys are
-   being enrolled; then enable enforcement after the signed lanzaboote boot
-   entry is in place.
+   Configuration** and use **Secure Boot Mode: Custom Mode** so Keystone can
+   enroll its own Secure Boot keys. Those custom keys make the firmware trust
+   Keystone's signed lanzaboote bootloader and initrd instead of generic vendor
+   defaults; this is what blocks bootloader/initrd tampering and evil-maid
+   attacks. Audit Mode is non-enforcing and should only be treated as an
+   intermediate/troubleshooting state.
 
 **Verify:**
 
