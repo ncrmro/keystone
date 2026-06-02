@@ -95,6 +95,10 @@ in
     # DRM devices to Hyprland and breaks active-user polkit checks.
     services.greetd = {
       enable = mkDefault true;
+      settings.default_session = {
+        command = mkDefault "${pkgs.greetd}/bin/agreety --cmd 'env XDG_SESSION_CLASS=user uwsm start -F Hyprland'";
+        user = mkDefault "greeter";
+      };
       settings.initial_session = {
         command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F Hyprland";
         user = cfg.user;
