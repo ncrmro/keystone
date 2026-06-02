@@ -43,7 +43,7 @@ function findInAgentPaths(
   home: string,
   test: (path: string) => boolean,
 ): boolean {
-  const searchRoots = [join(home, "..", ".worktrees"), join(home, "repos")];
+  const searchRoots = [join(home, "repos")];
   for (const root of searchRoots) {
     if (!existsSync(root)) continue;
     if (walkDir(root, test)) return true;
@@ -250,7 +250,7 @@ export async function cleanupEnvironment(config: Config, report: Report) {
     })();
     if (!home) continue;
 
-    const wtBase = join(home, "..", ".worktrees", owner, name);
+    const wtBase = join(home, "repos", owner, name, "worktrees");
     if (existsSync(wtBase)) {
       emit("info", "removing worktrees", { agent, path: wtBase });
       execSync(`rm -rf ${JSON.stringify(wtBase)}`);
@@ -562,7 +562,13 @@ export async function worktree(config: Config, report: Report) {
   }
 
   const name = forkName(config);
-  const wtBase = join(home, "..", ".worktrees", config.engineerAgent, name);
+  const wtBase = join(
+    home,
+    "repos",
+    config.engineerAgent,
+    name,
+    "worktrees",
+  );
   if (existsSync(wtBase)) {
     try {
       const entries = readdirSync(wtBase, { withFileTypes: true });
@@ -871,7 +877,7 @@ function discoverServerPort(
   const name = forkName(config);
   const owner = config.templateRepo.split("/")[0];
   const roots = [
-    join(agentHome, "..", ".worktrees", owner, name),
+    join(agentHome, "repos", owner, name, "worktrees"),
     join(agentHome, "repos", owner, name),
   ];
   for (const root of roots) {
@@ -932,7 +938,7 @@ function detectBackendLanguage(agentHome: string, config: Config): string | null
   const name = forkName(config);
   const owner = config.templateRepo.split("/")[0];
   const roots = [
-    join(agentHome, "..", ".worktrees", owner, name),
+    join(agentHome, "repos", owner, name, "worktrees"),
     join(agentHome, "repos", owner, name),
   ];
 

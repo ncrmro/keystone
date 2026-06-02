@@ -61,14 +61,14 @@ directories exist for both humans and agents:
 - `~/repos/`
 - the configured notes path (`~/notes` by default)
 - `$HOME/code/`
-- `$HOME/.worktrees/`
+- `$HOME/repos/{owner}/{repo}/worktrees/`
 
 **REQ-018.2b** Home Manager MUST export standardized environment variables so
 non-`ks` tooling can discover the shared workspace paths:
 
 - `NOTES_DIR` — the configured notes path
 - `CODE_DIR` — `$HOME/code`
-- `WORKTREE_DIR` — `$HOME/.worktrees`
+- `WORKTREE_DIR` — `$HOME/repos/{owner}/{repo}/worktrees`
 
 ### Repo Registry
 

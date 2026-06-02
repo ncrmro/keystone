@@ -67,7 +67,7 @@ bin/dev/test-polkit-theme.sh --all
 bin/dev/test-polkit-theme.sh --headless --all
 
 # Test a different keystone checkout without cd-ing into it
-bin/dev/test-polkit-theme.sh --repo ~/.worktrees/ncrmro/keystone/feat-foo --all
+bin/dev/test-polkit-theme.sh --repo ~/repos/ncrmro/worktrees/keystone/feat/foo --all
 
 # Recover after a killed run left the wrong polkit.json in place
 bin/dev/test-polkit-theme.sh --reset
