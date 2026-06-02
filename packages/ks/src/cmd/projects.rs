@@ -1079,24 +1079,17 @@ fn discover_checkouts(full_repo: &str) -> Vec<(PathBuf, String)> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let mut checkout_paths = Vec::new();
 
-    // Human: ~/repos/{owner}/{repo}/ and ~/.worktrees/{owner}/{repo}/*/
+    // Human: ~/repos/{owner}/{repo}/ and ~/repos/{owner}/{repo}/worktrees/*/
     let main_checkout = PathBuf::from(&home)
         .join("repos")
         .join(owner)
         .join(repo_name);
     if main_checkout.exists() {
-        checkout_paths.push((main_checkout, home.clone()));
+        checkout_paths.push((main_checkout.clone(), home.clone()));
+        collect_worktree_dirs(&main_checkout.join("worktrees"), &home, &mut checkout_paths);
     }
-    collect_worktree_dirs(
-        &PathBuf::from(&home)
-            .join(".worktrees")
-            .join(owner)
-            .join(repo_name),
-        &home,
-        &mut checkout_paths,
-    );
 
-    // Agents: /home/agent-*/repos/ and /home/agent-*/.worktrees/
+    // Agents: /home/agent-*/repos/{owner}/{repo}/worktrees/*/
     if let Ok(entries) = std::fs::read_dir("/home") {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -1107,20 +1100,20 @@ fn discover_checkouts(full_repo: &str) -> Vec<(PathBuf, String)> {
             let agent_home_str = agent_home.to_string_lossy().to_string();
             let agent_checkout = agent_home.join("repos").join(owner).join(repo_name);
             if agent_checkout.exists() {
-                checkout_paths.push((agent_checkout, agent_home_str.clone()));
+                checkout_paths.push((agent_checkout.clone(), agent_home_str.clone()));
+                collect_worktree_dirs(
+                    &agent_checkout.join("worktrees"),
+                    &agent_home_str,
+                    &mut checkout_paths,
+                );
             }
-            collect_worktree_dirs(
-                &agent_home.join(".worktrees").join(owner).join(repo_name),
-                &agent_home_str,
-                &mut checkout_paths,
-            );
         }
     }
 
     checkout_paths
 }
 
-/// Collect subdirectories of a worktree base path.
+/// Collect git worktree directories below a repo-owned worktrees path.
 fn collect_worktree_dirs(base: &Path, owner_home: &str, out: &mut Vec<(PathBuf, String)>) {
     if !base.exists() {
         return;
@@ -1129,7 +1122,11 @@ fn collect_worktree_dirs(base: &Path, owner_home: &str, out: &mut Vec<(PathBuf, 
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                out.push((path, owner_home.to_string()));
+                if path.join(".git").exists() {
+                    out.push((path, owner_home.to_string()));
+                } else {
+                    collect_worktree_dirs(&path, owner_home, out);
+                }
             }
         }
     }
@@ -1184,7 +1181,7 @@ async fn parse_checkout_branches(
         })
         .unwrap_or_default();
 
-    let is_worktree = checkout_str.contains(".worktrees/");
+    let is_worktree = checkout_str.contains("/worktrees/");
     let mut branches = Vec::new();
 
     let output = match branch_output {

@@ -77,7 +77,7 @@ gh issue comment 30 --repo ncrmro/catalyst \
 cd "$HOME/repos/ncrmro/catalyst"
 git fetch origin
 git branch refactor/split-routes origin/main
-git worktree add "$HOME/.worktrees/ncrmro/catalyst/refactor/split-routes" refactor/split-routes
+git worktree add "$HOME/repos/ncrmro/catalyst/worktrees/refactor/split-routes" refactor/split-routes
 
 # ... implement the refactor, verify tests still pass ...
 

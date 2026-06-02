@@ -43,7 +43,7 @@ VAULT_ROOT) for all tools.
 ### Worktree Support
 
 **REQ-012.4** agentctl MUST support a `--worktree <branch>` flag that
-creates a git worktree at `$HOME/.worktrees/{owner}/{repo}/{branch}/` if it does not
+creates a git worktree at `$HOME/repos/{owner}/{repo}/worktrees/{branch}/` if it does not
 already exist.
 
 **REQ-012.5** After creating a worktree, agentctl MUST run `direnv allow`

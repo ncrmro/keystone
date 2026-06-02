@@ -221,7 +221,7 @@ def main():
             # Strip specs/ if present and normalize name
             clean_name = worktree_target.replace("specs/", "")
             slug = sluggify(clean_name)
-            expected_path = project_root / ".worktrees" / slug
+            expected_path = project_root / "worktrees" / slug
 
             # Ensure worktree and .env exist (bin/worktree add handles both cases)
             try:

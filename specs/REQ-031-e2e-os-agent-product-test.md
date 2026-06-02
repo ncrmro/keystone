@@ -128,7 +128,7 @@ milestone in the bun server repo.
 
 **REQ-031.21** The engineering agent MUST create a worktree for the trunk
 branch at the conventional path
-`$HOME/.worktrees/{owner}/{repo}/{branch}/`.
+`$HOME/repos/{owner}/{repo}/worktrees/{branch}/`.
 
 **REQ-031.22** The engineering agent MUST define functional requirements in
 `specs/REQ-001-palindrome.md` (or equivalent REQ-prefixed file) within the

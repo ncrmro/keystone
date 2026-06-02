@@ -31,13 +31,17 @@ this checkout — a dirty tree produces unpredictable builds.
 
 ### Worktree branches
 
+Worktrees live at the global standard `~/repos/{owner}/worktrees/{repo}/{type}/{branch-tail}/`, preserving the slash from the branch name. Use Conventional Commit types (`docs`, `feat`, `fix`, `milestone`, `spec`, `spike`, `refactor`, `chore`, `test`, `ci`, `perf`, `build`); prefix the branch tail with `M{N}-` when the work is tied to a milestone.
+
 ```bash
-git worktree add ~/.worktrees/ncrmro/keystone/<branch> -b <branch>
-cd ~/.worktrees/ncrmro/keystone/<branch>
+git worktree add ~/repos/ncrmro/worktrees/keystone/feat/M1-fde-namespace -b feat/M1-fde-namespace
+cd ~/repos/ncrmro/worktrees/keystone/feat/M1-fde-namespace
 # develop, commit, push
-git push origin <branch>
+git push origin feat/M1-fde-namespace
 gh pr create
 ```
+
+`~/repos/ncrmro/worktrees/keystone/` is the single canonical worktree root. Do not create worktrees under `~/repos/ncrmro/keystone/worktrees/`, `~/.keystone/repos/.../.claude/worktrees/`, or other dotfile roots — those locations are being phased out.
 
 ### Consumer flake changes
 
@@ -57,7 +61,7 @@ at activation time as `/run/current-system/keystone-system-flake`.
 When developing in a worktree, pass `--flake` explicitly:
 
 ```bash
-ks --flake ~/.worktrees/ncrmro/keystone/<branch> update --dev
+ks --flake ~/repos/ncrmro/worktrees/keystone/<type>/<branch-tail> update --dev
 ```
 
 No shell exports, no `KEYSTONE_SYSTEM_FLAKE` env var, no `NIXOS_CONFIG_DIR`.

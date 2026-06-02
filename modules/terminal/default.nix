@@ -26,7 +26,7 @@ let
   notesPath = config.keystone.notes.path or "${config.home.homeDirectory}/notes";
   keystoneHome = "${config.home.homeDirectory}/.keystone";
   codeRoot = "${config.home.homeDirectory}/repos";
-  worktreeRoot = "${config.home.homeDirectory}/.worktrees";
+  worktreeRoot = "${codeRoot}/worktrees";
   ensurePathsScript = pkgs.writeShellScriptBin "keystone-ensure-paths" ''
     set -euo pipefail
 
