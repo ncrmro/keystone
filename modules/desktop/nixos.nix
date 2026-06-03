@@ -90,11 +90,20 @@ in
     # Greetd launches the user's Hyprland session directly. Startup
     # authentication happens inside Hyprland via keystone-startup-lock, which
     # MUST fail closed if hyprlock cannot come up securely.
-    # CRITICAL: XDG_SESSION_CLASS=user must be in the command environment so pam_systemd.so
-    # sees it before registering the logind session. The PAM class= argument alone is not
-    # sufficient — pam_systemd gives XDG_SESSION_CLASS env var highest precedence.
-    # Without this, the session registers as Class=greeter on seat0, causing polkit's
-    # allow_active=yes policy to deny access — breaking pcscd, YubiKey PIV, and power management.
+    #
+    # CRITICAL: XDG_SESSION_CLASS=user must be in the command environment so
+    # pam_systemd.so sees it before registering the logind session. The PAM
+    # class= argument alone is not sufficient — pam_systemd gives the env
+    # var highest precedence. Without this, the session registers as
+    # Class=greeter on seat0, causing polkit's allow_active=yes policy to
+    # deny access — breaking pcscd, YubiKey PIV, and power management.
+    #
+    # CRITICAL: use initial_session for autologin. default_session is the
+    # greeter session and can register as Class=greeter, which prevents
+    # logind from handing DRM devices to Hyprland and breaks active-user
+    # polkit checks. default_session is kept as an agreety fallback for the
+    # case where initial_session fails before autologin succeeds.
+    #
     # uwsm 0.26.4 (nixpkgs 26.11) gained a readability check in
     # `check_path()`. Resolving the bare name "Hyprland" lands on
     # `/run/wrappers/bin/Hyprland` (setuid wrapper, mode 4750), which
@@ -104,6 +113,10 @@ in
     services.greetd = {
       enable = mkDefault true;
       settings.default_session = {
+        command = mkDefault "${pkgs.greetd}/bin/agreety --cmd 'env XDG_SESSION_CLASS=user uwsm start -F ${config.programs.hyprland.package}/bin/Hyprland'";
+        user = mkDefault "greeter";
+      };
+      settings.initial_session = {
         command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F ${config.programs.hyprland.package}/bin/Hyprland";
         user = cfg.user;
       };

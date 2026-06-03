@@ -32,6 +32,10 @@ pkgs.testers.nixosTest {
       services.greetd = {
         enable = true;
         settings.default_session = {
+          command = "${pkgs.greetd}/bin/agreety --cmd 'uwsm start -S -F Hyprland'";
+          user = "greeter";
+        };
+        settings.initial_session = {
           command = "uwsm start -S -F Hyprland";
           user = "testuser";
         };
