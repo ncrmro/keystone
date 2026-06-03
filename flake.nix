@@ -531,6 +531,7 @@
           agentQueueMigration = import ./tests/module/agent-queue-migration.nix {
             inherit pkgs lib;
           };
+          linuxTaskDispatcher = ksPkgs.keystone.linux-task-dispatcher.passthru.tests.dispatcher;
         in
         {
           # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
@@ -567,6 +568,7 @@
           agent-task-loop-ping-pong = agentTaskLoopPingPong;
           agent-runtime-coherence = agentRuntimeCoherence;
           agent-queue-migration = agentQueueMigration;
+          linux-task-dispatcher = linuxTaskDispatcher;
 
           # --- CI groups — parallel matrix jobs via nix-github-actions ---
 
@@ -650,6 +652,7 @@
             forgejo-cli-ex
             forgejo-project
             fetch-github-sources
+            linux-task-dispatcher
             repo-sync
             podman-agent
             ks

@@ -194,6 +194,31 @@ systemctl --user status agent-{name}-notes-sync.service
 journalctl --user -u agent-{name}-notes-sync -n 20
 ```
 
+## Experimental dispatcher units
+
+`keystone.os.agents.<name>.dispatcher` declares disabled-by-default systemd
+user units for a future dispatcher binary. This only wires Linux-native
+activation; it does not implement dispatcher logic or change the existing task
+CLI.
+
+```nix
+keystone.os.agents.drago.dispatcher = {
+  enable = true;
+  command = "/run/current-system/sw/bin/ks-dispatcher";
+  args = [ "--once" ];
+};
+```
+
+When enabled for a local agent, Keystone creates:
+
+- `agent-{name}-dispatcher.path` — watches `/home/agent-{name}/TASKS.yaml` by default
+- `agent-{name}-dispatcher.timer` — fallback trigger, defaulting to every five minutes
+- `agent-{name}-dispatcher.service` — oneshot execution in the `agent-{name}` user manager
+
+The service exports `KS_AGENT_NAME`, `KS_TASKS_FILE`, and `KS_PROJECTS_FILE`.
+All three units are guarded with `ConditionUser = "agent-{name}"` so they only
+activate in the intended agent user manager.
+
 ## What Each Agent Gets
 
 | Feature        | Service/Config                     | Details                                      |
@@ -209,6 +234,7 @@ journalctl --user -u agent-{name}-notes-sync -n 20
 | Contacts       | cardamum CLI                       | Stalwart CardDAV (auto-configured from mail) |
 | Bitwarden      | `bw` CLI                           | Configured for Vaultwarden instance          |
 | Workspace      | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot            |
+| Dispatcher     | `agent-{name}-dispatcher.*`        | Experimental opt-in path/timer/service units |
 
 ## Debugging
 
@@ -606,6 +632,8 @@ tasks: # REQUIRED: only top-level key
     project: "project-name" # MAY: from PROJECTS.yaml
     source: "email" # MAY: email|github-issue|github-pr|forgejo-issue|schedule|calendar|manual
     source_ref: "email-42-u@h" # MAY: unique ID for deduplication
+    repo: "ncrmro/keystone" # REQUIRED for OS-agent executable tasks; MAY be owner/name or URL
+    branch_name: "feat/task-name" # REQUIRED for OS-agent executable tasks
     profile: "fast" # MAY: semantic profile override (embedding|fast|medium|max or custom)
     provider: "gemini" # MAY: claude|gemini|codex — task execution provider override
     model: "sonnet" # MAY: provider-specific model override
@@ -624,6 +652,14 @@ tasks: # REQUIRED: only top-level key
 4. Status MUST be one of: `pending`, `in_progress`, `completed`, `blocked`
 5. Field names MUST match exactly — no `id`, `priority`, `urgency`, `depends_on`
 6. Validate after every write: `yq e '.' TASKS.yaml`
+
+**OS-agent executable task contract:**
+
+- Tasks intended for OS-agent execution MUST set `repo` and `branch_name`
+- `repo` identifies the repository the agent should work in; prefer `owner/name` for GitHub repositories and a full URL for non-GitHub remotes
+- `branch_name` is the exact branch the agent should create or reuse for the task
+- `provider`, `profile`, and `model` are optional per-task execution overrides; when omitted, the task loop uses stage and agent defaults
+- Human-only, imported, completed, or otherwise non-executable tasks MAY omit `repo` and `branch_name` for backwards compatibility
 
 **Source ref formats:**
 
@@ -694,6 +730,8 @@ tasks:
     status: pending
     source: manual
     source_ref: "manual-review-agent-provider-docs"
+    repo: ncrmro/keystone
+    branch_name: docs/review-agent-provider-docs
     profile: "medium"
     provider: claude
     model: sonnet

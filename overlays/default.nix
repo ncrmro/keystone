@@ -29,6 +29,7 @@ let
   forgejo-project-src = ../packages/forgejo-project;
   fetch-github-sources-src = ../packages/fetch-github-sources;
   repo-sync-src = ../packages/repo-sync;
+  linux-task-dispatcher-src = ../packages/linux-task-dispatcher;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
   zide-src = ../packages/zide;
@@ -74,6 +75,7 @@ in
     forgejo-project = final.callPackage forgejo-project-src { };
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
     repo-sync = final.callPackage repo-sync-src { };
+    linux-task-dispatcher = final.callPackage linux-task-dispatcher-src { };
     podman-agent = final.callPackage podman-agent-src { };
     agents-e2e = final.callPackage agents-e2e-src { };
     ks = final.callPackage ks-src { };

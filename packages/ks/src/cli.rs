@@ -218,6 +218,7 @@ pub enum Command {
     Notification(NotificationArgs),
 
     /// Manage tasks — list, add, start, complete, prioritize, prune.
+    #[command(alias = "tasks")]
     Task(TaskArgs),
 
     /// Manage projects — list, add, detect, configure provider overrides.

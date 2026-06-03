@@ -557,7 +557,8 @@ async fn run_execute(
 
         // Resolve runtime
         let task_overrides = StageConfig {
-            provider: task.source.clone().filter(|s| !s.is_empty()),
+            provider: task.provider.clone().filter(|s| !s.is_empty()),
+            profile: task.profile.clone().filter(|s| !s.is_empty()),
             model: task.model.clone(),
             ..Default::default()
         };
