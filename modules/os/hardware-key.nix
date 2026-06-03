@@ -76,47 +76,123 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    # Validate rootKeys references resolve in keystone.keys
-    assertions = map (
-      ref:
-      let
-        parts = splitString "/" ref;
-        username = elemAt parts 0;
-        keyname = elemAt parts 1;
-      in
-      {
-        assertion =
-          length parts == 2 && keysCfg ? ${username} && keysCfg.${username}.hardwareKeys ? ${keyname};
-        message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
-      }
-    ) cfg.rootKeys;
+  config = mkMerge [
+    # Inbound auth: accepting a hardware-key-signed SSH session to root is
+    # just static pubkey text in authorized_keys. It does not require any
+    # hardware-key reader on THIS host, so it must not be gated on
+    # `enable` — VPS hosts with no physical YubiKey still need root SSH
+    # from clients that have one. Always wire when rootKeys is non-empty.
+    (mkIf (cfg.rootKeys != [ ]) {
+      assertions = map (
+        ref:
+        let
+          parts = splitString "/" ref;
+          username = elemAt parts 0;
+          keyname = elemAt parts 1;
+        in
+        {
+          assertion =
+            length parts == 2 && keysCfg ? ${username} && keysCfg.${username}.hardwareKeys ? ${keyname};
+          message = "keystone.hardwareKey.rootKeys references '${ref}' but no such key exists in keystone.keys.${username}.hardwareKeys.${keyname}";
+        }
+      ) cfg.rootKeys;
 
-    # Wire hardware key SSH keys into root's authorized_keys
-    users.users.root.openssh.authorizedKeys.keys = map resolveRootKey cfg.rootKeys;
+      users.users.root.openssh.authorizedKeys.keys = map resolveRootKey cfg.rootKeys;
+    })
 
-    # Enable smart card daemon for hardware key communication
-    services.pcscd.enable = true;
+    # Outbound auth + local UX: smart-card services, agent, CLI tools. Only
+    # makes sense on hosts that actually have the hardware plugged in.
+    (mkIf cfg.enable {
+      services.pcscd.enable = true;
+      hardware.gpgSmartcards.enable = true;
 
-    # Enable udev rules for YubiKey
-    hardware.gpgSmartcards.enable = true;
+      # TODO: PAM U2F authentication for sudo
+      # security.pam.services.sudo.u2fAuth = cfg.sudoTouchAuth;
 
-    # TODO: PAM U2F authentication for sudo
-    # security.pam.services.sudo.u2fAuth = cfg.sudoTouchAuth;
+      environment.systemPackages = with pkgs; [
+        yubikey-manager
+        age-plugin-yubikey
+        pam_u2f
+        yubico-piv-tool
+        yubikey-personalization
+      ];
 
-    # Required packages for hardware key management
-    environment.systemPackages = with pkgs; [
-      yubikey-manager # ykman CLI for YubiKey configuration
-      age-plugin-yubikey # age encryption with YubiKey (for agenix)
-      pam_u2f # PAM module for FIDO2 authentication
-      yubico-piv-tool # PIV operations
-      yubikey-personalization # Personalization tools
-    ];
+      programs.gnupg.agent = mkIf cfg.gpgAgent.enable {
+        enable = true;
+        enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
+      };
 
-    # GPG agent with optional SSH support
-    programs.gnupg.agent = mkIf cfg.gpgAgent.enable {
-      enable = true;
-      enableSSHSupport = cfg.gpgAgent.enableSSHSupport;
-    };
-  };
+      # Hardware-key wiring for human users. Each (user, keyname) pair gets:
+      #   - a tmpfiles rule materializing the SK handle from /nix/store
+      #     (if handleSource is set) at the canonical path
+      #   - a systemd-user oneshot that ssh-adds the same path at login
+      #     (if autoLoad = true, the default)
+      #
+      # The canonical path is always ${user.home}/.ssh/id_ed25519_sk_${keyname}.
+      # No override option — the keyname IS the identifier.
+      #
+      # Agent users are skipped: agents don't run interactive sessions, and
+      # the schema rejects hardwareKeys on agent-* users.
+      systemd.tmpfiles.rules =
+        let
+          ruleFor =
+            username: keyname: keyCfg:
+            let
+              user = config.users.users.${username};
+              dst = "${user.home}/.ssh/id_ed25519_sk_${keyname}";
+            in
+            (lib.optional (
+              keyCfg.handleSource != null
+            ) "L+ ${dst} - ${username} ${user.group} - ${keyCfg.handleSource}")
+            ++ (lib.optional (
+              keyCfg.handlePubSource != null
+            ) "L+ ${dst}.pub - ${username} ${user.group} - ${keyCfg.handlePubSource}");
+          dirFor =
+            username:
+            let
+              user = config.users.users.${username};
+            in
+            "d ${user.home}/.ssh 0700 ${username} ${user.group} -";
+        in
+        lib.concatLists (
+          lib.mapAttrsToList (
+            username: _userCfg:
+            lib.optionals (!lib.hasPrefix "agent-" username) (
+              [ (dirFor username) ]
+              ++ lib.concatLists (lib.mapAttrsToList (ruleFor username) (keysCfg.${username}.hardwareKeys or { }))
+            )
+          ) config.keystone.os.users
+        );
+
+      systemd.user.services = lib.mkMerge (
+        lib.concatLists (
+          lib.mapAttrsToList (
+            username: _userCfg:
+            let
+              user = config.users.users.${username};
+            in
+            lib.optionals (!lib.hasPrefix "agent-" username) (
+              lib.mapAttrsToList (
+                keyname: keyCfg:
+                lib.mkIf keyCfg.autoLoad {
+                  "ssh-add-${username}-${keyname}" = {
+                    description = "Auto-load hardware key ${keyname} for ${username}";
+                    wantedBy = [ "default.target" ];
+                    after = [ "ssh-agent.service" ];
+                    serviceConfig = {
+                      Type = "oneshot";
+                      RemainAfterExit = true;
+                      Environment = [ "SSH_AUTH_SOCK=%t/ssh-agent" ];
+                      # -q swallows "device not found" so absent YubiKeys don't fail.
+                      ExecStart = "${pkgs.openssh}/bin/ssh-add -q ${user.home}/.ssh/id_ed25519_sk_${keyname}";
+                    };
+                  };
+                }
+              ) (keysCfg.${username}.hardwareKeys or { })
+            )
+          ) config.keystone.os.users
+        )
+      );
+    })
+  ];
 }

@@ -90,6 +90,14 @@
   # The -C flag sets the comment to the key color name (not user@hostname)
   # The -O application=ssh:<name> namespaces the credential on the YubiKey
   #
+  # Auto-loading into ssh-agent:
+  #   keystone.keys.<user>.hardwareKeys.<keyname>.privateKeyFile defaults to
+  #   ~/.ssh/id_ed25519_sk_<keyname>. On hosts with `keystone.hardwareKey.enable
+  #   = true`, every declared key gets a `ssh-add-<user>-<keyname>.service`
+  #   systemd-user unit that runs at session start — no more manual `ssh-add`
+  #   after every login. Override per-key with an absolute path, or set to
+  #   `null` to opt out (the pubkey still authorizes inbound).
+  #
   # users.users.root.openssh.authorizedKeys.keys = [
   #   # Primary YubiKey (black, daily carry)
   #   "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9w... alice-yubi-black"

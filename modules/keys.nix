@@ -71,24 +71,64 @@ in
 
             hardwareKeys = mkOption {
               type = types.attrsOf (
-                types.submodule {
-                  options = {
-                    publicKey = mkOption {
-                      type = types.str;
-                      description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
+                types.submodule (
+                  { name, ... }:
+                  {
+                    options = {
+                      publicKey = mkOption {
+                        type = types.str;
+                        description = "SSH public key (sk-ssh-ed25519 or sk-ecdsa-sha2-nistp256).";
+                      };
+                      description = mkOption {
+                        type = types.str;
+                        default = "";
+                        description = "Human-readable description (e.g. color, form factor).";
+                      };
+                      ageIdentity = mkOption {
+                        type = types.nullOr types.str;
+                        default = null;
+                        description = "age-plugin-yubikey identity string for agenix secrets.";
+                      };
+                      autoLoad = mkOption {
+                        type = types.bool;
+                        default = true;
+                        description = ''
+                          Auto-load this key into the user's ssh-agent at session start
+                          via the keystone.hardwareKey systemd-user unit. The on-disk
+                          path is always derived from the keyname:
+                          ${"$"}{user.home}/.ssh/id_ed25519_sk_<keyname> — there is no
+                          override. Set autoLoad = false to skip the ssh-add unit for
+                          this key while leaving the public-key registration intact.
+                        '';
+                      };
+                      handleSource = mkOption {
+                        type = types.nullOr types.path;
+                        default = null;
+                        description = ''
+                          Nix path to the SK key handle binary (what `ssh-keygen -t ed25519-sk
+                          -O resident` produced). When set, the handle is materialized as a
+                          symlink at `privateKeyFile` on every host with
+                          `keystone.hardwareKey.enable = true`, so a single YubiKey works
+                          across the fleet with no per-machine enrollment. The handle is
+                          *not* a private key — the actual signing material never leaves
+                          the hardware — so committing it to the consumer flake is fine
+                          even though the file is normally chmod 600.
+                        '';
+                        example = lib.literalExpression "./hardware-keys/yubi-black";
+                      };
+                      handlePubSource = mkOption {
+                        type = types.nullOr types.path;
+                        default = null;
+                        description = ''
+                          Nix path to the matching .pub file. Deployed alongside
+                          handleSource at `${privateKeyFile}.pub`. Some SSH tooling
+                          (e.g. ssh-add -L parsing, ssh-keygen -y) expects this.
+                        '';
+                        example = lib.literalExpression "./hardware-keys/yubi-black.pub";
+                      };
                     };
-                    description = mkOption {
-                      type = types.str;
-                      default = "";
-                      description = "Human-readable description (e.g. color, form factor).";
-                    };
-                    ageIdentity = mkOption {
-                      type = types.nullOr types.str;
-                      default = null;
-                      description = "age-plugin-yubikey identity string for agenix secrets.";
-                    };
-                  };
-                }
+                  }
+                )
               );
               default = { };
               description = "Portable hardware keys (FIDO2/YubiKey). Work across all hosts, require physical touch.";
