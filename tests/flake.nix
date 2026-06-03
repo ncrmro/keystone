@@ -93,6 +93,14 @@
           ];
         };
 
+        # Kodi GBM kiosk testing
+        build-vm-kodi = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            ../vms/build-vm-kodi/configuration.nix
+          ];
+        };
+
         # Hyprland desktop testing
         build-vm-desktop = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
