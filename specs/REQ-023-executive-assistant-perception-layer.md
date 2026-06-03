@@ -36,7 +36,7 @@ orchestration or sending anything to cloud services.
 │  ┌─────────────────────────────────────────────────────────────┐        │
 │  │  executive_assistant DeepWork Job                           │        │
 │  │                                                             │        │
-│  │  summarize_audio ──► whisper.cpp ──► Ollama ──► zk note    │        │
+│  │  summarize_audio ──► whisper.cpp ──► Ollama ──► terminal   │        │
 │  │  review_photos   ──► ks photos ─────────────► terminal    │        │
 │  │  start_recording ──► OBS WebSocket ──────────► daily note  │        │
 │  │  task_loop, plan_event, … (existing)                       │        │
@@ -389,8 +389,8 @@ transcription. It MUST NOT send audio to an external service.
 **REQ-023.54** The workflow MUST summarize the transcript using the local
 Ollama instance when available, falling back to structured extraction only.
 
-**REQ-023.55** The workflow MUST write a zk note to the operator's notes
-notebook with `source_ref` frontmatter linking to the source audio file.
+**REQ-023.55** The workflow MUST print the transcript summary and source audio
+reference to the terminal.
 
 ### Executive Assistant: Photo Review
 
@@ -402,8 +402,7 @@ query Immich. It MUST support natural-language date ranges and person names
 as query inputs.
 
 **REQ-023.58** Results MUST be presented as a formatted list in the terminal
-with filenames, dates, and asset identifiers. The workflow MAY optionally
-write a zk note with the curation result.
+with filenames, dates, and asset identifiers.
 
 ### Executive Assistant: Recording Session
 
@@ -416,8 +415,7 @@ start a recording on the active scene.
 **REQ-023.61** OBS WebSocket credentials (host, port, password) MUST be
 read from agenix-managed secrets. They MUST NOT be hardcoded.
 
-**REQ-023.62** The workflow MUST write the session name and start timestamp
-to the operator's active daily zk note.
+**REQ-023.62** The workflow MUST print the session name and start timestamp.
 
 **REQ-023.63** When OBS is not running or the WebSocket connection fails, the
 workflow MUST emit a clear error message and exit without crashing.

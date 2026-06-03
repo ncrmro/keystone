@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
+PROJECTS_FILE="${KS_PROJECTS_FILE:-$HOME/PROJECTS.yaml}"
 
 usage() {
   cat <<'EOF'
@@ -55,88 +55,40 @@ normalize_repo_url() {
 }
 
 project_index_json() {
-  local zk_json
+  if [[ ! -f "$PROJECTS_FILE" ]]; then
+    printf '{"projects":[],"sources":[]}\n'
+    return 0
+  fi
 
-  if ! zk_json=$(zk --notebook-dir "$NOTES_DIR" list index/ --format json --quiet); then
-    echo "error: failed to discover project hubs via zk in ${NOTES_DIR}" >&2
+  local projects_json
+  if ! projects_json=$(yq -o=json '.' "$PROJECTS_FILE" 2>/dev/null); then
+    projects_json=$(yq '.' "$PROJECTS_FILE") || {
+      echo "error: failed to read projects from ${PROJECTS_FILE}" >&2
+      return 1
+    }
+  fi
+  if [[ -z "$projects_json" ]]; then
+    echo "error: failed to read projects from ${PROJECTS_FILE}" >&2
     return 1
   fi
 
-  printf '%s\n' "$zk_json" | jq -c '
-    def merged_tags:
-      if ((.metadata.tags // []) | length) > 0 then
-        (.metadata.tags // [])
-      else
-        (.tags // [])
-      end
-      | map(select(type == "string"))
-      | unique;
-
-    def explicit_project_tags:
-      merged_tags
-      | map(select(startswith("project/")) | sub("^project/"; ""))
-      | unique;
-
-    def bare_project_tags:
-      if (merged_tags | index("project")) == null then
-        []
-      else
-        merged_tags
-        | map(
-            select(
-              test("^[a-z0-9]+(-[a-z0-9]+)*$")
-              and . != "index"
-              and . != "project"
-              and . != "archive"
-            )
-          )
-        | unique
-      end;
-
-    def status_markers:
-      merged_tags
-      | map(select(startswith("status/") or . == "archive"))
-      | unique;
-
-    def inferred_project:
-      if (.metadata.project // "") != "" then
-        .metadata.project
-      elif (explicit_project_tags | length) == 1 then
-        explicit_project_tags[0]
-      elif (explicit_project_tags | length) > 1 then
-        "__AMBIGUOUS__:" + (explicit_project_tags | join(","))
-      elif (bare_project_tags | length) == 1 then
-        bare_project_tags[0]
-      elif (bare_project_tags | length) > 1 then
-        "__AMBIGUOUS__:" + (bare_project_tags | join(","))
-      elif (
-        (.absPath | split("/") | last | sub("\\.md$"; "") | sub("^[0-9]{8,12} "; ""))
-        | test("^[a-z0-9]+(-[a-z0-9]+)*$")
-      ) then
-        (.absPath | split("/") | last | sub("\\.md$"; "") | sub("^[0-9]{8,12} "; ""))
-      else
-        ""
-      end;
-
+  printf '%s\n' "$projects_json" | jq -c '
     {
       projects:
         [
-          .[]
-          | select((.metadata.type // "") == "index")
-          | select((status_markers | index("status/archived")) == null)
-          | select((status_markers | index("archive")) == null)
-          | select((.metadata.status // "") != "archived")
+          (.projects // [])[]
+          | select((.status // "active") != "archived")
           | {
-              slug: inferred_project,
-              hub_path: .absPath,
-              name: (.metadata.name // .metadata.title // inferred_project),
-              description: (.metadata.description // ""),
-              priority: (.metadata.priority // null),
-              repos: ((.metadata.repos // []) | map(select(type == "string" and . != "")) | unique),
-              sources: (.metadata.sources // [])
+              slug: (.slug // ""),
+              name: (.name // .slug // ""),
+              description: (.description // ""),
+              priority: (.priority // null),
+              repos: ((.repos // []) | map(select(type == "string" and . != "")) | unique),
+              sources: (.sources // [])
             }
           | select(.slug != "")
-        ]
+        ],
+      sources: (.sources // [])
     }
   '
 }
@@ -158,22 +110,11 @@ validate_projects() {
 print_project_validation_error() {
   local projects_json="$1"
 
-  local ambiguous
-  ambiguous=$(printf '%s\n' "$projects_json" | jq -r '
-    .projects[]
-    | select(.slug | startswith("__AMBIGUOUS__:"))
-    | "error: active project hub \(.hub_path) has ambiguous project tags: \(.slug | sub("^__AMBIGUOUS__:"; ""))"
-  ' | head -n 1)
-  if [[ -n "$ambiguous" ]]; then
-    echo "$ambiguous" >&2
-    return
-  fi
-
   local invalid
   invalid=$(printf '%s\n' "$projects_json" | jq -r '
     .projects[]
     | select((.slug | test("^[a-z0-9]+(-[a-z0-9]+)*$")) | not)
-    | "error: active project hub \(.hub_path) uses invalid project slug '\''\(.slug)'\''"
+    | "error: project uses invalid slug '\''\(.slug)'\''"
   ' | head -n 1)
   if [[ -n "$invalid" ]]; then
     echo "$invalid" >&2
@@ -214,7 +155,7 @@ main() {
       local project_json
       project_json=$(printf '%s\n' "$projects_json" | jq -c --arg slug "$2" '.projects[] | select(.slug == $slug)' | head -n 1)
       if [[ -z "$project_json" ]]; then
-        echo "error: project '$2' not found in zk project index" >&2
+        echo "error: project '$2' not found in PROJECTS.yaml" >&2
         exit 1
       fi
       printf '%s\n' "$project_json"

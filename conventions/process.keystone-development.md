@@ -72,16 +72,6 @@ at the Nix module level, see `process.keystone-development-mode`.
     in the live repo checkout — commit them to persist the change. Because this is
     a deploy path, request approval before running it.
 
-## Notes metadata
-
-16. When keystone workflows create or update zk notes that reference a GitHub or
-    Forgejo shared surface, those refs MUST use normalized frontmatter fields:
-    `repo_ref`, `milestone_ref`, `issue_ref`, and `pr_ref`.
-17. GitHub refs MUST use `gh:<owner>/<repo>#<number>`. Forgejo refs MUST use
-    `fj:<owner>/<repo>#<number>`. Repo-only refs MUST use
-    `gh:<owner>/<repo>` or `fj:<owner>/<repo>`.
-18. Bare issue numbers, local path aliases, and custom tracker prefixes MUST NOT
-    be used in note frontmatter when a shared-surface ref exists.
 
 ## DeepWork jobs
 

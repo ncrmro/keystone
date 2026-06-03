@@ -13,8 +13,6 @@ fi
 # shellcheck source=/dev/null
 . "$AGENTCTL_ENV_FILE"
 
-LAUNCHER_STATE_NOTES_DIR="${NOTES_DIR:-$HOME/notes}"
-
 launcher_state_json() {
   "$PROJECT_PREFS" launcher-state-json 2>/dev/null || printf '%s\n' '{"interactive_defaults":{"agents":{},"projects":{}}}'
 }
@@ -546,14 +544,14 @@ case "$CMD" in
       shift  # consume session slug
 
       PROJECT_JSON=$(sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
-        "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" get "$PROJECT" 2>/dev/null || true)
+        "$COREUTILS"/bin/env "KS_PROJECTS_FILE=/home/agent-${AGENT_NAME}/PROJECTS.yaml" "$PROJECT_INDEX_HELPER" get "$PROJECT" 2>/dev/null || true)
 
       if [ -z "$PROJECT_JSON" ]; then
-        echo "Error: project '$PROJECT' not found in zk project index" >&2
+        echo "Error: project '$PROJECT' not found in PROJECTS.yaml" >&2
         echo "" >&2
         echo "Available projects:" >&2
         sudo -u "agent-${AGENT_NAME}" "$HELPER" exec \
-          "$COREUTILS"/bin/env "NOTES_DIR=$NOTES_DIR" "$PROJECT_INDEX_HELPER" list 2>/dev/null \
+          "$COREUTILS"/bin/env "KS_PROJECTS_FILE=/home/agent-${AGENT_NAME}/PROJECTS.yaml" "$PROJECT_INDEX_HELPER" list 2>/dev/null \
           | jq -r '.projects[].slug' | "$GNUSED"/bin/sed 's/^/  /' >&2
         exit 1
       fi

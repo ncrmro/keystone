@@ -299,11 +299,6 @@ let
     builtins.readFile ./keystone-agent-menu.sh
   );
 
-  # Inbox capture launcher — opens zk edit -i in a dedicated floating Ghostty window
-  keystoneNotesInbox = pkgs.writeShellScriptBin "keystone-notes-inbox" (
-    builtins.readFile ./keystone-notes-inbox.sh
-  );
-
   # Battery monitor script
   keystoneBatteryMonitor = pkgs.writeShellScriptBin "keystone-battery-monitor" ''
     BATTERY_THRESHOLD=10
@@ -608,12 +603,6 @@ let
         pkgs.walker
       ];
     })
-    (mkHomeScriptCommand {
-      inherit config pkgs;
-      commandName = "keystone-notes-inbox";
-      relativePath = "modules/desktop/home/scripts/keystone-notes-inbox.sh";
-      package = keystoneNotesInbox;
-    })
   ];
 in
 {
@@ -628,7 +617,6 @@ in
             keystoneNightlightToggle
             keystoneBatteryMonitor
             keystoneDetach
-            keystoneProjectMenu
             keystonePhotosMenu
             pkgs.jq
             pkgs.pulseaudio

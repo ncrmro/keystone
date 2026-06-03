@@ -154,15 +154,6 @@ nixos-config only after a successful build (fail-safe ordering).
 **REQ-018.12** `ks update --pull` MUST pull ALL managed repos (not just
 keystone and agenix-secrets), including repos without a `flakeInput`.
 
-### Notes Under `$HOME`
-
-**REQ-018.13** `keystone.notes.path` (REQ-009.3) MUST default to
-`~/notes`.
-
-**REQ-018.14** Agent notes path (`keystone.os.agents.*.notes.path`) MUST
-default to `/home/agent-{name}/notes`.
-
-**REQ-018.15** The repo-sync cron job and timer (REQ-009) MUST continue
 to function unchanged. Existing users who override `notes.path` MUST NOT be
 affected.
 

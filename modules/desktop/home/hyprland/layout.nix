@@ -54,12 +54,6 @@ in
         "float on, match:class (clipse)"
         "size 622 652, match:class (clipse)"
 
-        # Quick-capture notes inbox opens as a floating dialog so you can
-        # jot something down without disrupting your workspace layout.
-        "float on, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
-        "center on, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
-        "size 1000 700, match:class ^(com.mitchellh.ghostty)$, match:title ^(keystone-notes-inbox)$"
-
         # hyprpolkitagent's password dialog is a 486×246 modal but Hyprland
         # tiles it by default — `xdg_toplevel.configure` arrives with
         # WindowMaximized state, the input field gets stretched into

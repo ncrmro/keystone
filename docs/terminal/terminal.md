@@ -169,24 +169,11 @@ keystone.terminal.deepwork = {
 
 When enabled, the `DEEPWORK_ADDITIONAL_JOBS_FOLDERS` environment variable is set and injected into the generated DeepWork MCP server configs, allowing spawned MCP sessions to discover shared project job definitions alongside the built-in ones.
 
-## Notes
-
-Keystone supports a shared `zk` notebook model for both human note-taking and
-agent-generated notes and reports. The user-facing guide is [Notes](../notes.md).
-
-For terminal users, the most relevant parts are:
-
-- `zk` for manual note creation and search, and
-- `/ks-notes` to route notes workflows (hub notes, report capture, inbox review, notebook repair).
-
-Use the notes guide for the workflow and the conventions for the authoritative
-schema and policy details.
-
 ## Projects and sessions
 
-Keystone project sessions are note-backed. Active project hub notes in
-`~/notes/index/` define the valid project set, related repos, and context for
-manual Zellij sessions and agent workflows.
+Keystone project sessions are repo-backed. Shared issue and PR surfaces define
+active work; local repos and worktrees provide the execution context for manual
+Zellij sessions and agent workflows.
 
 ## Personal Information Management
 

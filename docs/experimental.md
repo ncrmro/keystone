@@ -23,27 +23,6 @@ module imported by NixOS (`operating-system`) and home-manager (`terminal`).
 
 ## Current experimental features
 
-### `keystone.notes` — Git-backed notebook sync
-
-| | |
-|---|---|
-| **Module** | `modules/notes/default.nix` |
-| **Flag** | `keystone.notes.enable` (defaults to `keystone.experimental`) |
-| **Milestone** | [v2 — Un-experimental](https://github.com/ncrmro/keystone/milestone/10) |
-
-Syncs a git-backed notes repository on a timer using `repo-sync`. Optionally
-initializes a zk Zettelkasten notebook structure with templates, directories,
-and LSP integration.
-
-**Why experimental**: The notes module was originally the source of truth for
-project discovery. With the move to declarative `projects.yaml`, the notes
-module's role is shifting to pure knowledge management. The option surface and
-zk integration may be restructured.
-
-**Options**: `keystone.notes.enable`, `.repo`, `.path`, `.syncInterval`,
-`.commitPrefix`, `.sync.enable`, `.daily.enable`, `.daily.symlinkPath`,
-`.daily.journalPath`, `.daily.dateFormat`, `.zk.enable`
-
 ### `keystone.terminal.conventions` — Agent instruction generation
 
 | | |

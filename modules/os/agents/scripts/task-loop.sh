@@ -18,7 +18,7 @@
 #   @prioritizeJson@   - Prioritize-stage overrides JSON
 #   @executeJson@      - Execute-stage overrides JSON
 #   @profilesJson@     - Merged built-in + custom profile catalog JSON
-#   @projectIndexHelper@ - zk-backed project index helper path
+#   @projectIndexHelper@ - PROJECTS.yaml-backed project index helper path
 set -euo pipefail
 
 # Sanity check: Ensure required system utilities are available
@@ -501,8 +501,8 @@ else
   log "  Skipping calendar source: calendula not found"
 fi
 
-PROJECT_INDEX_JSON=$("$PROJECT_INDEX_HELPER" list 2>>"$LOG_FILE" || echo '{"projects":[]}')
-SOURCE_COUNT=$(printf '%s\n' "$PROJECT_INDEX_JSON" | jq '[.projects[].sources[]?] | length' 2>/dev/null || echo "0")
+PROJECT_INDEX_JSON=$("$PROJECT_INDEX_HELPER" list 2>>"$LOG_FILE" || echo '{"projects":[],"sources":[]}')
+SOURCE_COUNT=$(printf '%s\n' "$PROJECT_INDEX_JSON" | jq '[.sources[]?, .projects[].sources[]?] | length' 2>/dev/null || echo "0")
 
 if [[ "$SOURCE_COUNT" -gt 0 ]]; then
   while IFS= read -r source_entry; do
@@ -517,7 +517,7 @@ if [[ "$SOURCE_COUNT" -gt 0 ]]; then
           '. + [{"source": $name, "data": $data}]')
       fi
     fi
-  done < <(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -c '.projects[].sources[]?')
+  done < <(printf '%s\n' "$PROJECT_INDEX_JSON" | jq -c '.sources[]?, .projects[].sources[]?')
 fi
 
 emit_event "stage_finish" "Finished pre-fetching sources" \

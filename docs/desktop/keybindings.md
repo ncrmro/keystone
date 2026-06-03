@@ -53,4 +53,3 @@ Walker and Elephant together provide the backend for these desktop menus. See
 - [Navigation](../navigation.md)
 - [Screenshots](screenshots.md)
 - [Walker](walker.md)
-- [Notes](../notes.md)

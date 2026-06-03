@@ -239,7 +239,6 @@ command_template_name() {
   case "$1" in
     ks-system) printf '%s' "ks.template.md" ;;
     ks-assistant) printf '%s' "ks-assistant.template.md" ;;
-    ks-notes) printf '%s' "ks-notes.template.md" ;;
     ks-projects) printf '%s' "ks-projects.template.md" ;;
     ks-dev) printf '%s' "ks-dev.template.md" ;;
     *) return 1 ;;
@@ -262,7 +261,6 @@ command_description() {
       printf '%s' "$desc"
       ;;
     ks-assistant) printf '%s' "Personal assistant — may start personal_assistant/reservation, personal_assistant/birthday, personal_assistant/calendar_prioritize, or personal_assistant/memory_search" ;;
-    ks-notes) printf '%s' "Notes workflows — may start notes/process_inbox, notes/doctor, notes/init, or notes/setup" ;;
     ks-projects) printf '%s' "Project workflows — may start project/onboard, project/press_release, or project/success" ;;
     ks-dev) printf '%s' "Keystone development — may start keystone_system/develop, keystone_system/issue, keystone_system/convention, or keystone_system/doctor" ;;
     *) return 1 ;;
@@ -329,10 +327,6 @@ done < <(json_get_lines '.repos')
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'assistant'; then
   ks_allowed_routes_lines+=("- Personal assistant requests (reservations, birthdays, calendar, photo memories): direct the user to \`/ks-assistant\` instead of handling directly.")
-fi
-
-if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  ks_allowed_routes_lines+=("- Notes workflows (repair, inbox, init, setup): direct the user to \`/ks-notes\` instead of starting a notes workflow directly.")
 fi
 
 if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'project'; then
@@ -540,19 +534,6 @@ EOF
   done
 } > "$repos_agents_tmp"
 
-if printf '%s\n' "${resolved_capabilities[@]}" | grep -qx 'notes'; then
-  cat <<'EOF' >> "$repos_agents_tmp"
-
-## Notes command guidance
-
-- Route durable note capture, note cleanup, inbox promotion, and notebook repair requests through `ks-notes`.
-- Use `ks-notes` proactively when a task produces durable decisions, meaningful findings, or reusable operational context.
-- On Keystone systems, the human notebook lives at `NOTES_DIR` (`~/notes` by default), not in the repo checkout inventory.
-- When note structure, tags, frontmatter, shared-surface refs, or zk workflow details matter, read `~/.config/keystone/conventions/process.notes.md` and `~/.config/keystone/conventions/tool.zk-notes.md`.
-- When a task is tied to an issue, pull request, or milestone, capture normalized refs in notes when known and keep the shared surface as the public system of record.
-EOF
-fi
-
 cat <<'EOF' >> "$repos_agents_tmp"
 
 ## Shared-surface tracking
@@ -560,7 +541,6 @@ cat <<'EOF' >> "$repos_agents_tmp"
 - For issue-backed work, follow `process.issue-journal` and post `Work Started` and `Work Update` comments on the source issue.
 - For milestone and board-backed work, follow `process.project-board` so issue and PR state stays visible on the shared board.
 - Treat issues, pull requests, milestones, and boards as the canonical public record for status, review state, and decisions that affect collaborators.
-- Use notes to preserve durable rationale and memory, not to replace shared-surface tracking.
 EOF
 
 while IFS= read -r convention_name; do
@@ -797,7 +777,7 @@ spec. Inside:
 ## Naming
 
 - `ks-*` — keystone-curated skills tied to a slash-command id
-  published by this host (e.g., `/ks-engineer`, `/ks-notes`). Only
+  published by this host (e.g., `/ks-engineer`, `/ks-dev`). Only
   emitted if the host capability set includes the matching command.
 - Bare names (`deepwork`, `wrap-up`, `review`) — always-on workflow
   skills that don'\''t gate on capability.

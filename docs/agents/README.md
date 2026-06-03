@@ -19,8 +19,8 @@ Concrete missions keystone is designed to host:
   data ingestion, result reproduction across compute resources you control.
 - **Home** — calendar and reminder management, mail triage, household
   inventory, security camera summaries, family logistics.
-- **Personal knowledge** — notebook curation, daily reports, project status
-  rollups, decision archives.
+- **Personal knowledge** — daily reports, project status rollups, and
+  decision archives.
 
 The platform is opinionated about how missions are constructed: as skills and
 subagents in your `keystone-config` repo, orchestrated by autonomous OS-level
@@ -62,7 +62,7 @@ location), with colocated conventions and roles symlinked into each skill
 from `agents/_shared/conventions/`. Home-manager activation symlinks
 `~/.agents/skills/` and `~/.claude/skills/` to that canonical path. Every
 skill upgrade keystone ships becomes a reviewable commit in the user's
-`keystone-config` repo: `git log -p agents/skills/ks-notes/` shows the
+`keystone-config` repo: `git log -p agents/skills/ks-engineer/` shows the
 entire upgrade history of a single skill. Rollback is `git revert`; user
 override is just editing the file and committing — keystone's regen will
 overwrite on next run, the user's `git checkout` restores their version.

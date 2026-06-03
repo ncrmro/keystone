@@ -45,18 +45,16 @@ just an app launcher.
 
 Keystone integrates Walker with Keystone's project model. That means Walker can:
 
-- list projects from the notes index,
+- list projects from Keystone project metadata,
 - jump to the right Ghostty or Zellij session for a project, and
 
-If your notes are stale, the Walker project menu will also be stale. See
-[Notes](../notes.md) for how project notes are synced and used as durable
-context.
+If your project metadata is stale, the Walker project menu will also be stale.
 
 ## How it fits into Keystone Desktop
 
 The intended flow is:
 
-1. Keep project notes up to date
+1. Keep project metadata up to date
 2. Use Walker when you want to jump between projects from the desktop
 
 This gives Keystone Desktop a fast project-oriented navigation model instead of
@@ -75,6 +73,5 @@ See [Desktop keybindings](keybindings.md) for the broader keyboard workflow.
 
 ## Related docs
 
-- [Notes](../notes.md)
 - [Desktop keybindings](keybindings.md)
 - [Waybar Configuration](waybar-configuration.md)
