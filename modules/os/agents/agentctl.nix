@@ -36,7 +36,7 @@ let
     mapAttrsToList (name: _: "    ${name}) HELPER=\"${agentSvcHelper name}\" ;;") cfg
   );
   agentNotesCases = concatStringsSep "\n" (
-    mapAttrsToList (name: agentCfg: "    ${name}) NOTES_DIR=\"${agentCfg.notes.path}\" ;;") cfg
+    mapAttrsToList (name: _: "    ${name}) NOTES_DIR=\"/home/agent-${name}\" ;;") cfg
   );
   agentVncCases = concatStringsSep "\n" (
     mapAttrsToList (

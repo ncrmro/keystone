@@ -20,6 +20,19 @@ ks update
 ks update HOST1,HOST2
 ```
 
+For local Keystone changes you plan to upstream or experiment with, keep a
+checkout at `./keystone`, `../keystone`, or `~/repos/<owner>/keystone` and run:
+
+```bash
+ks update --dev
+# or, for direct local rebuilds with the same local Keystone override:
+nix develop -c ks-dev --build
+```
+
+Use `modules/keystone/` in this config repo for fleet-local spike modules that
+are not ready to upstream. Move reusable pieces into the local `keystone/`
+checkout when they should become part of Keystone.
+
 ## Ask an AI assistant
 
 Any AI coding agent (Claude Code, Codex, Gemini CLI, opencode, etc.) loads
@@ -85,6 +98,8 @@ to install programs, NixOS vs Home Manager, and links to upstream Nix docs.
 - [`AGENTS.md`](AGENTS.md) — short orientation for AI coding agents (Claude
   Code, Codex, Gemini CLI, etc.). Repo shape, NixOS-vs-Home-Manager pitfalls,
   agenix conventions.
+- [`bin/ks-dev`](bin/ks-dev) — direct `nixos-rebuild` helper that applies a
+  local Keystone checkout via `--override-input keystone path:...`.
 
 ## Where to investigate Keystone itself
 

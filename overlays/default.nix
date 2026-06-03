@@ -30,6 +30,7 @@ let
   fetch-github-sources-src = ../packages/fetch-github-sources;
   repo-sync-src = ../packages/repo-sync;
   linux-task-dispatcher-src = ../packages/linux-task-dispatcher;
+  pi-task-runner-src = ../packages/pi-task-runner;
   podman-agent-src = ../packages/podman-agent;
   cfait-src = ../packages/cfait;
   zide-src = ../packages/zide;
@@ -39,6 +40,7 @@ let
   agents-e2e-src = ../packages/agents-e2e;
   ks-src = ../packages/ks;
   chrome-devtools-mcp-src = ../packages/chrome-devtools-mcp;
+  pi-mcp-extension-src = ../packages/pi-mcp-extension;
   grafana-mcp-pkg-src = ../packages/grafana-mcp;
   lfs-s3-pkg-src = ../packages/lfs-s3;
   deepwork-library-jobs-src = ../packages/deepwork-library-jobs;
@@ -76,6 +78,7 @@ in
     fetch-github-sources = final.callPackage fetch-github-sources-src { };
     repo-sync = final.callPackage repo-sync-src { };
     linux-task-dispatcher = final.callPackage linux-task-dispatcher-src { };
+    pi-task-runner = final.callPackage pi-task-runner-src { };
     podman-agent = final.callPackage podman-agent-src { };
     agents-e2e = final.callPackage agents-e2e-src { };
     ks = final.callPackage ks-src { };
@@ -119,6 +122,7 @@ in
     gemini-cli = llm-agents.packages.${system}.gemini-cli;
     codex = llm-agents.packages.${system}.codex;
     opencode = llm-agents.packages.${system}.opencode;
+    pi = llm-agents.packages.${system}.pi;
     # Browsers from browser-previews
     google-chrome = browser-previews-flake.packages.${system}.google-chrome;
     # Desktop tools from flake inputs
@@ -135,6 +139,7 @@ in
       keystone-src = self;
     };
     chrome-devtools-mcp = final.callPackage chrome-devtools-mcp-src { };
+    pi-mcp-extension = final.callPackage pi-mcp-extension-src { };
     grafana-mcp = final.callPackage grafana-mcp-pkg-src {
       inherit grafana-mcp-src;
     };

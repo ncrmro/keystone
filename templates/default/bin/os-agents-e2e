@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# os-agents-e2e — validate installed Keystone OS agents
+#
+# Safe to run from every template-generated config repo. If no OS agents are
+# configured and no AGENT_NAME is provided, it prints a skip message and exits 0.
+#
+# Usage:
+#   os-agents-e2e
+#   os-agents-e2e AGENT_NAME [email|pr|all] [agents-e2e flags...]
+#   os-agents-e2e drago email
+#   os-agents-e2e drago all --timeout 10 --print
+#
+# Set KEYSTONE_AGENTS_E2E_FLAKE to override the runner flake, for example:
+#   KEYSTONE_AGENTS_E2E_FLAKE=github:ncrmro/keystone#agents-e2e os-agents-e2e
+
+set -euo pipefail
+
+usage() {
+  sed -n '/^# os-agents-e2e/,/^set -euo/{/^set -euo/!p;}' "$0" \
+    | sed -e 's/^# \{0,1\}//'
+  cat <<'HELP'
+
+Tests:
+  email   Send [ping] to the agent mailbox, start the Pi runner, expect [pong].
+  pr      Reserved for the GitHub/Forgejo issue/PR assignment e2e test.
+  all     Run every implemented test. Currently runs email, then reports pr as pending.
+
+Options after the test name are forwarded to agents-e2e.
+HELP
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
+find_config_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    [[ -f "$dir/flake.nix" ]] && { printf '%s\n' "$dir"; return 0; }
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+CONFIG_ROOT="$(find_config_root 2>/dev/null)" || {
+  echo "No keystone-config detected; no flake.nix found from $PWD upward. Skipping OS-agent e2e." >&2
+  exit 0
+}
+
+agent_name=""
+test_name="email"
+forwarded=()
+
+if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+  agent_name="$1"
+  shift
+fi
+
+if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+  test_name="$1"
+  shift
+fi
+
+forwarded=("$@")
+
+agent_names_json="$(
+  nix eval --impure --json --expr "
+    let
+      flake = builtins.getFlake \"path:${CONFIG_ROOT}\";
+      configs = flake.nixosConfigurations or {};
+      configNames = builtins.attrNames configs;
+      agentNames = builtins.concatLists (map
+        (name: builtins.attrNames ((configs.\${name}.config.keystone.os.agents) or {}))
+        configNames);
+      unique = builtins.attrNames (builtins.listToAttrs (map
+        (name: { inherit name; value = true; })
+        agentNames));
+    in
+      unique
+  " 2>/dev/null
+)" || {
+  if [[ -n "$agent_name" ]]; then
+    agent_names_json='[]'
+  else
+    echo "Could not evaluate Keystone OS agents for $CONFIG_ROOT. Skipping OS-agent e2e." >&2
+    exit 0
+  fi
+}
+
+agent_count="$(printf '%s\n' "$agent_names_json" | jq 'length')"
+if [[ -z "$agent_name" ]]; then
+  if [[ "$agent_count" == "0" ]]; then
+    echo "No Keystone OS agents configured. Skipping OS-agent e2e." >&2
+    exit 0
+  fi
+  agent_name="$(printf '%s\n' "$agent_names_json" | jq -r '.[0]')"
+fi
+
+has_timeout=false
+has_print=false
+for arg in "${forwarded[@]}"; do
+  case "$arg" in
+    --timeout|--timeout=*) has_timeout=true ;;
+    --print) has_print=true ;;
+  esac
+done
+
+common_args=(--product "$agent_name")
+[[ "$has_timeout" == "true" ]] || common_args+=(--timeout 5)
+[[ "$has_print" == "true" ]] || common_args+=(--print)
+
+run_email() {
+  nix run "${KEYSTONE_AGENTS_E2E_FLAKE:-.#agents-e2e}" -- "${common_args[@]}" --smoke "${forwarded[@]}"
+}
+
+cd "$CONFIG_ROOT"
+case "$test_name" in
+  email)
+    run_email
+    ;;
+  pr)
+    echo "PR e2e is not implemented yet for os-agents-e2e." >&2
+    echo "Planned contract: create/assign a test issue or PR notification, trigger the Pi runner, and verify the resulting branch/PR/worktree action." >&2
+    exit 2
+    ;;
+  all)
+    run_email
+    echo "Skipping pr: not implemented yet." >&2
+    ;;
+  *)
+    echo "Unknown OS-agent e2e test: $test_name" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

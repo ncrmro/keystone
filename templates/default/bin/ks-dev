@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ks-dev [--build|--boot|--switch] [HOST] [-- EXTRA_ARGS...]
+
+Build or apply this ks-config checkout with local development inputs.
+
+Modes:
+  --build   Build only, no activation
+  --boot    Build and set as boot generation
+  --switch  Build and switch immediately (default)
+
+HOST defaults to the current hostname.
+
+This helper is for local Keystone development. It prefers a local Keystone
+checkout at ./keystone, ../keystone, or ~/repos/<owner>/keystone and passes it
+as --override-input keystone path:<checkout>.
+EOF
+}
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd "${script_dir}/.." && pwd -P)"
+repo_owner="$(basename "$(dirname "$repo_root")")"
+
+mode="switch"
+host=""
+extra_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --build)
+      mode="build"
+      shift
+      ;;
+    --boot)
+      mode="boot"
+      shift
+      ;;
+    --switch)
+      mode="switch"
+      shift
+      ;;
+    --)
+      shift
+      extra_args+=("$@")
+      break
+      ;;
+    -*)
+      extra_args+=("$1")
+      shift
+      ;;
+    *)
+      if [[ -n "$host" ]]; then
+        echo "Error: multiple hosts provided: '$host' and '$1'" >&2
+        usage
+        exit 1
+      fi
+      host="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$host" ]]; then
+  host="$(hostname)"
+fi
+
+override_args=()
+overridden_inputs=()
+
+add_override() {
+  local input="$1"
+  local path="$2"
+
+  if [[ ! -d "$path" ]]; then
+    return
+  fi
+
+  for existing in "${overridden_inputs[@]}"; do
+    if [[ "$existing" == "$input" ]]; then
+      return
+    fi
+  done
+
+  override_args+=(--override-input "$input" "path:$path")
+  overridden_inputs+=("$input")
+}
+
+keystone_candidates=(
+  "${repo_root}/keystone"
+  "${repo_root}/../keystone"
+  "${HOME}/repos/${repo_owner}/keystone"
+  "${HOME}/.keystone/repos/${repo_owner}/keystone"
+)
+
+keystone_checkout=""
+for candidate in "${keystone_candidates[@]}"; do
+  if [[ -f "${candidate}/flake.nix" ]]; then
+    keystone_checkout="$(cd "$candidate" && pwd -P)"
+    break
+  fi
+done
+
+if [[ -z "$keystone_checkout" ]]; then
+  echo "Error: local Keystone checkout missing." >&2
+  echo "Expected one of:" >&2
+  printf '  - %s\n' "${keystone_candidates[@]}" >&2
+  exit 1
+fi
+
+add_override "keystone" "$keystone_checkout"
+add_override "agenix-secrets" "${HOME}/repos/${repo_owner}/agenix-secrets"
+add_override "agenix-secrets" "${repo_root}/agenix-secrets"
+add_override "agenix-secrets" "${HOME}/.keystone/repos/${repo_owner}/agenix-secrets"
+
+echo "Running nixos-rebuild ${mode} for ${host}"
+echo "Config: ${repo_root}"
+if [[ ${#override_args[@]} -gt 0 ]]; then
+  echo "Using local input overrides:"
+  for ((i = 0; i < ${#override_args[@]}; i += 3)); do
+    echo "  ${override_args[i + 1]} -> ${override_args[i + 2]}"
+  done
+fi
+
+if [[ "$mode" == "build" ]]; then
+  exec nixos-rebuild "$mode" --flake "${repo_root}#${host}" "${override_args[@]}" "${extra_args[@]}"
+fi
+
+exec sudo nixos-rebuild "$mode" --flake "${repo_root}#${host}" "${override_args[@]}" "${extra_args[@]}"

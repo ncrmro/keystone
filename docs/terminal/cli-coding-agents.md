@@ -103,6 +103,7 @@ The DeepWork MCP server is appended automatically when
 | Gemini CLI | `~/.gemini/settings.json` | jq — merges `mcpServers` + `context`, preserves runtime state |
 | Codex | `~/.codex/config.toml` | Python TOML rewriter — replaces `[mcp_servers]` section |
 | OpenCode | `~/.config/opencode/opencode.json` | jq — merges `.mcp` key, preserves runtime state |
+| Pi | `~/.pi/agent/mcp.json` | jq — merges `mcpServers` key, preserves runtime state |
 
 Each activation script follows the same safety pattern:
 
@@ -120,7 +121,38 @@ keystone.terminal.cliCodingAgents.mcpServers.my-server = {
 };
 ```
 
-This definition propagates to all four CLIs automatically.
+This definition propagates to all supported CLIs automatically.
+
+## Pi packages
+
+Keystone can publish Nix-built Pi packages into `~/.pi/agent/settings.json`.
+OS agents enable the default MCP package automatically:
+
+```nix
+keystone.os.agents.drago.pi.extensions.mcp.enable = true;
+```
+
+Disable it per agent when Pi should not load MCP tools:
+
+```nix
+keystone.os.agents.drago.pi.extensions.mcp.enable = false;
+```
+
+Add user packages at the terminal profile level:
+
+```nix
+keystone.terminal.pi.extensions.packages = [
+  "${pkgs.my-pi-extension}/lib/node_modules/my-pi-extension"
+];
+```
+
+Or add per-agent packages:
+
+```nix
+keystone.os.agents.drago.pi.extensions.packages = [
+  "${pkgs.my-pi-extension}/lib/node_modules/my-pi-extension"
+];
+```
 
 ## Capability-driven generation
 

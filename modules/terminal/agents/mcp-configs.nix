@@ -17,6 +17,7 @@ with lib;
 let
   cfg = config.keystone.terminal.cliCodingAgents;
   terminalCfg = config.keystone.terminal;
+  piCfg = terminalCfg.pi;
   deepworkEnabled = terminalCfg.ai.enable && terminalCfg.deepwork.enable;
   deepworkAdditionalJobsFolders =
     config.home.sessionVariables.DEEPWORK_ADDITIONAL_JOBS_FOLDERS or null;
@@ -63,6 +64,25 @@ let
       deepwork = mkDeepworkServer "opencode";
     };
 
+  mkPiMcpServer =
+    srv:
+    srv
+    // {
+      transport = srv.transport or "stdio";
+      lifecycle = srv.lifecycle or "eager";
+    };
+  piMcpServers = mapAttrs (_: mkPiMcpServer) (
+    cfg.mcpServers
+    // optionalAttrs deepworkEnabled {
+      deepwork = mkDeepworkServer "claude";
+    }
+  );
+
+  piMcpExtensionPackage = "${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension";
+  piPackages =
+    optionals piCfg.extensions.defaults.mcp.enable [ piMcpExtensionPackage ]
+    ++ piCfg.extensions.packages;
+
   # Nix-managed MCP servers as a JSON file in the store, used by the
   # activation script to merge into the runtime ~/.claude.json.
   claudeJsonMcpServers = pkgs.writeText "claude-mcp-servers.json" (builtins.toJSON claudeMcpServers);
@@ -80,6 +100,13 @@ let
   );
 
   codexJsonMcpServers = pkgs.writeText "codex-mcp-servers.json" (builtins.toJSON codexMcpServers);
+
+  piJsonMcpServers = pkgs.writeText "pi-mcp-servers.json" (builtins.toJSON piMcpServers);
+  piJsonSettings = pkgs.writeText "pi-settings.json" (
+    builtins.toJSON {
+      packages = piPackages;
+    }
+  );
 
   # Nix-managed settings for OpenCode
   opencodeJsonSettings = pkgs.writeText "opencode-settings.json" (
@@ -153,13 +180,51 @@ in
     };
   };
 
+  options.keystone.terminal.pi = {
+    extensions = {
+      defaults.mcp.enable = mkOption {
+        type = types.bool;
+        default = false;
+        description = ''
+          Enable Keystone's default Pi MCP extension package. OS agents turn
+          this on by default so Pi can consume the same MCP servers as the
+          other coding CLIs.
+        '';
+      };
+
+      packages = mkOption {
+        type = types.listOf types.anything;
+        default = [ ];
+        description = ''
+          Additional Pi packages to add to ~/.pi/agent/settings.json. Entries
+          may be absolute Nix store package paths, npm/git source strings, or
+          Pi package filter objects accepted by Pi settings.json.
+        '';
+      };
+
+      generatedPackages = mkOption {
+        type = types.listOf types.anything;
+        default = [ ];
+        internal = true;
+        description = "Resolved Pi package list emitted to settings.json.";
+      };
+    };
+  };
+
   config = mkIf (terminalCfg.enable && cfg.enable) {
+    keystone.terminal.pi.extensions.generatedPackages = piPackages;
+
     keystone.terminal.cliCodingAgents.generatedMcpServers = {
       claude = claudeMcpServers;
       gemini = geminiMcpServers;
       codex = codexMcpServers;
       opencode = opencodeMcpServers;
+      pi = piMcpServers;
     };
+
+    home.packages = optionals piCfg.extensions.defaults.mcp.enable [
+      pkgs.keystone.pi-mcp-extension
+    ];
 
     # Claude Code / Claude Desktop
     # CRITICAL: ~/.claude.json must be a writable regular file, not a Nix store
@@ -383,5 +448,46 @@ in
               chmod 644 "$codexConfig"
             fi
     '';
+
+    home.activation.piAgentSettings = mkIf (piPackages != [ ]) (
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        piSettings="$HOME/.pi/agent/settings.json"
+        mkdir -p "$(dirname "$piSettings")"
+
+        if [ -L "$piSettings" ]; then
+          rm -f "$piSettings"
+        fi
+
+        if [ -f "$piSettings" ]; then
+          ${pkgs.jq}/bin/jq -s '.[0] * {packages: .[1].packages}' \
+            "$piSettings" ${piJsonSettings} > "$piSettings.tmp" \
+            && mv "$piSettings.tmp" "$piSettings"
+        else
+          cp ${piJsonSettings} "$piSettings"
+          chmod 644 "$piSettings"
+        fi
+      ''
+    );
+
+    home.activation.piMcpConfig = mkIf (piCfg.extensions.defaults.mcp.enable && piMcpServers != { }) (
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        piMcpConfig="$HOME/.pi/agent/mcp.json"
+        mkdir -p "$(dirname "$piMcpConfig")"
+
+        if [ -L "$piMcpConfig" ]; then
+          rm -f "$piMcpConfig"
+        fi
+
+        if [ -f "$piMcpConfig" ]; then
+          ${pkgs.jq}/bin/jq -s '.[0] * {mcpServers: .[1]}' \
+            "$piMcpConfig" ${piJsonMcpServers} > "$piMcpConfig.tmp" \
+            && mv "$piMcpConfig.tmp" "$piMcpConfig"
+        else
+          ${pkgs.jq}/bin/jq -n --slurpfile s ${piJsonMcpServers} '{mcpServers: $s[0]}' \
+            > "$piMcpConfig"
+          chmod 644 "$piMcpConfig"
+        fi
+      ''
+    );
   };
 }

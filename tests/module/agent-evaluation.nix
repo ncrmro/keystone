@@ -125,6 +125,22 @@ let
           )
         else
           "[]";
+      researcherPiPackagesJson =
+        if result.config ? home-manager && result.config.home-manager.users ? "agent-researcher" then
+          builtins.toJSON (
+            result.config.home-manager.users."agent-researcher".keystone.terminal.pi.extensions.generatedPackages
+              or [ ]
+          )
+        else
+          "[]";
+      researcherPiMcpJson =
+        if result.config ? home-manager && result.config.home-manager.users ? "agent-researcher" then
+          builtins.toJSON (
+            result.config.home-manager.users."agent-researcher".keystone.terminal.cliCodingAgents.generatedMcpServers.pi
+              or { }
+          )
+        else
+          "{}";
     in
     pkgs.runCommand "eval-${name}" { } ''
       echo "Evaluating ${name}..."
@@ -319,6 +335,40 @@ let
         else
           echo "  ✗ Missing agent screenshot sync timer"
           echo "  Actual user timers: ${userTimersJson}"
+          exit 1
+        fi
+      fi
+
+      if [ "${name}" = "agent-pi-task-runner" ]; then
+        if echo '${userServicesJson}' | grep -q '"agent-drago-pi-task-runner"'; then
+          echo "  ✓ Found Pi task runner user service"
+        else
+          echo "  ✗ Missing Pi task runner user service"
+          echo "  Actual user services: ${userServicesJson}"
+          exit 1
+        fi
+        if echo '${userTimersJson}' | grep -q '"agent-drago-pi-task-runner"'; then
+          echo "  ✓ Found Pi task runner user timer"
+        else
+          echo "  ✗ Missing Pi task runner user timer"
+          echo "  Actual user timers: ${userTimersJson}"
+          exit 1
+        fi
+      fi
+
+      if [ "${name}" = "agent-chrome-mcp" ]; then
+        if echo '${researcherPiPackagesJson}' | grep -q 'pi-mcp-extension'; then
+          echo "  ✓ Found default Pi MCP extension package"
+        else
+          echo "  ✗ Missing default Pi MCP extension package"
+          echo "  Actual Pi packages: ${researcherPiPackagesJson}"
+          exit 1
+        fi
+        if echo '${researcherPiMcpJson}' | grep -q '"chrome-devtools"'; then
+          echo "  ✓ Found Chrome DevTools in Pi MCP config"
+        else
+          echo "  ✗ Missing Chrome DevTools in Pi MCP config"
+          echo "  Actual Pi MCP config: ${researcherPiMcpJson}"
           exit 1
         fi
       fi
@@ -721,6 +771,27 @@ let
             fullName = "Drago";
             notes.repo = "git@git.ncrmro.com:drago/notes.git";
             # SSH public key now set via keystone.keys."agent-drago"
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    agent-pi-task-runner = eval "agent-pi-task-runner" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          agents.drago = {
+            fullName = "Drago";
+            notes.repo = "git@git.example.com:drago/notes.git";
+            piTaskRunner.enable = true;
           };
         };
         fileSystems."/" = {

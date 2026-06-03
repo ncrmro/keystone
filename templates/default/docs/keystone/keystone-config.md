@@ -161,6 +161,40 @@ scaffolded `flake.nix` show the canonical pattern.
 The 80% case fits the helper. The other 20% is plain Nix and you have full
 access to it.
 
+## Local Keystone development
+
+Use `ks update --dev` when you are iterating on this config with local inputs.
+For a direct rebuild, `bin/ks-dev` applies the same local Keystone override to
+`nixos-rebuild`:
+
+```bash
+nix develop -c ks-dev --build
+nix develop -c ks-dev --switch
+```
+
+`ks-dev` looks for Keystone at `./keystone`, `../keystone`, and
+`~/repos/<owner>/keystone`. Put reusable module, package, or `ks` CLI changes
+there when you intend to upstream them. Use this repo's `modules/keystone/`
+directory for fleet-local spike modules that are not ready to upstream.
+
+## Agent instruction files
+
+Run `ks sync-agent-assets` after changing Keystone agent conventions or local
+agent overlays. The command writes generated agent assets into this repo so the
+diff can be reviewed and committed.
+
+| Path | Ownership | Purpose |
+|---|---|---|
+| `agents/_shared/AGENTS.md` | Generated, committed | Shared instruction file for CLI agents. |
+| `agents/<name>/AGENTS.md` | User-authored, committed | Optional per-agent overlay. |
+| `agents/<name>/pi/AGENTS.md` | Generated, committed | Pi prompt file composed from shared instructions plus the overlay. |
+| `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Home-manager activation target for Pi. |
+
+Human users get Pi linked to `agents/_shared/AGENTS.md`. OS agents get Pi
+linked to `agents/<name>/pi/AGENTS.md` when that generated file exists. The
+runtime home-directory symlinks are recreated by activation; the committed
+source of truth remains this repo's `agents/` directory.
+
 ## File layout
 
 - `flake.nix` — single `mkSystemFlake` call
@@ -172,6 +206,23 @@ access to it.
 
 `server` is just an example name. Rename to anything that fits — keep the
 entry in `hosts = { ... }` and the directory under `hosts/` in sync.
+
+## OS agent smoke test
+
+Keystone OS agents are notification-driven system users. After provisioning an
+agent mailbox and switching the host, validate the installed path with:
+
+```bash
+os-agents-e2e
+```
+
+This no-ops successfully if no OS agents are configured. When agents exist, the
+smoke test sends an email ping to the agent, starts
+`agent-{name}-pi-task-runner.service`, waits for a pong reply in your inbox, and
+expects the source notification to be acknowledged. Use
+`os-agents-e2e drago email` to choose a specific agent.
+Use `os-agents-e2e drago all` when additional checks, such as PR assignment,
+are implemented.
 
 ## Going deeper
 

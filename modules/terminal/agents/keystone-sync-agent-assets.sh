@@ -29,6 +29,8 @@ The committed canonical surface:
   <consumer-flake>/agents/
     _shared/AGENTS.md             host-rendered instruction file
     _shared/skills.yaml           optional user-authored skill overrides
+    <agent>/AGENTS.md             user-authored per-agent instruction file
+    <agent>/SYSTEM.md             user-authored per-agent system file
     skills/<name>/SKILL.md        per-skill body, spec-compliant naming
     skills/<name>/<convention>.md colocated conventions/roles
 
@@ -37,8 +39,11 @@ Home-manager activation symlinks ~/.agents/skills/ → <flake>/agents/skills/
 .agents/skills/ open standard) and ~/.claude/skills/ → <flake>/agents/skills/
 (Claude-only shadow at the same target). Per-tool instruction filenames
 (CLAUDE.md, GEMINI.md, codex AGENTS.md) symlink to _shared/AGENTS.md via
-the activation. No per-tool rendering, no hyphenated-codex fan-out — the
-spec-compliant naming makes one canonical tree sufficient for every agent.
+the activation. Pi reads ~/.pi/agent/AGENTS.md; OS agents point at their
+user-authored agents/<agent>/AGENTS.md file. Keystone owns the symlink
+topology; the consumer flake owns the per-agent instruction content.
+No per-tool rendering, no hyphenated-codex fan-out —
+the spec-compliant naming makes one canonical tree sufficient for every agent.
 
 The merged skill map is built from conventions/archetypes.yaml.skills
 (keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
@@ -124,12 +129,76 @@ write_file() {
   mv "$tmp" "$target"
 }
 
+ensure_user_file() {
+  local target="$1"
+  local target_dir
+
+  if [[ -e "$target" || -L "$target" ]]; then
+    return 0
+  fi
+
+  target_dir="$(dirname "$target")"
+  mkdir -p "$target_dir"
+  : > "$target"
+  chmod 644 "$target"
+}
+
 append_file_content() {
   local output_file="$1"
   local source_file="$2"
 
   printf '\n' >> "$output_file"
   cat "$source_file" >> "$output_file"
+}
+
+append_pi_runtime_instructions() {
+  local output_file="$1"
+  local agent_name="$2"
+
+  cat <<EOF >> "$output_file"
+
+---
+
+# Pi runtime instructions
+
+This file is read by Pi from \`~/.pi/agent/AGENTS.md\`.
+
+You are running as the \`agent-${agent_name}\` OS agent. Treat the current Pi
+prompt as a notification-backed assignment unless the user explicitly says it
+is an interactive diagnostic. The assignment may come from email, GitHub,
+Forgejo, or another Keystone notification source.
+
+## Operating loop
+
+1. Inspect the assignment and identify the requested observable outcome.
+2. Use local tools directly; do not ask the human to perform steps the agent
+   can safely perform itself.
+3. Write results back to the same shared surface that created the assignment:
+   reply to email for email tasks, comment/update the issue or PR for
+   GitHub/Forgejo tasks, and preserve milestones/boards as the public record.
+4. If blocked, report the blocker on that same surface with the command or
+   credential that failed and the next human action required.
+
+## Local tools
+
+Read \`~/TOOLS.md\` or \`~/.config/keystone/TOOLS.md\` for host-provisioned
+tools. For email, \`himalaya\` is configured for this agent account and can
+send replies. Include a \`Date:\` header when sending raw mail so messages sort
+correctly:
+
+\`\`\`bash
+cat <<MAIL | himalaya message send
+From: your-agent-email@example.com
+To: recipient@example.com
+Subject: Re: subject
+Date: \$(date -R)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Body here
+MAIL
+\`\`\`
+EOF
 }
 
 render_template() {
@@ -382,6 +451,74 @@ write_file "$CONSUMER_FLAKE_SHARED/AGENTS.md" "$global_agents_content"
 # so manual invocations don't leave it stale.
 write_file "$HOME/.config/opencode/AGENTS.md" "$global_agents_content"
 
+team_tmp="$(mktemp)"
+{
+  cat <<'EOF'
+# Team
+
+| Name | Type | Role | Email | GitHub | Forgejo | Host |
+|---|---|---|---|---|---|---|
+EOF
+  while IFS= read -r agent_name; do
+    [[ -z "$agent_name" ]] && continue
+    full_name="$(jq -r --arg name "$agent_name" '.agents[$name].fullName // $name' "$manifest_path")"
+    email="$(jq -r --arg name "$agent_name" '.agents[$name].email // ""' "$manifest_path")"
+    archetype_value="$(jq -r --arg name "$agent_name" '.agents[$name].archetype // ""' "$manifest_path")"
+    github_username="$(jq -r --arg name "$agent_name" '.agents[$name].githubUsername // $name' "$manifest_path")"
+    forgejo_username="$(jq -r --arg name "$agent_name" '.agents[$name].forgejoUsername // $name' "$manifest_path")"
+    agent_host="$(jq -r --arg name "$agent_name" '.agents[$name].host // ""' "$manifest_path")"
+    printf '| %s | OS agent | %s | %s | %s | %s | %s |\n' "$full_name" "$archetype_value" "$email" "$github_username" "$forgejo_username" "$agent_host"
+  done < <(jq -r '.agents | keys[]?' "$manifest_path")
+} > "$team_tmp"
+write_file "$CONSUMER_FLAKE_SHARED/TEAM.md" "$(cat "$team_tmp")"
+rm -f "$team_tmp"
+
+write_file "$CONSUMER_FLAKE_SHARED/SERVICES.md" '# Services
+
+Host-provisioned services are configured by Keystone and exposed through local
+tools such as `himalaya`, `gh`, `fj`, `tea`, Grafana MCP, and browser MCP when
+enabled. Prefer the local tool configuration over hardcoded URLs.
+'
+
+while IFS= read -r agent_name; do
+  [[ -z "$agent_name" ]] && continue
+  ensure_user_file "$CONSUMER_FLAKE_AGENTS/$agent_name/AGENTS.md"
+  ensure_user_file "$CONSUMER_FLAKE_AGENTS/$agent_name/SYSTEM.md"
+  full_name="$(jq -r --arg name "$agent_name" '.agents[$name].fullName // $name' "$manifest_path")"
+  email="$(jq -r --arg name "$agent_name" '.agents[$name].email // ""' "$manifest_path")"
+  archetype_value="$(jq -r --arg name "$agent_name" '.agents[$name].archetype // ""' "$manifest_path")"
+  github_username="$(jq -r --arg name "$agent_name" '.agents[$name].githubUsername // $name' "$manifest_path")"
+  forgejo_username="$(jq -r --arg name "$agent_name" '.agents[$name].forgejoUsername // $name' "$manifest_path")"
+  agent_host="$(jq -r --arg name "$agent_name" '.agents[$name].host // ""' "$manifest_path")"
+  write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/SOUL.md" "# $full_name
+
+| Field | Value |
+|---|---|
+| System user | \`agent-$agent_name\` |
+| Email | $email |
+| Archetype | $archetype_value |
+| GitHub | $github_username |
+| Forgejo | $forgejo_username |
+| Host | $agent_host |
+"
+
+  agent_pi_tmp="$(mktemp)"
+  printf '%s' "$global_agents_content" > "$agent_pi_tmp"
+  append_pi_runtime_instructions "$agent_pi_tmp" "$agent_name"
+  agent_overlay="$CONSUMER_FLAKE_AGENTS/$agent_name/AGENTS.md"
+  if [[ -f "$agent_overlay" ]]; then
+    {
+      printf '\n\n---\n\n'
+      printf '# OS agent overlay: %s\n\n' "$agent_name"
+      cat "$agent_overlay"
+    } >> "$agent_pi_tmp"
+  fi
+  if [[ "${KEYSTONE_GENERATE_PI_AGENT_AGENTS:-0}" == "1" ]]; then
+    write_file "$CONSUMER_FLAKE_AGENTS/$agent_name/pi/AGENTS.md" "$(cat "$agent_pi_tmp")"
+  fi
+  rm -f "$agent_pi_tmp"
+done < <(jq -r '.agents | keys[]?' "$manifest_path")
+
 repos_agents_tmp="$(mktemp)"
 {
   cat <<'EOF'
@@ -558,6 +695,11 @@ home-dir symlinks that home-manager activation creates.
 |---|---|
 | `_shared/AGENTS.md` | Single canonical instruction file. The per-tool symlinks (`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, `~/.codex/AGENTS.md`) all resolve here. |
 | `_shared/conventions/` | Centralized conventions and roles, referenced by skills via per-skill symlinks. |
+| `_shared/TEAM.md` | Generated roster for humans and OS agents. OS agents receive this as `~/TEAM.md`. |
+| `_shared/SERVICES.md` | Generated service index. OS agents receive this as `~/SERVICES.md`. |
+| `<agent>/AGENTS.md` | User-authored OS-agent instruction file. OS agents receive this as `~/AGENTS.md` and `~/.pi/agent/AGENTS.md`. |
+| `<agent>/SYSTEM.md` | User-authored OS-agent system file. OS agents receive this as `~/SYSTEM.md`, `~/.pi/agent/SYSTEM.md`, and `~/.pi/agents/SYSTEM.md`. |
+| `<agent>/SOUL.md` | Generated OS-agent identity file. OS agents receive this as `~/SOUL.md`. |
 | `skills/` | Canonical skill tree per the [`.agents/skills/` open standard][spec]. Read by every spec-compliant agent. |
 | `claude/agents/` | Claude-specific subagent personas. Read via `~/.claude/agents/`. |
 
@@ -567,8 +709,11 @@ home-dir symlinks that home-manager activation creates.
   state (capabilities, archetype) determines which skills land. The
   command is manual — `ks switch` / `ks update --dev` never write here
   implicitly.
-- User-authored content in `claude/agents/<persona>.md` and
-  `_shared/skills.yaml` survives sync.
+- User-authored content in `claude/agents/<persona>.md`,
+  `_shared/skills.yaml`, `<agent>/AGENTS.md`, and `<agent>/SYSTEM.md`
+  survives sync.
+- OS-agent identity docs are rooted here, not in `~/notes`: activation links
+  `~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` into each agent home.
 - README files in this tree (including this one) are regenerated;
   edits there will be overwritten.
 

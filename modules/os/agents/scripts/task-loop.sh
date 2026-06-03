@@ -237,6 +237,14 @@ resolve_stage_runtime() {
   local stage_name="$1"
   local task_json="${2:-{}}"
   local built_in_profile stage_json
+  local task_profile task_provider task_model task_fallback_model task_effort
+
+  task_json=$(printf '%s\n' "$task_json" | jq -c . 2>/dev/null || printf '{}')
+  task_profile=$(printf '%s\n' "$task_json" | jq -r '.profile // ""')
+  task_provider=$(printf '%s\n' "$task_json" | jq -r '.provider // ""')
+  task_model=$(printf '%s\n' "$task_json" | jq -r '.model // ""')
+  task_fallback_model=$(printf '%s\n' "$task_json" | jq -r '.fallback_model // ""')
+  task_effort=$(printf '%s\n' "$task_json" | jq -r '.effort // ""')
 
   built_in_profile=$(stage_builtin_profile "$stage_name")
   case "$stage_name" in
@@ -251,10 +259,14 @@ resolve_stage_runtime() {
 
   jq -cn \
     --arg built_in_profile "$built_in_profile" \
+    --arg task_profile "$task_profile" \
+    --arg task_provider "$task_provider" \
+    --arg task_model "$task_model" \
+    --arg task_fallback_model "$task_fallback_model" \
+    --arg task_effort "$task_effort" \
     --argjson defaults "$TASK_LOOP_DEFAULTS_JSON" \
     --argjson stage_cfg "$stage_json" \
-    --argjson profiles "$TASK_LOOP_PROFILES_JSON" \
-    --argjson task "$task_json" '
+    --argjson profiles "$TASK_LOOP_PROFILES_JSON" '
       def first_non_empty($values):
         ($values | map(select(. != null and . != "")) | .[0] // null);
       def profile_cfg($profiles; $profile; $provider):
@@ -265,32 +277,32 @@ resolve_stage_runtime() {
         end;
 
       .provider = first_non_empty([
-        $task.provider?,
+        $task_provider,
         $stage_cfg.provider?,
         $defaults.provider?,
         "claude"
       ]) |
       .profile = first_non_empty([
-        $task.profile?,
+        $task_profile,
         $stage_cfg.profile?,
         $defaults.profile?,
         $built_in_profile
       ]) |
       .profileConfig = profile_cfg($profiles; .profile; .provider) |
       .model = first_non_empty([
-        $task.model?,
+        $task_model,
         $stage_cfg.model?,
         $defaults.model?,
         .profileConfig.model?
       ]) |
       .fallbackModel = first_non_empty([
-        $task.fallback_model?,
+        $task_fallback_model,
         $stage_cfg.fallbackModel?,
         $defaults.fallbackModel?,
         .profileConfig.fallbackModel?
       ]) |
       .effort = first_non_empty([
-        $task.effort?,
+        $task_effort,
         $stage_cfg.effort?,
         $defaults.effort?,
         .profileConfig.effort?
@@ -367,6 +379,21 @@ run_provider_prompt() {
           + [$prompt]
         ')
       ;;
+    pi)
+      command_json=$(jq -cn \
+        --arg prompt "$prompt" \
+        --arg model "$model" \
+        --arg effort "$effort" '
+          [
+            "pi",
+            "--print",
+            "--no-session"
+          ]
+          + (if $model != "" then ["--model", $model] else [] end)
+          + (if $effort != "" then ["--thinking", $effort] else [] end)
+          + [$prompt]
+        ')
+      ;;
     *)
       log "  ERROR: unsupported provider '$provider' for stage '$stage_name'"
       return 1
@@ -379,9 +406,17 @@ run_provider_prompt() {
 
 build_task_runtime_json() {
   local task_name="$1"
-  local task_entry
-  task_entry=$(yq -o=json "[.tasks[] | select(.name == \"$task_name\")] | .[0]" TASKS.yaml)
-  printf '%s' "$task_entry" | jq -c '{profile: (.profile // ""), provider: (.provider // ""), model: (.model // ""), fallback_model: (.fallback_model // ""), effort: (.effort // "")}'
+  yq -o=json '.tasks // []' TASKS.yaml |
+    jq -c --arg task_name "$task_name" '
+      ([.[] | select(.name == $task_name)] | .[0] // {}) |
+      {
+        profile: (.profile // ""),
+        provider: (.provider // ""),
+        model: (.model // ""),
+        fallback_model: (.fallback_model // ""),
+        effort: (.effort // "")
+      }
+    '
 }
 
 # Lock to prevent concurrent runs (flock auto-releases on process death, even SIGKILL)
@@ -657,7 +692,7 @@ TASK_COUNT=0
 ATTEMPTED_TASKS=":"
 
 while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
-  TASK_NAME=$(yq '[.tasks[] | select(.status == "pending")] | .[0].name' TASKS.yaml 2>/dev/null || echo "null")
+  TASK_NAME=$(yq -r '[.tasks[] | select(.status == "pending")] | .[0].name' TASKS.yaml 2>/dev/null || echo "null")
 
   if [[ "$TASK_NAME" == "null" || -z "$TASK_NAME" ]]; then
     log "  No more pending tasks"
@@ -670,11 +705,11 @@ while [[ $TASK_COUNT -lt "$MAX_TASKS" ]]; do
   fi
   ATTEMPTED_TASKS="${ATTEMPTED_TASKS}${TASK_NAME}:"
 
-  TASK_DESC=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
-  TASK_WORKFLOW=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
-  TASK_NEEDS=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
-  TASK_SOURCE=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source // \"\"" TASKS.yaml)
-  TASK_SOURCE_REF=$(yq "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source_ref // \"\"" TASKS.yaml)
+  TASK_DESC=$(yq -r "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].description" TASKS.yaml)
+  TASK_WORKFLOW=$(yq -r "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].workflow // \"\"" TASKS.yaml)
+  TASK_NEEDS=$(yq -o=json "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].needs // []" TASKS.yaml)
+  TASK_SOURCE=$(yq -r "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source // \"\"" TASKS.yaml)
+  TASK_SOURCE_REF=$(yq -r "[.tasks[] | select(.name == \"$TASK_NAME\")] | .[0].source_ref // \"\"" TASKS.yaml)
 
   if [[ "$TASK_NEEDS" != "[]" && "$TASK_NEEDS" != "null" ]]; then
     NEEDS_MET=true
@@ -730,7 +765,7 @@ Description: $TASK_DESC"
   if [[ -z "$TASK_RUNTIME_JSON" ]]; then
     TASK_RUNTIME_JSON="{}"
   fi
-  EXECUTE_RUNTIME=$(resolve_stage_runtime "execute")
+  EXECUTE_RUNTIME=$(resolve_stage_runtime "execute" "$TASK_RUNTIME_JSON")
   TASK_PROVIDER=$(echo "$EXECUTE_RUNTIME" | jq -r '.provider // ""')
   TASK_PROFILE=$(echo "$EXECUTE_RUNTIME" | jq -r '.profile // ""')
   TASK_MODEL=$(echo "$EXECUTE_RUNTIME" | jq -r '.model // ""')

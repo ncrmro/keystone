@@ -977,6 +977,7 @@ rec {
               specialArgs = sharedSpecialArgs // (hostCfg.specialArgs or { });
               config = lib.recursiveUpdate mergedConfig {
                 keystone.services = keystoneServices;
+                keystone.systemFlake.path = lib.mkDefault "/home/${adminUsername}/repos/${effectiveRepoOwner}/ks-config";
                 keystone.update.channel = lib.mkDefault hostUpdateChannel;
               };
               modules = [

@@ -179,6 +179,8 @@ in
                         args = [
                           "--browserUrl"
                           "http://127.0.0.1:${toString (globalAgentChromeDebugPort name agentCfg)}"
+                          "--no-usage-statistics"
+                          "--no-performance-crux"
                         ];
                       };
                     }
@@ -191,6 +193,10 @@ in
                         inherit (srv) env;
                       }
                     ) agentCfg.mcp.servers;
+                  };
+                  pi.extensions = {
+                    defaults.mcp.enable = mkDefault agentCfg.pi.extensions.mcp.enable;
+                    packages = mkDefault agentCfg.pi.extensions.packages;
                   };
                 };
 
@@ -213,7 +219,88 @@ in
                 # The MCP server command in cliCodingAgents uses an absolute Nix store
                 # path, but agents may also invoke the binary directly (e.g. diagnostics,
                 # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
+                home.file.".pi/agent/models.json" = mkIf config.keystone.os.services.ollama.enable {
+                  text = builtins.toJSON {
+                    providers.ollama = {
+                      baseUrl = "http://${ollamaHostAddress}:${toString config.keystone.os.services.ollama.port}/v1";
+                      api = "openai-completions";
+                      apiKey = "ollama";
+                      compat = {
+                        supportsDeveloperRole = false;
+                        supportsReasoningEffort = false;
+                      };
+                      models = map (id: { inherit id; }) config.keystone.os.services.ollama.models;
+                    };
+                  };
+                };
+
+                home.file."TOOLS.md".text = ''
+                  # OS agent tools
+
+                  ## Email: himalaya
+
+                  `himalaya` is configured for this agent account and can read
+                  and send email through the local mail server.
+
+                  Useful commands:
+
+                  ```bash
+                  himalaya envelope list
+                  himalaya message read <id>
+                  ```
+
+                  To send a raw email, include a `Date:` header so the message
+                  sorts correctly:
+
+                  ```bash
+                  cat <<EOF | himalaya message send
+                  From: your-agent-email@example.com
+                  To: recipient@example.com
+                  Subject: Re: subject
+                  Date: $(date -R)
+                  MIME-Version: 1.0
+                  Content-Type: text/plain; charset=utf-8
+
+                  Body here
+                  EOF
+                  ```
+                '';
+                home.file.".config/keystone/TOOLS.md".text = ''
+                  # OS agent tools
+
+                  ## Email: himalaya
+
+                  `himalaya` is configured for this agent account and can read
+                  and send email through the local mail server.
+
+                  Useful commands:
+
+                  ```bash
+                  himalaya envelope list
+                  himalaya message read <id>
+                  ```
+
+                  To send a raw email, include a `Date:` header so the message
+                  sorts correctly:
+
+                  ```bash
+                  cat <<EOF | himalaya message send
+                  From: your-agent-email@example.com
+                  To: recipient@example.com
+                  Subject: Re: subject
+                  Date: $(date -R)
+                  MIME-Version: 1.0
+                  Content-Type: text/plain; charset=utf-8
+
+                  Body here
+                  EOF
+                  ```
+                '';
+
                 home.packages = [
+                  sysPkgs.keystone.agent-coding-agent
+                  sysPkgs.keystone.linux-task-dispatcher
+                  sysPkgs.keystone.pi-task-runner
                   sysPkgs.keystone.slidev
                 ]
                 ++ optionals (agentCfg.chrome.enable && agentCfg.chrome.mcp.enable) [

@@ -532,6 +532,7 @@
             inherit pkgs lib;
           };
           linuxTaskDispatcher = ksPkgs.keystone.linux-task-dispatcher.passthru.tests.dispatcher;
+          piTaskRunner = ksPkgs.keystone.pi-task-runner.passthru.tests.runner;
         in
         {
           # Individual checks — for local debugging (nix build .#checks.x86_64-linux.<name>)
@@ -569,6 +570,7 @@
           agent-runtime-coherence = agentRuntimeCoherence;
           agent-queue-migration = agentQueueMigration;
           linux-task-dispatcher = linuxTaskDispatcher;
+          pi-task-runner = piTaskRunner;
 
           # --- CI groups — parallel matrix jobs via nix-github-actions ---
 
@@ -625,6 +627,7 @@
             ln -s ${agentTaskLoopPingPong} "$out/agent-task-loop-ping-pong"
             ln -s ${agentRuntimeCoherence} "$out/agent-runtime-coherence"
             ln -s ${agentQueueMigration} "$out/agent-queue-migration"
+            ln -s ${piTaskRunner} "$out/pi-task-runner"
             ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
             ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
             ln -s ${terminalZide} "$out/terminal-zide"
@@ -646,6 +649,7 @@
             zesh
             agents-e2e
             agent-coding-agent
+            pi
             agent-mail
             fetch-email-source
             fetch-forgejo-sources
@@ -653,6 +657,7 @@
             forgejo-project
             fetch-github-sources
             linux-task-dispatcher
+            pi-task-runner
             repo-sync
             podman-agent
             ks
@@ -661,6 +666,7 @@
             zellij-tab-name
             write-polkit-theme
             chrome-devtools-mcp
+            pi-mcp-extension
             grafana-mcp
             lfs-s3
             deepwork-library-jobs

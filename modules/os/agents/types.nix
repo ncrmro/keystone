@@ -20,6 +20,7 @@ let
     "claude"
     "gemini"
     "codex"
+    "pi"
   ];
   taskLoopEffortType = types.enum [
     "low"
@@ -259,6 +260,31 @@ in
           };
         };
 
+        pi = {
+          extensions = {
+            mcp.enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = ''
+                Enable Keystone's default Pi MCP extension for this OS agent.
+                When enabled, Pi receives the same generated MCP server set as
+                the other coding CLIs, including Chrome DevTools when
+                chrome.mcp.enable is true.
+              '';
+            };
+
+            packages = mkOption {
+              type = types.listOf types.anything;
+              default = [ ];
+              description = ''
+                Additional Pi packages for this OS agent. Entries are passed to
+                ~/.pi/agent/settings.json and may be Nix store paths, npm/git
+                package sources, or Pi package filter objects.
+              '';
+            };
+          };
+        };
+
         # Grafana MCP server for querying metrics and logs (REQ-017.9)
         grafana = {
           mcp = {
@@ -394,6 +420,15 @@ in
           };
 
           taskLoop = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = ''
+                Enable the legacy TASKS.yaml task-loop units. Disable this
+                when an agent is driven by the Pi notification runner instead.
+              '';
+            };
+
             onCalendar = mkOption {
               type = types.str;
               default = "*:0/5";
@@ -468,6 +503,16 @@ in
           };
 
           scheduler = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = ''
+                Enable the legacy SCHEDULES.yaml scheduler units. Disable this
+                when task assignment comes from notifications instead of the
+                local YAML queue.
+              '';
+            };
+
             onCalendar = mkOption {
               type = types.str;
               default = "*-*-* 05:00:00";
@@ -531,6 +576,43 @@ in
             type = types.str;
             default = "1h";
             description = "Maximum runtime for one dispatcher service execution.";
+          };
+        };
+
+        piTaskRunner = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              Enable the simplified Pi notification runner. This path fetches
+              assignment notifications and launches preassigned worktrees
+              directly; it does not use TASKS.yaml, PROJECTS.yaml, ks task, or
+              ks agent-loop.
+            '';
+          };
+
+          model = mkOption {
+            type = types.str;
+            default = "ollama/qwen3:4b";
+            description = "Pi model used to prioritize multiple valid assignment notifications.";
+          };
+
+          sources = mkOption {
+            type = types.str;
+            default = "forgejo,github";
+            description = "Comma-separated ks notification sources for the runner.";
+          };
+
+          onCalendar = mkOption {
+            type = types.str;
+            default = "*:0/5";
+            description = "Systemd calendar spec for the runner timer.";
+          };
+
+          timeout = mkOption {
+            type = types.str;
+            default = "1h";
+            description = "Maximum runtime for one runner pass.";
           };
         };
 

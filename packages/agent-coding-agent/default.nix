@@ -24,6 +24,7 @@ stdenv.mkDerivation {
     cp $src/agent.coding-agent.claude $out/bin/
     cp $src/agent.coding-agent.codex $out/bin/
     cp $src/agent.coding-agent.gemini $out/bin/
+    cp $src/agent.coding-agent.pi $out/bin/
     chmod +x $out/bin/*
 
     wrapProgram $out/bin/agent.coding-agent \

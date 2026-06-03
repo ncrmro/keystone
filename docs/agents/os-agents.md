@@ -5,7 +5,7 @@ description: Non-interactive NixOS user accounts for autonomous LLM-driven opera
 
 # OS Agents (`keystone.os.agents`)
 
-OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. Each agent gets an isolated home directory, SSH keys, mail, browser, and optional workspace cloning.
+OS agents are non-interactive NixOS user accounts designed for autonomous LLM-driven operation. Each agent gets an isolated home directory, SSH keys, mail, browser, and committed identity docs from `ks-config/agents`.
 
 ## Quick Start
 
@@ -14,7 +14,6 @@ keystone.os.agents.drago = {
   fullName = "Drago";
   email = "drago@example.com";
   ssh.publicKey = "ssh-ed25519 AAAAC3... agent-drago";
-  notes.repo = "ssh://forgejo@git.example.com:2222/drago/notes.git";
 };
 
 # SSH public key is registered in the keys registry, not on the agent
@@ -49,46 +48,28 @@ flowchart TB
         end
 
         subgraph Timers["Systemd User Timers"]
-            sched_timer["agent-{name}-scheduler.timer<br/>Daily 5 AM"]
-            loop_timer["agent-{name}-task-loop.timer<br/>Every 5 min"]
-            sync_timer["agent-{name}-notes-sync.timer<br/>Every 5 min"]
+            pi_timer["agent-{name}-pi-task-runner.timer<br/>Notification poll"]
         end
 
         subgraph Services["Systemd User Services"]
-            sched_svc["agent-{name}-scheduler.service<br/>scheduler.sh"]
-            loop_svc["agent-{name}-task-loop.service<br/>task-loop.sh"]
-            sync_svc["agent-{name}-notes-sync.service<br/>repo-sync"]
+            pi_svc["agent-{name}-pi-task-runner.service<br/>Pi task runner"]
         end
     end
 
-    subgraph AgentSpace["Agent Space (/home/agent-{name}/notes/)"]
-        subgraph YAML["YAML State"]
-            tasks["TASKS.yaml"]
-            projects["PROJECTS.yaml"]
-            schedules["SCHEDULES.yaml"]
-            issues["ISSUES.yaml"]
-        end
-
-        subgraph SharedAgents[".agents/ (submodule)"]
-            conventions["conventions/<br/>27+ RFC 2119 docs"]
-            roles["roles/<br/>10 composable templates"]
-            compose["compose.sh<br/>Prompt composition"]
-            archetypes["archetypes.yaml<br/>engineer / product"]
-            deepwork_jobs[".deepwork/jobs/<br/>9 job definitions"]
-        end
-
-        identity["SOUL.md + TEAM.md + SERVICES.md"]
-        manifests["manifests/modes.yaml"]
-        repos[".repos/<br/>Cloned repositories"]
+    subgraph Identity["ks-config/agents"]
+        soul["agents/{name}/SOUL.md"]
+        team["agents/_shared/TEAM.md"]
+        services_doc["agents/_shared/SERVICES.md"]
+        agent_prompt["agents/{name}/AGENTS.md"]
+        system_prompt["agents/{name}/SYSTEM.md"]
     end
 
-    subgraph Pipeline["Task Loop Pipeline (task-loop.sh)"]
+    subgraph Pipeline["Notification runner"]
         direction LR
-        prefetch["1. Pre-fetch<br/>Sources JSON"]
-        hash["2. Hash Check<br/>Skip if unchanged"]
-        ingest["3. Ingest<br/>(stage resolver)"]
-        prioritize["4. Prioritize<br/>(stage resolver)<br/>workflow assignment"]
-        execute["5. Execute Loop<br/>(profile + raw overrides)"]
+        fetch["1. Fetch<br/>ks notification JSON"]
+        select["2. Select<br/>actionable assignment"]
+        run["3. Run<br/>Pi with local tools"]
+        respond["4. Respond<br/>email / Forgejo / GitHub"]
     end
 
     subgraph ExternalSources["External Sources"]
@@ -98,26 +79,13 @@ flowchart TB
         calendar_src["Calendar<br/>(calendula)"]
     end
 
-    sched_timer --> sched_svc
-    loop_timer --> loop_svc
-    sync_timer --> sync_svc
+    pi_timer --> pi_svc
+    pi_svc --> fetch
+    fetch -->|"fetches"| email_src & github_src & forgejo_src & calendar_src
+    fetch --> select --> run --> respond
 
-    sched_svc -->|"reads"| schedules
-    sched_svc -->|"creates tasks"| tasks
-
-    loop_svc --> prefetch
-    prefetch -->|"fetches"| email_src & github_src & forgejo_src & calendar_src
-    prefetch --> hash --> ingest
-    ingest -->|"updates"| tasks
-    ingest --> prioritize
-    prioritize -->|"reorders + assigns workflow"| tasks
-    prioritize --> execute
-
-    execute -->|"workflow field?"| deepwork_jobs
-    execute -->|"no workflow"| generic["Generic Execution"]
-    execute -->|"updates status"| tasks
-
-    Provisioning --> AgentSpace
+    Provisioning --> Identity
+    Identity --> run
 ```
 
 ## Two-Agent Coordination
@@ -152,47 +120,6 @@ Each agent has:
 - **SOUL.md** — Agent identity, name, email, accounts table
 - **TEAM.md** — Full roster of humans and agents with roles and handles
 - **SERVICES.md** — Intranet services (Git, Mail, Grafana, Vaultwarden)
-
-## Agent Space (Workspace Cloning)
-
-The `notes.repo` option clones a git repository into `/home/agent-{name}/notes/` on first boot.
-
-### Forgejo SSH URL Format
-
-When using Forgejo's built-in SSH server, the SSH username must match the system user running Forgejo — typically `forgejo`, **not** `git`.
-
-```
-# CORRECT — Forgejo built-in SSH server
-ssh://forgejo@git.example.com:2222/owner/repo.git
-
-# WRONG — will fail with "Permission denied (publickey)"
-ssh://git@git.example.com:2222/owner/repo.git
-git@git.example.com:owner/repo.git
-```
-
-The `git@` convention is GitHub/GitLab-specific. Forgejo's built-in SSH server (`START_SSH_SERVER = true`) runs as the `forgejo` user and only accepts connections with that username.
-
-If using Forgejo with OpenSSH (passthrough mode) instead of the built-in server, `git@` may work depending on configuration — but the built-in server always requires `forgejo@`.
-
-### SSH Authentication
-
-The `agent-{name}-notes-sync` service uses the agent's SSH agent socket (`SSH_AUTH_SOCK`) for authentication. The agent's SSH key must be registered in the Forgejo user's SSH keys settings.
-
-### Required Agenix Secrets
-
-Each agent with SSH configured needs:
-
-- `agent-{name}-ssh-key` — Private SSH key (ed25519)
-- `agent-{name}-ssh-passphrase` — Passphrase for the key
-
-### Sync Behavior
-
-The notes-sync service runs `repo-sync`, which handles clone-if-absent on first run and fetch/commit/rebase/push on subsequent runs. Check status with:
-
-```bash
-systemctl --user status agent-{name}-notes-sync.service
-journalctl --user -u agent-{name}-notes-sync -n 20
-```
 
 ## Experimental dispatcher units
 
@@ -233,220 +160,28 @@ activate in the intended agent user manager.
 | Calendar       | calendula CLI                      | Stalwart CalDAV (auto-configured from mail)  |
 | Contacts       | cardamum CLI                       | Stalwart CardDAV (auto-configured from mail) |
 | Bitwarden      | `bw` CLI                           | Configured for Vaultwarden instance          |
-| Workspace      | `clone-agent-space-{name}.service` | Clones `notes.repo` on first boot            |
+| Identity docs  | `~/SOUL.md`, `~/TEAM.md`, `~/SERVICES.md` | Symlinks into committed `ks-config/agents` files |
 | Dispatcher     | `agent-{name}-dispatcher.*`        | Experimental opt-in path/timer/service units |
 
 ## Debugging
 
-### Notes sync fails with "Permission denied (publickey)"
+### Identity docs
 
-1. **Check the SSH username** in `notes.repo` — must be `forgejo@` for Forgejo's built-in SSH server
-2. **Verify the key is registered** in Forgejo under the correct user's SSH keys
-3. **Check the SSH agent is running** — notes-sync depends on `SSH_AUTH_SOCK`:
-   ```bash
-   agentctl {name} status agent-{name}-ssh-agent
-   ```
-4. **Test manually:**
-   ```bash
-   sudo runuser -u agent-{name} -- ssh -vvv \
-     -o StrictHostKeyChecking=accept-new \
-     -p 2222 -T forgejo@git.example.com
-   ```
-5. **Check key fingerprint matches:**
+OS-agent identity is rooted in the consumer `ks-config` repo, not in a notes
+repo. `ks sync-agent-assets` materializes these committed files:
 
-   ```bash
-   # Fingerprint of the agenix private key
-   ssh-keygen -lf /run/agenix/agent-{name}-ssh-key
+- `agents/<name>/SOUL.md`
+- `agents/_shared/TEAM.md`
+- `agents/_shared/SERVICES.md`
 
-   # Compare with the public key in your config
-   echo "ssh-ed25519 AAAAC3..." | ssh-keygen -lf -
-   ```
+Home-manager activation links them into each OS-agent home:
 
-### Service dependency order
+- `/home/agent-<name>/SOUL.md`
+- `/home/agent-<name>/TEAM.md`
+- `/home/agent-<name>/SERVICES.md`
 
-The notes-sync service requires:
-
-- The agent's home directory (`agent-homes.service` or `zfs-agent-datasets.service` on ZFS)
-- The agent's SSH agent (`agent-{name}-ssh-agent.service`) for authentication
-
-The SSH agent service runs independently and is not a dependency of the clone service.
-
-## Agent-Space Repository Structure
-
-The agent-space is the agent's primary working directory (`/home/agent-{name}/notes/`). It can be provisioned in two modes:
-
-- **Clone mode** (`notes.repo`): Clone an existing repository
-- **Scaffold mode** (planned): Create a new agent-space with standard files
-
-### Standard Directory Layout
-
-```
-/home/agent-{name}/notes/
-├── CLAUDE.md                    # Symlink → AGENTS.md or generated by compose.sh
-├── SOUL.md                      # Agent identity: name, email, accounts table
-├── TEAM.md                      # Human + agent roster with roles and handles
-├── SERVICES.md                  # Intranet services table (Service, URL)
-├── HUMAN.md                     # Human operator: name, email
-├── ISSUES.yaml                  # Known issues and incident log
-├── PROJECTS.yaml                # Project priority list with source definitions
-├── SCHEDULES.yaml               # Recurring task definitions
-├── TASKS.yaml                   # Current task queue
-├── .envrc                       # direnv: `use flake`
-├── .mcp.json                    # MCP server configuration
-├── flake.nix                    # Dev shell with required tools
-├── flake.lock
-│
-├── .agents/                     # Git submodule → shared agents library
-│   ├── conventions/             # 27+ RFC 2119 convention docs
-│   ├── roles/                   # 10 composable role templates
-│   ├── shared/                  # Reusable fragments (RFC 2119 preamble, output rules)
-│   ├── archetypes.yaml          # engineer / product archetype definitions
-│   ├── compose.sh               # Prompt composition: manifest + mode → assembled prompt
-│   └── .deepwork/jobs/          # 9 DeepWork job definitions (shared across agents)
-│
-├── manifests/
-│   └── modes.yaml               # Agent-specific mode → role + convention mapping
-│
-├── bin/                         # Agent-local scripts
-│   ├── agent.coding-agent       # Coding subagent orchestrator (from Nix package)
-│   ├── fetch-email-source       # Email-to-JSON bridge (from Nix package)
-│   └── claude_tasks             # Manual task trigger wrapper
-│
-├── .repos/                      # Cloned repositories ({owner}/{repo})
-│
-├── .deepwork/                   # Symlink → .agents/.deepwork
-│
-├── .cronjobs/
-│   ├── shared/
-│   │   ├── lib.sh               # Shared functions (logging, locking)
-│   │   ├── config.sh            # Environment variables and paths
-│   │   └── setup.sh             # Installs units into ~/.config/systemd/user/
-│   └── {job-name}/
-│       ├── run.sh               # Job execution script
-│       ├── service.unit         # Systemd service template
-│       └── timer.unit           # Systemd timer template
-│
-└── .claude/
-    └── settings.json            # Claude Code permissions allowlist
-```
-
-### Identity Documents
-
-**SOUL.md** — Agent identity, auto-populated from NixOS config:
-
-```markdown
-# Soul
-
-**Name:** Kumquat Drago
-**Goes by:** Drago
-**Email:** drago@example.com
-
-## Accounts
-
-| Service | Host            | Username | Auth Method       | Credentials              |
-| ------- | --------------- | -------- | ----------------- | ------------------------ |
-| GitHub  | github.com      | kdrgo    | OAuth device flow | `~/.config/gh/hosts.yml` |
-| Forgejo | git.example.com | drago    | API token         | fj keyfile               |
-```
-
-**TEAM.md** — Full roster of humans and agents:
-
-```markdown
-# Team
-
-## Humans
-
-| Name            | Role | GitHub | Forgejo | Email                       |
-| --------------- | ---- | ------ | ------- | --------------------------- |
-| Nicholas Romero | CEO  | ncrmro | ncrmro  | nicholas.romero@example.com |
-
-## Agents
-
-| Name  | Role | GitHub      | Forgejo | Email             |
-| ----- | ---- | ----------- | ------- | ----------------- |
-| Luce  | CPO  | luce-ncrmro | luce    | luce@example.com  |
-| Drago | CTO  | kdrgo       | drago   | drago@example.com |
-```
-
-**SERVICES.md** — Intranet services accessible via Tailscale:
-
-```markdown
-| Service     | URL                     |
-| ----------- | ----------------------- |
-| Git         | git.example.com         |
-| Mail        | mail.example.com        |
-| Grafana     | grafana.example.com     |
-| Vaultwarden | vaultwarden.example.com |
-```
-
-**HUMAN.md** — Human operator info:
-
-```markdown
-# Human
-
-**Name:** Nicholas Romero
-**Email:** nicholas.romero@example.com
-```
-
-## Shared Agents Library (`.agents/` submodule)
-
-Each agent-space includes the shared agents library as a git submodule at `.agents/`. This library provides the composable prompt architecture, DeepWork job definitions, and operational conventions shared across all agents.
-
-### Components
-
-| Component            | Path              | Purpose                                                                                                          |
-| -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Conventions**      | `conventions/`    | 27+ RFC 2119 operational docs (version control, CI, feature delivery, tool usage)                                |
-| **Roles**            | `roles/`          | 10 composable role templates (architect, software-engineer, code-reviewer, business-analyst, project-lead, etc.) |
-| **Shared fragments** | `shared/`         | Reusable prompt fragments (RFC 2119 preamble, output format rules)                                               |
-| **Archetypes**       | `archetypes.yaml` | Pre-built convention bundles: `engineer` and `product`                                                           |
-| **Composition tool** | `compose.sh`      | Assembles prompts from manifest + mode: shared → roles → conventions                                             |
-| **DeepWork jobs**    | `.deepwork/jobs/` | 9 workflow definitions (task loop, daily status, research, etc.)                                                 |
-| **Examples**         | `examples/`       | Reference agent-space layouts and manifest examples                                                              |
-
-### Prompt Composition
-
-Agents use `compose.sh` to assemble context-specific system prompts:
-
-```bash
-# Usage: compose.sh <manifest> <mode>
-compose.sh manifests/modes.yaml implementation
-```
-
-**Composition order**: shared fragments → role templates → convention docs
-
-Each agent-space has a `manifests/modes.yaml` that maps operational modes to roles and conventions:
-
-```yaml
-agents_repo: ../.agents
-archetype: engineer # Inherits engineer conventions
-defaults:
-  shared:
-    - rfc2119-preamble.md
-    - output-format-rules.md
-modes:
-  implementation:
-    roles: [software-engineer]
-    conventions:
-      [process.feature-delivery, process.pull-request, tool.nix-devshell]
-  code-review:
-    roles: [code-reviewer]
-    conventions: [process.continuous-integration, process.version-control]
-  architecture:
-    roles: [architect]
-    conventions: [process.feature-delivery]
-```
-
-### Archetypes
-
-Archetypes are pre-built sets of conventions that apply to an agent role:
-
-| Archetype  | Inlined Conventions                                                     | Purpose                  |
-| ---------- | ----------------------------------------------------------------------- | ------------------------ |
-| `engineer` | version-control, feature-delivery, continuous-integration, nix-devshell | Engineering agents (CTO) |
-| `product`  | product-engineering-handoff, press-release                              | Product agents (CPO)     |
-
-When a manifest declares `archetype: engineer`, the archetype's conventions are automatically included in every mode.
+Agent prompt composition reads those home-level files directly. It does not
+load identity from `/home/agent-<name>/notes`.
 
 ## Task Loop Architecture
 
@@ -529,9 +264,6 @@ the platform APIs and explicitly ties that discovery to task-loop pre-fetch.
                     │    └── agent-{name}-task-loop.service            │
                     │        └── Runs task-loop.sh                    │
                     │                                                 │
-  Every 5 min ──▶   │  agent-{name}-notes-sync.timer                  │
-                    │    └── agent-{name}-notes-sync.service           │
-                    │        └── repo-sync (git commit/push)          │
                     └─────────────────────────────────────────────────┘
 ```
 
@@ -690,7 +422,6 @@ tasks: # REQUIRED: only top-level key
 ```nix
 keystone.os.agents.researcher = {
   fullName = "Research Agent";
-  notes.repo = "ssh://forgejo@git.example.com:2222/researcher/agent-space.git";
   notes.taskLoop = {
     defaults = {
       provider = "claude";
@@ -854,7 +585,9 @@ systemctl --user daemon-reload
 
 ## DeepWork Job Convention
 
-Each agent-space includes DeepWork job definitions via the `.agents/` submodule. Jobs are defined in `.deepwork/jobs/` and invoked through the `/deepwork` slash command during task execution.
+DeepWork job definitions are optional higher-level orchestration. Jobs are
+defined in `.deepwork/jobs/` and invoked through the `/deepwork` slash command
+during task execution.
 
 ### Available Jobs
 
@@ -867,7 +600,7 @@ Each agent-space includes DeepWork job definitions via the `.agents/` submodule.
 | `project_intake`              | 1.1.0   | Both    | `onboard`                     | Interactive onboarding for new projects (Lean Canvas, repo investigation)  |
 | `research`                    | 1.1.0   | Both    | `research`                    | Structured research with platform selection and cited bibliography         |
 | `agent_onboarding`            | 1.0.1   | Both    | `setup_all`                   | Bootstrap agent into environment: unlock vault, sign into services, verify |
-| `agent_builder`               | 2.3.0   | Both    | `bootstrap`                   | Scaffold new agent-space repo (SOUL.md, manifest, submodule, task loop)    |
+| `agent_builder`               | 2.3.0   | Both    | `bootstrap`                   | Scaffold new agent identity and task-loop assets                            |
 | `agent_convention`            | 1.1.0   | Both    | `create`                      | Create RFC 2119 convention docs and wire into mode manifests               |
 
 ### Job Directory Structure
@@ -962,7 +695,7 @@ After the initial PR, the orchestrator runs up to N review cycles (default 2):
 
 ## Terminal Environment Requirement
 
-Agent systemd services (`task-loop`, `scheduler`, `notes-sync`) MUST have access to the full home-manager terminal environment. All tools available in an interactive agent shell MUST also be available in systemd service contexts.
+Agent systemd services MUST have access to the full home-manager terminal environment. All tools available in an interactive agent shell MUST also be available in systemd service contexts.
 
 ### Design
 
@@ -988,14 +721,6 @@ Agents have the full Pimalaya tool suite — himalaya (email), calendula (calend
 - Use ASCII only — no unicode characters in email bodies
 - Use `printf` with `\r\n` line endings (SMTP standard)
 - Preview mode (`-p`) avoids marking messages as read
-
-### Repository Cloning
-
-All repositories are cloned to `.repos/{owner}/{repo}` within the agent-space:
-
-```bash
-git clone git@github.com:owner/repo.git .repos/owner/repo
-```
 
 ### Nested Claude Sessions
 
@@ -1072,7 +797,6 @@ The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node
 | Task loop             | `scripts/task-loop.sh` (282 lines)  | Pre-fetch → ingest → prioritize → execute, flock concurrency                                       |
 | Scheduler             | `scripts/scheduler.sh` (120 lines)  | SCHEDULES.yaml → pending tasks, pure bash                                                          |
 | agentctl CLI          | `scripts/agentctl.sh` (391 lines)   | services, tasks, email, claude/gemini/codex, mail, vnc, provision                                  |
-| Notes sync            | `notes.nix` + repo-sync package     | Timer-triggered git commit/push                                                                    |
 | DeepWork jobs         | `.agents/.deepwork/jobs/` (9 jobs)  | task_loop, daily_status, research, press_release, handoff, intake, onboarding, builder, convention |
 | Shared agents library | `.agents/` submodule                | 27+ conventions, 10 roles, compose.sh, archetypes                                                  |
 | D-Bus socket fix      | `dbus.nix`                          | ConditionUser guard prevents race                                                                  |
@@ -1091,11 +815,9 @@ The `task-loop.sh` and `scheduler.sh` scripts write metrics to the standard node
 
 | Feature                            | Description                                                      |
 | ---------------------------------- | ---------------------------------------------------------------- |
-| Agent-space scaffold mode (FR-009) | Auto-generate agent-space for new agents without existing repo   |
 | Audit trail (FR-011)               | Immutable append-only log, Loki forwarding                       |
 | Full security tests (FR-012)       | Basic VM test exists, full suite pending                         |
 | Coding subagent in Nix (FR-013)    | Shell script exists but not Nix-packaged with provider interface |
 | Incident log (FR-014)              | Shared incident database, auto-escalation                        |
 | Cronjob Nix scaffold (FR-016)      | `.cronjobs/` convention documented but not auto-generated        |
-| Agent-space flake (FR-017)         | `flake.nix` convention documented but not auto-generated         |
 | cadeng DeepWork job                | Referenced in decision tree, not yet a job definition            |

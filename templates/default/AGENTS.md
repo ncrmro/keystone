@@ -76,6 +76,21 @@ reasoning from scratch when a question falls in their scope:
     `docs/keystone/os-installer.md` § "Validate the ISO in a VM".
   - `bin/test-iso` — keystone's heavier installer + e2e smoke test. Requires
     a path-locked keystone input (dev mode).
+  - `ks-dev` — direct `nixos-rebuild` helper for local Keystone development.
+    It locates `./keystone`, `../keystone`, or `~/repos/<owner>/keystone` and
+    passes it as `--override-input keystone path:<checkout>`.
+
+## Local Keystone development
+
+Use normal `ks update --dev` when iterating on this config with local inputs.
+If you need a direct rebuild without the full `ks update` flow, use
+`nix develop -c ks-dev --build` or `nix develop -c ks-dev --switch`.
+
+Keep reusable Keystone platform work in a local checkout at `./keystone`,
+`../keystone`, or `~/repos/<owner>/keystone`; that checkout is the place for
+changes you intend to upstream. Use this repo's `modules/keystone/` directory
+for fleet-local spike modules or experiments that are not ready for upstream
+Keystone.
 
 ## Commands that matter
 
@@ -84,6 +99,7 @@ nix flake check --no-build       # cheap sanity: outputs evaluate
 nix build .#iso                  # build the installer ISO (one artifact for all Linux hosts)
 sudo nixos-rebuild switch --flake .#<host>   # local rebuild on a configured host
 ks update                        # canonical: pull keystone, relock, build, deploy
+ks update --dev                  # canonical local-input workflow while iterating
 ```
 
 The ISO is a **single artifact** that bakes in installer targets for every

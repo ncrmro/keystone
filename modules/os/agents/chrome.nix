@@ -58,6 +58,53 @@ in
           debugPort = agentChromeDebugPort name agentCfg;
           xdgRuntimeDir = "/run/user/${toString uid}";
           profileDir = "/home/${username}/.config/chromium-agent";
+          healthCheck = pkgs.writeShellScript "agent-${name}-chromium-healthcheck" ''
+            set -eu
+
+            port="${toString debugPort}"
+            url="http://127.0.0.1:$port"
+            service="agent-${name}-chromium.service"
+
+            if ! ${pkgs.curl}/bin/curl -fsS --max-time 5 "$url/json/version" >/dev/null; then
+              echo "$service: DevTools version endpoint failed; restarting" >&2
+              exec ${pkgs.systemd}/bin/systemctl restart "$service"
+            fi
+
+            if ! ${pkgs.curl}/bin/curl -fsS --max-time 5 "$url/json/list" >/dev/null; then
+              echo "$service: DevTools target list endpoint failed; restarting" >&2
+              exec ${pkgs.systemd}/bin/systemctl restart "$service"
+            fi
+
+            probe="$(${pkgs.coreutils}/bin/mktemp --suffix=.mjs)"
+            trap 'rm -f "$probe"' EXIT
+            cat > "$probe" <<'EOF'
+            import { Client } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js';
+            import { StdioClientTransport } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js';
+
+            const transport = new StdioClientTransport({
+              command: '${pkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp',
+              args: [
+                '--browserUrl',
+                'http://127.0.0.1:${toString debugPort}',
+                '--no-usage-statistics',
+                '--no-performance-crux',
+              ],
+            });
+            const client = new Client({ name: 'keystone-healthcheck', version: '0.0.0' }, { capabilities: {} });
+
+            try {
+              await client.connect(transport);
+              await client.callTool({ name: 'list_pages', arguments: {} });
+            } finally {
+              await client.close();
+            }
+            EOF
+
+            if ! ${pkgs.coreutils}/bin/timeout 20 ${pkgs.nodejs}/bin/node "$probe"; then
+              echo "$service: Chrome DevTools MCP list_pages probe failed; restarting" >&2
+              exec ${pkgs.systemd}/bin/systemctl restart "$service"
+            fi
+          '';
         in
         {
           "agent-${name}-chromium" = {
@@ -91,8 +138,32 @@ in
               RestartSec = 5;
             };
           };
+
+          "agent-${name}-chromium-healthcheck" = {
+            description = "Health check Chromium DevTools for ${username}";
+            after = [ "agent-${name}-chromium.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              ExecStart = healthCheck;
+            };
+          };
         }
       ) chromeAgents
+    );
+
+    systemd.timers = mkMerge (
+      mapAttrsToList (name: _: {
+        "agent-${name}-chromium-healthcheck" = {
+          description = "Periodic Chromium DevTools health check for agent-${name}";
+          wantedBy = [ "timers.target" ];
+          timerConfig = {
+            OnBootSec = "2min";
+            OnUnitActiveSec = "5min";
+            AccuracySec = "30s";
+            Unit = "agent-${name}-chromium-healthcheck.service";
+          };
+        };
+      }) chromeAgents
     );
   };
 }

@@ -2,8 +2,18 @@
 // See specs/REQ-031-e2e-os-agent-product-test.md
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, delimiter, join } from "node:path";
 import type { AgentCtl } from "./agentctl";
 import type { ForgejoPlatform } from "./forgejo";
 import { emit } from "./log";
@@ -14,12 +24,14 @@ interface Config {
   engineerAgent: string;
   platform: string;
   provider: string;
+  models: string[];
   forgejoUrl: string;
   forgejoToken: string;
   templateRepo: string;
   domain: string;
   timeoutMs: number;
   smoke: boolean;
+  notificationLoopEval: boolean;
   dryRun: boolean;
   print: boolean;
 }
@@ -340,10 +352,10 @@ export async function pingPong(config: Config, report: Report) {
   // a body-fallback.
   const found = await pollUntil(async () => {
     try {
-      const raw = execSync(
-        'himalaya envelope list -o json "not flag seen"',
-        { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-      );
+      const raw = execSync('himalaya envelope list -o json "not flag seen"', {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      });
       const envelopes: Array<{ subject: string }> = JSON.parse(raw);
       return envelopes.some(
         (e) => e.subject.includes(tag) && /pong/i.test(e.subject),
@@ -359,6 +371,165 @@ export async function pingPong(config: Config, report: Report) {
       ? `Received pong reply for ${tag}`
       : `No pong reply within ${Math.round(config.timeoutMs / 60_000)} min`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Notification loop model evaluation
+// ---------------------------------------------------------------------------
+
+export async function notificationLoopEval(config: Config, report: Report) {
+  emit("info", "running notification-loop model eval", {
+    models: config.models.join(","),
+  });
+
+  try {
+    execFileSync("pi", ["--version"], { stdio: "pipe" });
+    report.check("notification_loop_eval_pi", "pass", "pi is available");
+  } catch {
+    report.check("notification_loop_eval_pi", "fail", "pi not found in PATH");
+    return;
+  }
+
+  for (const model of config.models) {
+    await runNotificationLoopModel(config, report, model);
+  }
+}
+
+async function runNotificationLoopModel(
+  config: Config,
+  report: Report,
+  model: string,
+) {
+  const slug = slugModel(model);
+  const checkName = `notification_loop_eval_${slug}`;
+  const root = mkdtempSync(join(tmpdir(), `ks-agent-loop-${slug}-`));
+  const stubs = join(root, "stubs");
+  const sentPath = join(root, "sent.eml");
+  const stdoutPath = join(root, "stdout.txt");
+  const stderrPath = join(root, "stderr.txt");
+  const tag = `eval-${slug}-${Date.now()}`;
+  const timeoutSeconds = Math.max(10, Math.ceil(config.timeoutMs / 1000));
+  const started = Date.now();
+
+  try {
+    mkdirSync(stubs, { recursive: true });
+    writeExecutable(
+      join(stubs, "himalaya"),
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "message" && "\${2:-}" == "send" ]]; then
+  cat > ${JSON.stringify(sentPath)}
+  exit 0
+fi
+echo "unexpected himalaya invocation: $*" >&2
+exit 2
+`,
+    );
+
+    const systemPrompt = `You are executing a Keystone OS-agent notification task.
+
+The notification loop contract is strict:
+- If the incoming subject is "[ping] ${tag}", reply with subject "Re: [pong] ${tag}".
+- The plain text body must be exactly "pong".
+- Send the reply by running: himalaya message send
+- Pipe a complete RFC 5322-ish email message to that command.
+- Do not merely describe the command. Execute it with the bash tool.`;
+
+    const prompt = `Incoming notification:
+From: evaluator@${config.domain}
+To: agent-eval@${config.domain}
+Subject: [ping] ${tag}
+
+ping
+
+Complete the notification-loop task now.`;
+
+    const env = {
+      ...Bun.env,
+      PATH: `${stubs}${delimiter}${Bun.env.PATH ?? ""}`,
+    };
+    const proc = Bun.spawn(
+      [
+        "timeout",
+        `${timeoutSeconds}`,
+        "pi",
+        "--print",
+        "--no-session",
+        "--model",
+        model,
+        "--tools",
+        "bash",
+        "--append-system-prompt",
+        systemPrompt,
+        prompt,
+      ],
+      {
+        cwd: root,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    writeFileSync(stdoutPath, stdout);
+    writeFileSync(stderrPath, stderr);
+
+    const durationSeconds = ((Date.now() - started) / 1000).toFixed(1);
+    const sent = existsSync(sentPath) ? readFileSync(sentPath, "utf-8") : "";
+    const subjectOk = sent.includes(`Subject: Re: [pong] ${tag}`);
+    const bodyOk = sent
+      .split(/\r?\n\r?\n/)
+      .slice(1)
+      .join("\n\n")
+      .split(/\r?\n/)
+      .some((line) => line.trim() === "pong");
+
+    if (exitCode === 0 && subjectOk && bodyOk) {
+      report.check(
+        checkName,
+        "pass",
+        `model=${model} duration_seconds=${durationSeconds}`,
+      );
+      return;
+    }
+
+    const reason = [
+      `model=${model}`,
+      `exit=${exitCode}`,
+      `duration_seconds=${durationSeconds}`,
+      `sent=${sent ? "yes" : "no"}`,
+      `subject_ok=${subjectOk}`,
+      `body_ok=${bodyOk}`,
+      `stdout=${truncateForReport(stdout)}`,
+      `stderr=${truncateForReport(stderr)}`,
+    ].join(" ");
+    report.check(checkName, "fail", reason);
+  } catch (err) {
+    report.check(checkName, "fail", `model=${model} error=${String(err)}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function writeExecutable(path: string, content: string) {
+  writeFileSync(path, content);
+  chmodSync(path, 0o755);
+}
+
+function slugModel(model: string): string {
+  return model
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .slice(0, 64);
+}
+
+function truncateForReport(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +606,10 @@ export async function productEmail(config: Config, report: Report) {
       ``,
       PALINDROME_REQUIREMENT_TEMPLATE,
     ].join("\r\n");
-    execSync("himalaya message send", { input: eml, stdio: ["pipe", "pipe", "pipe"] });
+    execSync("himalaya message send", {
+      input: eml,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     report.check(
       "product_email_dispatch",
       "pass",
@@ -509,9 +683,7 @@ export async function engineeringIssue(
   const found = await pollUntil(async () => {
     try {
       const issues = await forgejo.listIssues(repo, "all");
-      return issues.some((i) =>
-        /engineer|implement|palindrome/i.test(i.title),
-      );
+      return issues.some((i) => /engineer|implement|palindrome/i.test(i.title));
     } catch {
       return false;
     }
@@ -866,14 +1038,13 @@ function detectSender(): string {
   try {
     return execSync("git config user.email", { encoding: "utf-8" }).trim();
   } catch {
-    throw new Error("Could not detect sender email (no himalaya config or git config)");
+    throw new Error(
+      "Could not detect sender email (no himalaya config or git config)",
+    );
   }
 }
 
-function discoverServerPort(
-  agentHome: string,
-  config: Config,
-): number | null {
+function discoverServerPort(agentHome: string, config: Config): number | null {
   const name = forkName(config);
   const owner = config.templateRepo.split("/")[0];
   const roots = [
@@ -918,9 +1089,7 @@ async function fetchPalindromeResult(
   throw new Error(`No palindrome endpoint responded at ${baseUrl}`);
 }
 
-function validatePalindromeResponse(
-  data: unknown,
-): PalindromeResponse | null {
+function validatePalindromeResponse(data: unknown): PalindromeResponse | null {
   if (
     data !== null &&
     typeof data === "object" &&
@@ -934,7 +1103,10 @@ function validatePalindromeResponse(
   return null;
 }
 
-function detectBackendLanguage(agentHome: string, config: Config): string | null {
+function detectBackendLanguage(
+  agentHome: string,
+  config: Config,
+): string | null {
   const name = forkName(config);
   const owner = config.templateRepo.split("/")[0];
   const roots = [
@@ -945,7 +1117,10 @@ function detectBackendLanguage(agentHome: string, config: Config): string | null
   const indicators: Array<{ pattern: RegExp; lang: string }> = [
     { pattern: /Cargo\.toml$/, lang: "rust" },
     { pattern: /go\.mod$/, lang: "go" },
-    { pattern: /requirements\.txt$|setup\.py$|pyproject\.toml$/, lang: "python" },
+    {
+      pattern: /requirements\.txt$|setup\.py$|pyproject\.toml$/,
+      lang: "python",
+    },
     { pattern: /Gemfile$/, lang: "ruby" },
     { pattern: /pom\.xml$|build\.gradle$/, lang: "java" },
     { pattern: /packages\/web\/.*\.go$/, lang: "go" },
@@ -961,7 +1136,10 @@ function detectBackendLanguage(agentHome: string, config: Config): string | null
       if (walkDir(root, (p) => pattern.test(p))) return lang;
     }
     // Default: TypeScript/Bun (template language)
-    if (existsSync(join(root, "bun.lock")) || existsSync(join(root, "bun.lockb"))) {
+    if (
+      existsSync(join(root, "bun.lock")) ||
+      existsSync(join(root, "bun.lockb"))
+    ) {
       return "typescript";
     }
   }

@@ -32,7 +32,7 @@ quality-gated multi-step processes.
 | Layer | What | Where to read |
 |---|---|---|
 | **L1 Terminal agents** | You + your CLI coding agents (Claude Code, Gemini CLI, Codex, OpenCode) + per-tool skills and subagents synced from your consumer flake. | [`tool.cli-coding-agents`](../../conventions/tool.cli-coding-agents.md) convention; [`docs/terminal/cli-coding-agents.md`](../terminal/cli-coding-agents.md) reference |
-| **L2 OS agents** | Sandboxed service-account principals (`agent-<name>` users) that inherit L1 skills and subagents into isolated home dirs, run on systemd timers, and can auto-loop on platform-native skills without DeepWork. | [`os-agents.md`](os-agents.md), [`os-agents.agent-space.md`](os-agents.agent-space.md) |
+| **L2 OS agents** | Sandboxed service-account principals (`agent-<name>` users) that inherit L1 skills, identity docs, and subagents into isolated home dirs, run on systemd timers, and process notification-backed assignments. | [`os-agents.md`](os-agents.md) |
 | **L3 DeepWork** | Workflow orchestration MCP for advanced multi-step processes with quality gates, layered over L1+L2. Used when basic looping needs richer control flow. | [`process.deepwork-job`](../../conventions/process.deepwork-job.md) convention |
 
 L1 is the substrate. L2 builds on L1 by giving agents their own identity, mail,
@@ -70,6 +70,44 @@ overwrite on next run, the user's `git checkout` restores their version.
 The regen is **manual** (`ks sync-agent-assets`). Home-manager activation
 never silently rewrites the user's git tree.
 
+## Agent instruction files
+
+Agent instructions follow the same audit-log rule: Keystone materializes
+generated prompt assets into the user's `keystone-config` repo, and the user
+commits those files when they accept the generated state.
+
+| Path | Ownership | Purpose |
+|---|---|---|
+| `agents/_shared/AGENTS.md` | Generated, committed | Canonical host-rendered instruction file for normal CLI agents. |
+| `agents/_shared/TEAM.md` | Generated, committed | Shared team roster linked into each OS-agent home as `~/TEAM.md`. |
+| `agents/_shared/SERVICES.md` | Generated, committed | Shared service index linked into each OS-agent home as `~/SERVICES.md`. |
+| `agents/<name>/SOUL.md` | Generated, committed | Per-agent identity linked into that OS-agent home as `~/SOUL.md`. |
+| `agents/<name>/AGENTS.md` | User-authored, committed | Per-OS-agent instruction file linked into `~/AGENTS.md` and `~/.pi/agent/AGENTS.md`. |
+| `agents/<name>/SYSTEM.md` | User-authored, committed | Per-OS-agent system file linked into `~/SYSTEM.md`, `~/.pi/agent/SYSTEM.md`, and `~/.pi/agents/SYSTEM.md`. |
+| `~/.pi/agent/AGENTS.md` | Runtime symlink, not committed | Points Pi at the shared file for human users or the per-agent file for OS agents. |
+
+For human users, activation links `~/.pi/agent/AGENTS.md` to
+`agents/_shared/AGENTS.md`. For OS agents, activation links
+`~/.pi/agent/AGENTS.md` to `agents/<name>/AGENTS.md` and Pi SYSTEM paths to
+`agents/<name>/SYSTEM.md`. Other CLI agents continue to read the shared file
+through their native paths, for example
+`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.codex/AGENTS.md`.
+OS-agent identity is linked from `ks-config/agents`, not from a notes repo:
+`~/SOUL.md`, `~/TEAM.md`, and `~/SERVICES.md` resolve to committed files under
+the consumer flake.
+
+Per-agent Pi files are intentionally user-authored. Keystone owns the symlink
+topology; the consumer `ks-config` repo owns the instruction content being
+tested or deployed.
+
+OS agents also enable Keystone's default Pi MCP package unless
+`keystone.os.agents.<name>.pi.extensions.mcp.enable = false`. The same
+`keystone.terminal.cliCodingAgents.mcpServers` model feeds Pi through
+`~/.pi/agent/mcp.json`, so `chrome.mcp.enable = true` gives Drago/Luce the
+Nix-built Chrome DevTools MCP server in Pi as well as Claude, Gemini, Codex,
+and OpenCode. Additional Pi packages can be added with
+`keystone.os.agents.<name>.pi.extensions.packages`.
+
 ## L1 → L2 inheritance
 
 OS agents inherit L1 by getting the same `<consumer-flake>/agents/<tool>/`
@@ -105,11 +143,8 @@ and the loop's behaviour is reviewable in git like any other skill.
 - [OS agent e2e validation](os-agent-e2e.md) documents the email ping/pong
   smoke test for installed notification-driven OS agents.
 - [`os-agents.md`](os-agents.md) — full reference for the OS-agent system:
-  provisioning, task loop, scheduler, YAML schemas, systemd timers,
+  provisioning, identity docs, notification runners, systemd timers, and
   observability.
-- [`os-agents.agent-space.md`](os-agents.agent-space.md) — agent-space
-  directory layout, shared identity documents (SOUL.md, TEAM.md, SERVICES.md),
-  prompt composition, archetypes.
 - [`comparison.md`](comparison.md) — platform comparison: keystone vs hosted
   agentic platforms (Devin, Imbue, etc.).
 - [`hooks.md`](hooks.md) — CLI coding agent lifecycle hooks.

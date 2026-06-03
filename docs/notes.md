@@ -1,17 +1,16 @@
 ---
 title: Notes
-description: Shared zk note-taking system for humans, agents, and DeepWork workflows
+description: Shared zk note-taking system for humans and DeepWork workflows
 ---
 
 # Notes
 
-Keystone uses a shared `zk` notebook model for human notes, agent notes, and
+Keystone uses a shared `zk` notebook model for human notes and
 workflow-generated reports. The same system supports quick captures, durable
 knowledge notes, decision records, operational reports, and archived project
 history.
 
-For a human user, the notebook usually lives at `~/notes`. For OS agents, it
-usually lives at `/home/agent-{name}/notes/`.
+For a human user, the notebook usually lives at `~/notes`.
 
 ## Why notes matter in Keystone
 
@@ -26,27 +25,14 @@ discovery.
 That project metadata is used by Keystone Desktop and related project tooling
 that needs repo URLs, summaries, and current state.
 
-### Long-term memory for agents
-
-Agents use their notes repo as long-term memory.
-
-That includes:
-
-- project hub notes,
-- report chains,
-- decision records,
-- promoted research output, and
-- other durable artifacts that should survive beyond the current task run.
-
 ### Automatic sync
 
 Keystone automatically fetches and pushes the notes repo on a timer.
 
 - Human users typically rely on `keystone-notes-sync` for `~/notes`
-- OS agents use `agent-{name}-notes-sync` for `/home/agent-{name}/notes`
 
 This makes the notes repo usable as shared state between the human operator,
-desktop project navigation and agent workflows.
+desktop project navigation, and workflow-generated reports.
 
 When `keystone.notes.daily.enable = true`, the same sync path also keeps
 `daily.md` pointed at today's dated journal note (for example
@@ -345,7 +331,9 @@ and update a relevant system or operations hub if one exists.
   notebook for human users. When `keystone.notes.daily.enable = true`, it also
   rotates `daily.md` to the current `journal/YYYY-MM-DD.md` target before the
   sync commit/push step.
-- OS agents use the same notebook model in their agent-space.
+- OS agents do not currently depend on notes for identity or prompt
+  composition. Identity comes from committed `ks-config/agents` files linked
+  into the agent home.
 - The AI command layer exposes the notes workflows across the supported coding
   agents, with tool-specific UX differences.
 - Notes sync is handled by `repo-sync`, which clones if absent and then
@@ -355,7 +343,7 @@ and update a relevant system or operations hub if one exists.
 
 - [Terminal](terminal/terminal.md) for the terminal environment and AI command support
 - [Agents](agents/agents.md) for human-side agent interaction
-- [OS Agents](agents/os-agents.md) for agent-space provisioning and notes sync
+- [OS Agents](agents/os-agents.md) for OS-agent provisioning and identity docs
 
 For the authoritative policy and CLI details, see:
 
