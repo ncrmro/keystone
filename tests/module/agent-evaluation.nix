@@ -419,6 +419,7 @@ let
             fullName = "Drago";
             email = "drago@example.com";
             archetype = "engineer";
+            default = true;
             capabilities = [
               "engineer"
               "notes"
@@ -455,6 +456,7 @@ let
             fullName = "Drago";
             email = "drago@example.com";
             host = "test-host";
+            default = true;
             notes.repo = "git@example.com:drago/notes.git";
           };
           agents.luce = {
@@ -488,6 +490,7 @@ let
           agents.researcher = {
             fullName = "Research Agent";
             email = "researcher@ks.systems";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
           };
         };
@@ -516,6 +519,7 @@ let
             researcher = {
               fullName = "Research Agent";
               email = "researcher@ks.systems";
+              default = true;
               notes.repo = "git@example.com:researcher/notes.git";
             };
             coder = {
@@ -550,6 +554,7 @@ let
           agents.researcher = {
             uid = 4050;
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
           };
         };
@@ -576,6 +581,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
@@ -606,6 +612,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
             desktop = {
               enable = true;
@@ -637,6 +644,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
           };
         };
@@ -663,6 +671,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
             chrome = {
               enable = true;
@@ -693,6 +702,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
+            default = true;
             notes.repo = "git@git.ncrmro.com:drago/notes.git";
           };
         };
@@ -719,6 +729,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
+            default = true;
             notes.repo = "git@git.ncrmro.com:drago/notes.git";
             # SSH public key now set via keystone.keys."agent-drago"
           };
@@ -741,6 +752,7 @@ let
           };
           agents.tester = {
             fullName = "Test Agent";
+            default = true;
             # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.syncOnCalendar = "*:0/15";
@@ -764,6 +776,7 @@ let
           };
           agents.drago = {
             fullName = "Drago";
+            default = true;
             # SSH public key now set via keystone.keys."agent-drago"
             notes.repo = "git@git.example.com:drago/notes.git";
           };
@@ -786,6 +799,7 @@ let
           };
           agents.tester = {
             fullName = "Test Agent";
+            default = true;
             # SSH public key now set via keystone.keys."agent-tester"
             notes.repo = "git@example.com:test/notes.git";
             notes.taskLoop = {
@@ -848,6 +862,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
           };
           agents.coder = {
@@ -880,6 +895,7 @@ let
           };
           agents.researcher = {
             fullName = "Research Agent";
+            default = true;
             notes.repo = "git@example.com:researcher/notes.git";
             chrome = {
               enable = true;
@@ -907,6 +923,7 @@ let
           # Both set: github explicit, forgejo defaults to "luce"
           agents.luce = {
             fullName = "Luce";
+            default = true;
             notes.repo = "git@example.com:luce/notes.git";
             github.username = "luce-gh";
           };
@@ -940,6 +957,7 @@ let
           };
           agents.planner = {
             fullName = "Planning Agent";
+            default = true;
             notes.repo = "git@example.com:planner/notes.git";
             calendar.teamEvents = [
               {
@@ -974,6 +992,7 @@ let
           };
           agents.vision = {
             fullName = "Vision Agent";
+            default = true;
             notes.repo = "git@example.com:vision/notes.git";
             perception = {
               enable = true;
@@ -1046,6 +1065,7 @@ let
             };
             agents.vision = {
               fullName = "Vision Agent";
+              default = true;
               notes.repo = "git@example.com:vision/notes.git";
               host = "test-host";
               desktop.enable = true;

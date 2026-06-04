@@ -108,4 +108,44 @@ in
       }
     '';
   };
+
+  # Derived: the slug of the fleet's default agent, or null when no agents are defined.
+  # Read-only — driven by the `default = true;` flag on exactly one agent.
+  options.keystone.os.defaultAgent = mkOption {
+    type = types.nullOr types.str;
+    readOnly = true;
+    default =
+      let
+        defaults = lib.attrNames (lib.filterAttrs (_: a: a.default) config.keystone.os.agents);
+      in
+      if config.keystone.os.agents == { } then
+        null
+      else if lib.length defaults == 1 then
+        lib.head defaults
+      else
+        null;
+    description = ''
+      Slug of the agent marked as the fleet default. Null when no agents are
+      defined. Driven by `keystone.os.agents.<name>.default = true;` — the
+      module asserts that exactly one agent carries the flag.
+    '';
+  };
+
+  config = mkIf (config.keystone.os.agents != { }) {
+    assertions =
+      let
+        defaults = lib.attrNames (lib.filterAttrs (_: a: a.default) config.keystone.os.agents);
+        defaultCount = lib.length defaults;
+      in
+      [
+        {
+          assertion = defaultCount == 1;
+          message =
+            if defaultCount == 0 then
+              "keystone.os.agents: exactly one agent must have `default = true;`, but none do. Agents defined: ${lib.concatStringsSep ", " (lib.attrNames config.keystone.os.agents)}."
+            else
+              "keystone.os.agents: exactly one agent must have `default = true;`, but ${toString defaultCount} do: ${lib.concatStringsSep ", " defaults}.";
+        }
+      ];
+  };
 }

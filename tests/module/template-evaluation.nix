@@ -250,6 +250,7 @@ let
             fleeter = {
               fullName = "Fleet-Wide Agent";
               host = "host-a";
+              default = true;
             };
           };
           hosts = {
