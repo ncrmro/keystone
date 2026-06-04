@@ -206,6 +206,14 @@ in
 
         is_agent_user=${if isAgent then "1" else "0"}
 
+        # Count blocker-refusals so we can fail the activation at the end.
+        # A non-empty dir / regular file / other non-symlink entry at a managed
+        # link site silently rots the on-disk view of agent assets if we just
+        # warn — every subsequent rebuild keeps skipping. Treat it as a hard
+        # failure so nixos-rebuild surfaces it. Bootstrap warnings (missing
+        # target dirs / files) are NOT counted.
+        refusal_count=0
+
         tool_symlinks=( ${toolSymlinkBashArray} )
         for entry in "''${tool_symlinks[@]}"; do
           link_rel="''${entry%%:*}"
@@ -244,10 +252,12 @@ in
             else
               echo "keystone-agent-asset-symlinks: refusing to replace non-empty directory $link with symlink to $target" >&2
               echo "  Move or remove the existing directory, then re-run home-manager activation." >&2
+              refusal_count=$((refusal_count + 1))
               continue
             fi
           elif [ -e "$link" ]; then
             echo "keystone-agent-asset-symlinks: $link exists and is not a directory or symlink; leaving untouched" >&2
+            refusal_count=$((refusal_count + 1))
             continue
           else
             ln -s "$target" "$link"
@@ -304,14 +314,22 @@ in
             # cleaned. Refuse rather than silently clobbering user content.
             echo "keystone-agent-asset-symlinks: refusing to replace regular file $link with symlink to $target" >&2
             echo "  Move or remove the file, then re-run home-manager activation." >&2
+            refusal_count=$((refusal_count + 1))
             continue
           elif [ -e "$link" ]; then
             echo "keystone-agent-asset-symlinks: $link exists and is not a file or symlink; leaving untouched" >&2
+            refusal_count=$((refusal_count + 1))
             continue
           fi
 
           ln -s "$target" "$link"
         done
+
+        if [ "$refusal_count" -gt 0 ]; then
+          if [ "$refusal_count" = 1 ]; then noun=entry; else noun=entries; fi
+          echo "keystone-agent-asset-symlinks: $refusal_count blocking $noun — clear them and re-run home-manager activation" >&2
+          exit 1
+        fi
       '';
     }
   ]);
