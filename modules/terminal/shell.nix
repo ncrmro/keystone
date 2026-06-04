@@ -16,27 +16,6 @@ let
   notesPath = config.keystone.notes.path or "${config.home.homeDirectory}/notes";
   devScripts = import ../shared/dev-script-link.nix { inherit lib; };
   inherit (devScripts) mkHomeRepoFiles;
-  zellijNewTabPrompt = pkgs.writeShellScriptBin "keystone-zellij-new-tab-prompt" ''
-    printf '\nName new tab: '
-    IFS= read -r tab_name
-
-    if [[ -z "$tab_name" ]]; then
-      exit 0
-    fi
-
-    # Avoid inheriting a deleted worktree cwd, which can wedge new-tab creation.
-    tab_cwd="''${PWD:-$HOME}"
-    if [[ -z "$tab_cwd" || ! -d "$tab_cwd" ]]; then
-      tab_cwd="$HOME"
-    fi
-
-    if ! ${pkgs.coreutils}/bin/timeout 5s \
-      ${pkgs.zellij}/bin/zellij action new-tab --cwd "$tab_cwd" --name "$tab_name"; then
-      printf 'Failed to create tab. Try again from a live shell in the target directory.\n' >&2
-      sleep 2
-      exit 1
-    fi
-  '';
   ksCommand = {
     home.packages = [ pkgs.keystone.ks ];
   };
@@ -105,17 +84,6 @@ in
               "bind \"Ctrl >\"" = {
                 MoveTab = "Right";
               };
-              # New tab: Ctrl+T
-              # Open a visible floating prompt instead of the subtle RenameTab mode UI.
-              "bind \"Ctrl t\"" = {
-                Run = {
-                  _args = [
-                    "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
-                  ];
-                  floating = true;
-                  close_on_exit = true;
-                };
-              };
               # Close tab: Ctrl+W
               "bind \"Ctrl w\"" = {
                 CloseTab = { };
@@ -177,59 +145,6 @@ in
           ];
           theme = "robbyrussell";
         };
-        initContent = ''
-          _keystone_zellij_effective_cwd() {
-            local cwd="''${PWD:-$HOME}"
-
-            if [[ -z "$cwd" || ! -d "$cwd" ]]; then
-              cwd="$HOME"
-            fi
-
-            print -r -- "$cwd"
-          }
-
-          _keystone_zellij_pipe_tab_name() {
-            [[ -n "''${ZELLIJ:-}" && -n "''${ZELLIJ_PANE_ID:-}" ]] || return 1
-
-            local title="$1"
-            local payload
-            payload="$(${pkgs.jq}/bin/jq -nc \
-              --arg pane_id "$ZELLIJ_PANE_ID" \
-              --arg name "$title" \
-              '{ pane_id: $pane_id, name: $name }')"
-
-            ${pkgs.zellij}/bin/zellij action pipe \
-              --plugin "file:${pkgs.keystone.zellij-tab-name}/share/zellij/plugins/zellij-tab-name.wasm" \
-              --name change-tab-name \
-              -- "$payload" >/dev/null 2>&1
-          }
-
-          ztab() {
-            if [[ $# -eq 0 ]]; then
-              print "usage: ztab <name>" >&2
-              return 1
-            fi
-
-            _keystone_zellij_pipe_tab_name "$*"
-          }
-
-          znewtab() {
-            local title="$*"
-            local tab_cwd
-            tab_cwd="$(_keystone_zellij_effective_cwd)"
-
-            if [[ -n "$title" ]]; then
-              ${pkgs.coreutils}/bin/timeout 5s \
-                ${pkgs.zellij}/bin/zellij action new-tab --cwd "$tab_cwd" --name "$title"
-            else
-              ${pkgs.zellij}/bin/zellij run \
-                --floating \
-                --close-on-exit \
-                --cwd "$tab_cwd" \
-                -- "${zellijNewTabPrompt}/bin/keystone-zellij-new-tab-prompt"
-            fi
-          }
-        '';
       };
 
       home.sessionPath = [ "$HOME/.local/bin" ];
@@ -268,8 +183,6 @@ in
           # Eza - Modern replacement for ls with colors and git integration
           # https://github.com/eza-community/eza
           eza
-
-          zellijNewTabPrompt
 
           # Glow - Render markdown on the CLI with style
           # https://github.com/charmbracelet/glow

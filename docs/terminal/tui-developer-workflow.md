@@ -76,15 +76,9 @@ Key concepts:
 Basic navigation:
 
 - `Ctrl+p` then arrow keys: Switch panes
-- `Ctrl+t`: Open a visible prompt, type the tab name, and press `Enter`
 - `Ctrl+PageUp` / `Ctrl+PageDown`: Switch tabs
 - `Ctrl+p` then `n`: New pane
 - `Ctrl+o` then `d`: Detach session
-
-Tab naming helpers:
-
-- `ztab "name"`: Rename the current tab explicitly
-- `znewtab`: Open the same visible prompt from the shell
 
 ### Version Control
 

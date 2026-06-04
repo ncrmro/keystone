@@ -57,7 +57,6 @@ stdenvNoCC.mkDerivation {
     "$out/bin/zide" --help >/dev/null
     "$out/bin/zide-pick" --help >/dev/null
     "$out/bin/zide-edit" --help >/dev/null
-    "$out/bin/zide-rename" --help >/dev/null
     test -f "$out/layouts/default.kdl"
     grep -F 'zide-pick' "$out/layouts/default.kdl" >/dev/null
 

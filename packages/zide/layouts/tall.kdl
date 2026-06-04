@@ -1,8 +1,5 @@
 layout {
     tab {
-        floating_panes {
-            zide_rename
-        }
         pane split_direction="horizontal" {
             filepicker size=18 name="picker"
             editor
@@ -22,8 +19,6 @@ layout {
     pane_template name="editor" {
         command "$EDITOR"
     }
-
-    pane_template name="zide_rename" command="zide-rename" close_on_exit=true
 
     new_tab_template {
         pane

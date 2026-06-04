@@ -1,7 +1,6 @@
 layout {
     tab {
         floating_panes {
-            zide_rename
             lazygit_pane x="5%" y="5%" width="90%" height="90%"
         }
         pane split_direction="vertical" {
@@ -23,8 +22,6 @@ layout {
     pane_template name="editor" {
         command "$EDITOR"
     }
-
-    pane_template name="zide_rename" command="zide-rename" close_on_exit=true
 
     pane_template name="lazygit_pane" {
         command "lazygit"

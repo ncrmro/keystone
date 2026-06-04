@@ -550,14 +550,6 @@
           binaryCacheClientMerge = import ./tests/module/binary-cache-client-merge.nix {
             inherit pkgs lib self;
           };
-          zellijTabPrompt = import ./tests/module/zellij-tab-prompt.nix {
-            inherit
-              pkgs
-              lib
-              self
-              home-manager
-              ;
-          };
           terminalZide = import ./tests/module/terminal-zide.nix {
             inherit
               pkgs
@@ -611,7 +603,6 @@
           ks-rust-fmt = ksRustFmt;
           agentctl-regression = agentctlRegression;
           binary-cache-client-merge = binaryCacheClientMerge;
-          zellij-tab-prompt = zellijTabPrompt;
           terminal-zide = terminalZide;
           agent-task-loop-hash-regression = agentTaskLoopHashRegression;
           agent-task-loop-ping-pong = agentTaskLoopPingPong;
@@ -679,7 +670,6 @@
             ln -s ${agentQueueMigration} "$out/agent-queue-migration"
             ln -s ${piTaskRunner} "$out/pi-task-runner"
             ln -s ${binaryCacheClientMerge} "$out/binary-cache-client-merge"
-            ln -s ${zellijTabPrompt} "$out/zellij-tab-prompt"
             ln -s ${terminalZide} "$out/terminal-zide"
           '';
         };
@@ -713,7 +703,6 @@
             ks
             cfait
             zide
-            zellij-tab-name
             write-polkit-theme
             chrome-devtools-mcp
             pi-mcp-extension

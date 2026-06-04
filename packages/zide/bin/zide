@@ -12,14 +12,10 @@ Usage: zide [OPTIONS] [working_dir] [layout]
 Options:
   -h, --help      Show this help text.
   -p, --picker    File picker command to use.
-  -n, --name      Name the new Zellij session or tab.
-  -N              Name the session or tab after the working directory.
 EOF
 }
 
 picker="${ZIDE_FILE_PICKER:-}"
-name=""
-name_from_dir=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,15 +27,6 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "zide: --picker requires a value" >&2; exit 2; }
       picker="$2"
       shift 2
-      ;;
-    -n | --name)
-      [[ $# -ge 2 ]] || { echo "zide: --name requires a value" >&2; exit 2; }
-      name="$2"
-      shift 2
-      ;;
-    -N)
-      name_from_dir=true
-      shift
       ;;
     -*)
       echo "zide: unknown option: $1" >&2
@@ -55,17 +42,8 @@ working_dir="${1:-$PWD}"
 layout="${2:-${ZIDE_DEFAULT_LAYOUT:-default}}"
 cwd="$(cd -- "$working_dir" && pwd -P)"
 
-if [[ -z "$name" && "${ZIDE_ALWAYS_NAME:-false}" == "true" ]]; then
-  name_from_dir=true
-fi
-
-if [[ -z "$name" && "$name_from_dir" == "true" ]]; then
-  name="$(basename -- "$cwd")"
-fi
-
 export ZIDE_FILE_PICKER="${picker:-yazi}"
 export ZIDE_ORIGINAL_EDITOR="${EDITOR:-hx}"
-export ZIDE_TAB_NAME="$name"
 export ZIDE_LAYOUT_DIR="${ZIDE_LAYOUT_DIR:-${ZIDE_DIR}/layouts}"
 
 layout_path="${layout}"
@@ -81,16 +59,8 @@ if [[ ! -f "$layout_path" ]]; then
 fi
 
 if [[ -n "${ZELLIJ:-}" ]]; then
-  args=(action new-tab --cwd "$cwd" --layout "$layout_path")
-  if [[ -n "$name" ]]; then
-    args+=(--name "$name")
-  fi
-  zellij "${args[@]}"
+  zellij action new-tab --cwd "$cwd" --layout "$layout_path"
 else
   cd -- "$cwd"
-  args=(--layout "$layout_path")
-  if [[ -n "$name" ]]; then
-    args=(--session "$name" "${args[@]}")
-  fi
-  exec zellij "${args[@]}"
+  exec zellij --layout "$layout_path"
 fi
