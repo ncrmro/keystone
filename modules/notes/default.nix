@@ -73,8 +73,12 @@ let
       "$JOURNAL_PATH" \
       "$(${pkgs.coreutils}/bin/dirname "$DAILY_PATH")"
 
-    DAILY_REAL="$(${pkgs.coreutils}/bin/realpath -m "$DAILY_PATH")"
-    TARGET_REAL="$(${pkgs.coreutils}/bin/realpath -m "$TARGET_PATH")"
+    # Use -ms (no-symlinks) so this guard only catches lexical aliasing
+    # of the configured paths (a real misconfiguration). With plain -m,
+    # once daily.md is a symlink to today's journal target, realpath
+    # follows it and the guard fires every subsequent run.
+    DAILY_REAL="$(${pkgs.coreutils}/bin/realpath -ms "$DAILY_PATH")"
+    TARGET_REAL="$(${pkgs.coreutils}/bin/realpath -ms "$TARGET_PATH")"
 
     if [[ "$DAILY_REAL" == "$TARGET_REAL" ]]; then
       echo "keystone-notes-daily-rollover: daily.symlinkPath resolves to today's journal target; refusing to replace the note with a symlink" >&2
