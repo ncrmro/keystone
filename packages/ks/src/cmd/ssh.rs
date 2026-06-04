@@ -3,9 +3,10 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
+use tokio::net::TcpStream;
 
 #[derive(Debug, Default)]
 pub struct SshSessionManager {
@@ -83,18 +84,16 @@ impl SshSessionManager {
             return Ok(true);
         }
 
-        let status = tokio::process::Command::new("ssh")
-            .args(["-o", "ConnectTimeout=3", "-o", "BatchMode=yes"])
-            .arg(format!("root@{}", target))
-            .arg("true")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await
-            .with_context(|| format!("Failed to probe SSH reachability for {}", target))?;
-
-        Ok(status.success())
+        // Probe TCP port 22, not SSH auth. The caller (switch.rs) uses this
+        // to decide "is the Tailscale path usable" before falling back to a
+        // LAN IP — it's a network-reachability question, not an auth one.
+        // The previous `ssh -o BatchMode=yes` probe coupled the two: when
+        // the agent needed a YubiKey touch (locked, or signing-on-demand),
+        // BatchMode forbade interaction and the probe returned false even
+        // though Tailscale was healthy, triggering a misleading "Tailscale
+        // unavailable" message and an unnecessary LAN fallback. open_master
+        // handles the actual auth (with touch) right after.
+        Ok(tcp_port_open(target, 22, Duration::from_secs(3)).await)
     }
 
     pub async fn open_master(&mut self, target: &str) -> Result<()> {
@@ -158,6 +157,14 @@ impl SshSessionManager {
             );
         }
     }
+}
+
+async fn tcp_port_open(host: &str, port: u16, timeout: Duration) -> bool {
+    let addr = format!("{}:{}", host, port);
+    matches!(
+        tokio::time::timeout(timeout, TcpStream::connect(&addr)).await,
+        Ok(Ok(_))
+    )
 }
 
 impl Drop for SshSessionManager {

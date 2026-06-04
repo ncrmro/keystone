@@ -3,7 +3,9 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::path::Path;
+use std::time::Duration;
 use tokio::fs;
+use tokio::net::TcpStream;
 
 use crate::repo;
 
@@ -43,16 +45,17 @@ async fn list_hosts(hosts_nix: &Path) -> Result<Vec<String>> {
     serde_json::from_slice(&output.stdout).context("Failed to parse host list")
 }
 
-async fn ssh_reachable(target: &str) -> Result<bool> {
-    let status = tokio::process::Command::new("ssh")
-        .args(["-o", "ConnectTimeout=3", "-o", "BatchMode=yes"])
-        .arg(target)
-        .arg("true")
-        .status()
-        .await
-        .with_context(|| format!("Failed to probe SSH reachability for {}", target))?;
-
-    Ok(status.success())
+async fn ssh_reachable(host: &str) -> Result<bool> {
+    // TCP-only probe — see ssh::ssh_test for the reasoning. Auth and the
+    // YubiKey touch happen later; this just answers "is the network path
+    // usable" so the misleading Tailscale-unavailable warning doesn't fire
+    // every time the agent isn't pre-touched.
+    let addr = format!("{}:22", host);
+    let connected = matches!(
+        tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&addr)).await,
+        Ok(Ok(_))
+    );
+    Ok(connected)
 }
 
 fn parse_public_key(stdout: &[u8]) -> Option<String> {
@@ -192,7 +195,7 @@ async fn sync_host_entry(
     };
 
     let mut resolved = ssh_target.clone();
-    if !ssh_reachable(&root_target(&ssh_target)).await? {
+    if !ssh_reachable(&ssh_target).await? {
         if let Some(fallback_ip) = info
             .fallback_ip
             .as_deref()
