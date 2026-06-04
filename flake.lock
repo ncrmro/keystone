@@ -116,6 +116,22 @@
         "type": "github"
       }
     },
+    "bridl-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1780420616,
+        "narHash": "sha256-2hxr/xonCXV3uVIQkOufJV8m2kqW263QjQVtizsc2S4=",
+        "ref": "refs/heads/main",
+        "rev": "12d275a24b192125998511c6cf8bb63a87bd05fe",
+        "revCount": 79,
+        "type": "git",
+        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
+      }
+    },
     "browser-previews": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -1496,6 +1512,7 @@
     "root": {
       "inputs": {
         "agenix": "agenix",
+        "bridl-src": "bridl-src",
         "browser-previews": "browser-previews",
         "calendula": "calendula",
         "cardamum": "cardamum",

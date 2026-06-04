@@ -42,13 +42,24 @@ in
               SyslogIdentifier = "agent-${name}-pi-task-runner";
               LogRateLimitIntervalSec = 0;
             };
-            script = ''
-              exec ${pkgs.keystone.pi-task-runner}/bin/pi-task-runner \
-                --agent ${escapeShellArg name} \
-                --model ${escapeShellArg runner.model} \
-                --sources ${escapeShellArg runner.sources} \
-                --home /home/${username}
-            '';
+            # When bridl is enabled for this agent, prepend `bridl run --profile`
+            # so the pi subprocess pi-task-runner spawns inherits the profile's
+            # controls, skills, and append-system-prompt.
+            script =
+              let
+                bridlPrefix =
+                  if agentCfg.bridl.enable then
+                    "${pkgs.keystone.bridl}/bin/bridl run --profile ${escapeShellArg agentCfg.bridl.profile} -- "
+                  else
+                    "";
+              in
+              ''
+                exec ${bridlPrefix}${pkgs.keystone.pi-task-runner}/bin/pi-task-runner \
+                  --agent ${escapeShellArg name} \
+                  --model ${escapeShellArg runner.model} \
+                  --sources ${escapeShellArg runner.sources} \
+                  --home /home/${username}
+              '';
           };
         }
       ) runnerAgents

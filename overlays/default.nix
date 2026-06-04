@@ -16,6 +16,7 @@
   deepwork,
   grafana-mcp-src,
   lfs-s3-src,
+  bridl-src,
 }:
 let
   # Paths must be captured in `let` BEFORE the overlay function, otherwise they
@@ -46,6 +47,7 @@ let
   keystone-deepwork-jobs-src = ../packages/keystone-deepwork-jobs;
   keystone-conventions-src = ../packages/keystone-conventions;
   slidev-src = ../packages/slidev;
+  bridl-pkg-src = ../packages/bridl;
   himalaya-flake = himalaya;
   calendula-flake = calendula;
   cardamum-flake = cardamum;
@@ -145,6 +147,7 @@ in
       inherit lfs-s3-src;
     };
     slidev = final.callPackage slidev-src { };
+    bridl = final.callPackage bridl-pkg-src { inherit bridl-src; };
   }
   // final.lib.optionalAttrs final.stdenv.isLinux {
     # ghostty only has .default for Linux systems

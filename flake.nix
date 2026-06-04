@@ -110,6 +110,13 @@
       flake = false;
     };
 
+    # bridl — profile-oriented wrapper for launching pi/claude agent CLIs.
+    # Private repo; build hosts need SSH access to github.com/Unsupervisedcom.
+    bridl-src = {
+      url = "git+ssh://git@github.com/Unsupervisedcom/bridl.git";
+      flake = false;
+    };
+
     # Rust build tooling — splits dependency builds for fast incremental rebuilds
     crane.url = "github:ipetkov/crane";
 
@@ -143,6 +150,7 @@
       deepwork,
       grafana-mcp-src,
       lfs-s3-src,
+      bridl-src,
       ...
     }:
     let
@@ -270,6 +278,7 @@
           deepwork
           grafana-mcp-src
           lfs-s3-src
+          bridl-src
           ;
       };
 
@@ -712,6 +721,7 @@
             keystone-deepwork-jobs
             keystone-conventions
             slidev
+            bridl
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };
