@@ -189,6 +189,12 @@ in
           example = "Research Agent";
         };
 
+        default = mkOption {
+          type = types.bool;
+          default = false;
+          description = "Mark this agent as the fleet's default. Exactly one agent must be the default when any are defined.";
+        };
+
         email = mkOption {
           type = types.nullOr types.str;
           default = null;

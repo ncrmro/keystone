@@ -61,6 +61,7 @@ pkgs.testers.nixosTest {
         # researcher has desktop + chrome enabled, coder does not
         agents.coder = {
           fullName = "Coding Agent";
+          default = true;
         };
         agents.researcher = {
           fullName = "Research Agent";
