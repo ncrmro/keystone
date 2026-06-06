@@ -20,6 +20,10 @@
   # NixOS state version
   system.stateVersion = "25.05";
 
+  # Keystone packages (keystone-conventions, hyprpolkitagent wrapper, etc.)
+  # live under `pkgs.keystone.*` via the overlay.
+  nixpkgs.overlays = [ keystone.overlays.default ];
+
   # System identity
   networking.hostName = "keystone-buildvm-desktop";
 
@@ -33,22 +37,18 @@
     fsType = "ext4";
   };
 
-  # Import Keystone desktop module WITHOUT disko/secure boot
-  imports = [
-    ../../modules/desktop/nixos.nix
-  ];
-
   # Enable Keystone desktop components
   keystone.desktop = {
     enable = true;
     user = "testuser";
-
-    hyprland.enable = true;
-    greetd.enable = true;
-    audio.enable = true;
-    bluetooth.enable = true;
-    networking.enable = true;
   };
+
+  # The desktop module reserves /etc/resolv.conf as a direct symlink (for
+  # Tailscale MagicDNS) and assumes keystone.os enables systemd-resolved.
+  # This VM doesn't enable keystone.os, so wire resolved here and disable
+  # resolvconf to satisfy the resolv.conf-ownership assertion.
+  services.resolved.enable = true;
+  networking.resolvconf.enable = false;
 
   # Enable SSH for remote access
   services.openssh = {
@@ -61,6 +61,18 @@
 
   # Basic networking with DHCP
   networking.useDHCP = lib.mkDefault true;
+
+  # VM-specific configuration for build-vm
+  # Forward SSH port for headless access: ssh -p 2222 testuser@localhost
+  virtualisation.vmVariant = {
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 2222;
+        guest.port = 22;
+      }
+    ];
+  };
 
   # Enable serial console for VM
   boot.kernelParams = [

@@ -120,6 +120,8 @@
           modules = [
             home-manager.nixosModules.home-manager
             nix-flatpak.nixosModules.nix-flatpak
+            keystone.nixosModules.operating-system
+            keystone.nixosModules.desktop
             ../vms/build-vm-desktop/configuration.nix
           ];
         };
