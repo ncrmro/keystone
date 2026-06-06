@@ -17,6 +17,26 @@ let
     labwcConfigScript
     sortedAgentNames
     ;
+  # vega-server (and any future agent-resident service) resolves
+  # ks-config strictly through $HOME. Every agent home gets a symlink
+  # into the admin's canonical checkout — single source of truth, no
+  # env-var override, edits flow into the same git tree the admin
+  # commits from.
+  adminUsername = osCfg.adminUsername;
+  adminKsConfig = "/home/${adminUsername}/repos/${adminUsername}/ks-config";
+
+  # Snippet creating `~/repos/<admin>/ks-config -> adminKsConfig` for a
+  # given agent username. Idempotent; safe to re-run on every switch
+  # and at boot.
+  ksConfigSymlinkScript = username: ''
+    install -d -o ${username} -g agents -m 2770 /home/${username}/repos
+    install -d -o ${username} -g agents -m 2770 /home/${username}/repos/${adminUsername}
+    if [ ! -L /home/${username}/repos/${adminUsername}/ks-config ]; then
+      rm -rf /home/${username}/repos/${adminUsername}/ks-config
+      ln -s ${adminKsConfig} /home/${username}/repos/${adminUsername}/ks-config
+      chown -h ${username}:agents /home/${username}/repos/${adminUsername}/ks-config
+    fi
+  '';
 in
 {
   config = mkMerge [
@@ -181,10 +201,24 @@ in
                       chmod 0660 "$_qf"
                     fi
                   done
+                  ${ksConfigSymlinkScript username}
                 fi
               ''
             ) cfg
           )}
+
+          # Grant traversal + rw on the admin's canonical ks-config tree so
+          # agent processes (resolving paths through their home symlinks)
+          # can read and write, and the admin (in agent-admins) can git add
+          # whatever they produce. Gated on existence so a fresh box with no
+          # ks-config clone yet doesn't fail activation.
+          if [ -d ${adminKsConfig} ]; then
+            ${pkgs.acl}/bin/setfacl -m g:agents:x /home/${adminUsername} || true
+            ${pkgs.acl}/bin/setfacl -m g:agents:x /home/${adminUsername}/repos || true
+            ${pkgs.acl}/bin/setfacl -m g:agents:x /home/${adminUsername}/repos/${adminUsername} || true
+            ${pkgs.acl}/bin/setfacl -R -m g:agent-admins:rwX,g:agents:rwX ${adminKsConfig}
+            ${pkgs.acl}/bin/setfacl -dR -m g:agent-admins:rwx,g:agents:rwx ${adminKsConfig}
+          fi
         '';
       };
 
@@ -223,6 +257,7 @@ in
                     chmod 0660 "$_qf"
                   fi
                 done
+                ${ksConfigSymlinkScript username}
 
                 ${labwcConfigScript username agentCfg}
               ''
