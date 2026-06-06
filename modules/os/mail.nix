@@ -244,13 +244,27 @@ in
               message = "Agent mail provisioning requires agenix secret 'stalwart-admin-password' for Stalwart admin API access.";
             }
           ]
-          ++ (mapAttrsToList (name: _: {
-            assertion = config.age.secrets ? "agent-${name}-mail-password";
-            message = ''
-              Agent '${name}' has mail.provision = true but agenix secret "agent-${name}-mail-password" is not declared.
-              This secret must contain the plaintext password for the agent's Stalwart account.
-            '';
-          }) provisionAgents)
+          ++ (mapAttrsToList (
+            name: agentCfg:
+            let
+              # Match the host-prefixed naming used by auto-secrets etc.
+              # On the Stalwart server host, the agent's password is read
+              # from /run/agenix/<agent-host>-agent-<name>-mail-password to
+              # provision the IMAP/SMTP account.
+              secretName =
+                if agentCfg.host != null then
+                  "${agentCfg.host}-agent-${name}-mail-password"
+                else
+                  "agent-${name}-mail-password";
+            in
+            {
+              assertion = config.age.secrets ? "${secretName}";
+              message = ''
+                Agent '${name}' has mail.provision = true but agenix secret "${secretName}" is not declared.
+                This secret must contain the plaintext password for the agent's Stalwart account.
+              '';
+            }
+          ) provisionAgents)
         );
 
         # Idempotent: GET /api/principal/{name} → 200 means account exists, skip.
@@ -265,7 +279,12 @@ in
               mailAddr =
                 if agentCfg.mail.address != null then agentCfg.mail.address else "${username}@${topDomain}";
               adminPasswordPath = "/run/agenix/stalwart-admin-password";
-              agentPasswordPath = "/run/agenix/${username}-mail-password";
+              # Same prefix rule as the assertion above.
+              agentPasswordPath =
+                if agentCfg.host != null then
+                  "/run/agenix/${agentCfg.host}-${username}-mail-password"
+                else
+                  "/run/agenix/${username}-mail-password";
             in
             nameValuePair "provision-agent-mail-${name}" {
               description = "Provision Stalwart mail account for ${username}";
