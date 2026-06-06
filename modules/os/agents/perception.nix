@@ -55,18 +55,27 @@ in
 
     warnings = concatLists (
       mapAttrsToList (
-        name: _:
-        optional (!(config.age.secrets ? "agent-${name}-immich-api-key")) ''
-          Screenshot sync is enabled for agent '${name}', but agenix secret "agent-${name}-immich-api-key" is not declared yet.
+        name: agentCfg:
+        let
+          # Host-prefix to match the convention used by ssh.nix /
+          # mail-client.nix / tailscale.nix / ks-config auto-secrets.
+          secretName =
+            if agentCfg.host != null then
+              "${agentCfg.host}-agent-${name}-immich-api-key"
+            else
+              "agent-${name}-immich-api-key";
+        in
+        optional (!(config.age.secrets ? "${secretName}")) ''
+          Screenshot sync is enabled for agent '${name}', but agenix secret "${secretName}" is not declared yet.
 
           To finish setup:
           1. Add to agenix-secrets/secrets.nix:
-             "secrets/agent-${name}-immich-api-key.age".publicKeys = adminKeys ++ [ systems.${config.networking.hostName} ];
+             "secrets/${secretName}.age".publicKeys = adminKeys ++ [ systems.${config.networking.hostName} ];
           2. Create the secret with the agent Immich API key:
-             cd agenix-secrets && agenix -e secrets/agent-${name}-immich-api-key.age
+             cd agenix-secrets && agenix -e secrets/${secretName}.age
           3. If keystone.secrets.repo is null, declare it in host config:
-             age.secrets.agent-${name}-immich-api-key = {
-               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-immich-api-key.age";
+             age.secrets.${secretName} = {
+               file = "${"$"}{inputs.agenix-secrets}/secrets/${secretName}.age";
                owner = "agent-${name}";
                mode = "0400";
              };
@@ -79,13 +88,23 @@ in
     age.secrets = mkIf (config.keystone.secrets.repo != null) (
       listToAttrs (
         concatLists (
-          mapAttrsToList (name: _: [
-            (nameValuePair "agent-${name}-immich-api-key" {
-              file = "${config.keystone.secrets.repo}/secrets/agent-${name}-immich-api-key.age";
-              owner = "agent-${name}";
-              mode = "0400";
-            })
-          ]) screenshotAgents
+          mapAttrsToList (
+            name: agentCfg:
+            let
+              secretName =
+                if agentCfg.host != null then
+                  "${agentCfg.host}-agent-${name}-immich-api-key"
+                else
+                  "agent-${name}-immich-api-key";
+            in
+            [
+              (nameValuePair secretName {
+                file = "${config.keystone.secrets.repo}/secrets/${secretName}.age";
+                owner = "agent-${name}";
+                mode = "0400";
+              })
+            ]
+          ) screenshotAgents
         )
       )
     );
@@ -110,7 +129,9 @@ in
               export XDG_STATE_HOME="''${XDG_STATE_HOME:-$HOME/.local/state}"
               exec ${pkgs.keystone.ks}/bin/ks screenshots sync \
                 --url ${lib.escapeShellArg immichServerUrl} \
-                --api-key-file /run/agenix/agent-${name}-immich-api-key \
+                --api-key-file /run/agenix/${
+                  if agentCfg.host != null then "${agentCfg.host}-" else ""
+                }agent-${name}-immich-api-key \
                 --album-name ${lib.escapeShellArg "Screenshots - ${username}"} \
                 --host-name ${lib.escapeShellArg config.networking.hostName} \
                 --account-name ${lib.escapeShellArg username} \

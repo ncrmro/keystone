@@ -104,7 +104,12 @@ in
                     # Stalwart rejects passwords with trailing whitespace, so we must
                     # strip it. Without this, IMAP/SMTP auth fails.
                     # tr is available via the agent's home-manager profile PATH (coreutils).
-                    passwordCommand = mkDefault "tr -d '\\n' < /run/agenix/agent-${name}-mail-password";
+                    passwordCommand = mkDefault (
+                      let
+                        prefix = if agentCfg.host != null then "${agentCfg.host}-" else "";
+                      in
+                      "tr -d '\\n' < /run/agenix/${prefix}agent-${name}-mail-password"
+                    );
                     imap.port = mkDefault agentCfg.mail.imap.port;
                     smtp.port = mkDefault agentCfg.mail.smtp.port;
                   };
@@ -143,7 +148,9 @@ in
                       while IFS= read -r line; do
                         case "$line" in
                           GETPIN)
-                            printf "D %s\n" "$(tr -d '\n' < /run/agenix/agent-${name}-bitwarden-password)"
+                            printf "D %s\n" "$(tr -d '\n' < /run/agenix/${
+                              if agentCfg.host != null then "${agentCfg.host}-" else ""
+                            }agent-${name}-bitwarden-password)"
                             echo "OK"
                             ;;
                           BYE)

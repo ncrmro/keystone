@@ -29,11 +29,18 @@ in
       let
         mailAddr =
           if agentCfg.mail.address != null then agentCfg.mail.address else "agent-${name}@${topDomain}";
+        # Match the host-prefixed naming used by auto-secrets so the
+        # same logical secret can coexist across the fleet.
+        secretName =
+          if agentCfg.host != null then
+            "${agentCfg.host}-agent-${name}-mail-password"
+          else
+            "agent-${name}-mail-password";
       in
       {
-        assertion = config.age.secrets ? "agent-${name}-mail-password";
+        assertion = config.age.secrets ? "${secretName}";
         message = ''
-          Agent '${name}' requires agenix secret "agent-${name}-mail-password".
+          Agent '${name}' requires agenix secret "${secretName}".
 
           1. Create the Stalwart mail account (run on ocean):
              curl -s -u admin:"$(cat /run/agenix/stalwart-admin-password)" \
@@ -46,14 +53,14 @@ in
                -d '[{"action":"set","field":"roles","value":["user"]}]'
 
           2. Add to agenix-secrets/secrets.nix:
-             "secrets/agent-${name}-mail-password.age".publicKeys = adminKeys ++ [ systems.workstation ];
+             "secrets/${secretName}.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
 
           3. Create the secret (use the SAME password as step 1):
-             cd agenix-secrets && agenix -e secrets/agent-${name}-mail-password.age
+             cd agenix-secrets && agenix -e secrets/${secretName}.age
 
-          4. Declare in host config:
-             age.secrets.agent-${name}-mail-password = {
-               file = "${"$"}{inputs.agenix-secrets}/secrets/agent-${name}-mail-password.age";
+          4. Declare in host config (or rely on auto-secrets):
+             age.secrets.${secretName} = {
+               file = "${"$"}{inputs.agenix-secrets}/secrets/${secretName}.age";
                owner = "agent-${name}";
                mode = "0400";
              };

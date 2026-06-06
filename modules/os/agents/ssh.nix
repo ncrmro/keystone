@@ -22,18 +22,28 @@ in
   config = mkIf (osCfg.enable && cfg != { } && hasSshAgents) {
     # Only assert agenix secrets on the agent's host — other hosts (e.g. ocean)
     # import agent-identities for provisioning but don't need SSH key secrets.
+    #
+    # Secret names are host-prefixed (`<host>-<username>-<suffix>`) so the same
+    # logical agent secret can coexist across the fleet without collisions and
+    # so each agenix entry carries its routing in the filename. The /run/agenix
+    # path mirrors the secret name, so ssh-add reads /run/agenix/<host>-<u>-ssh-key
+    # rather than /run/agenix/<u>-ssh-key.
     assertions = concatLists (
       mapAttrsToList (
         name: agentCfg:
         let
           username = "agent-${name}";
           isAgentHost = agentCfg.host == config.networking.hostName;
+          # Match the naming used by ks-config's auto-secrets module.
+          prefixed =
+            suffix:
+            if agentCfg.host != null then "${agentCfg.host}-${username}-${suffix}" else "${username}-${suffix}";
         in
         optionals isAgentHost [
           {
-            assertion = config.age.secrets ? "${username}-ssh-key";
+            assertion = config.age.secrets ? "${prefixed "ssh-key"}";
             message = ''
-              Agent '${name}' requires agenix secret "${username}-ssh-key".
+              Agent '${name}' requires agenix secret "${prefixed "ssh-key"}".
 
               1. Generate an SSH key pair for the agent:
                  ssh-keygen -t ed25519 -C "${username}" -f /tmp/${username}-ssh-key
@@ -43,57 +53,57 @@ in
                  keystone.keys."${username}".hosts.<hostname>.publicKey = "$(cat /tmp/${username}-ssh-key.pub)";
 
               3. Add to agenix-secrets/secrets.nix:
-                 "secrets/${username}-ssh-key.age".publicKeys = adminKeys ++ [ systems.workstation ];
+                 "secrets/${prefixed "ssh-key"}.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
 
               4. Enroll the PRIVATE key as an agenix secret:
-                 cd agenix-secrets && cp /tmp/${username}-ssh-key secrets/${username}-ssh-key.age.plain
-                 agenix -e secrets/${username}-ssh-key.age  # paste the private key contents
-                 rm /tmp/${username}-ssh-key /tmp/${username}-ssh-key.pub secrets/${username}-ssh-key.age.plain
+                 cd agenix-secrets && cp /tmp/${username}-ssh-key secrets/${prefixed "ssh-key"}.age.plain
+                 agenix -e secrets/${prefixed "ssh-key"}.age  # paste the private key contents
+                 rm /tmp/${username}-ssh-key /tmp/${username}-ssh-key.pub secrets/${prefixed "ssh-key"}.age.plain
 
-              5. Declare in host config:
-                 age.secrets.${username}-ssh-key = {
-                   file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-ssh-key.age";
+              5. Declare in host config (or rely on auto-secrets):
+                 age.secrets.${prefixed "ssh-key"} = {
+                   file = "${"$"}{inputs.agenix-secrets}/secrets/${prefixed "ssh-key"}.age";
                    owner = "${username}";
                    mode = "0400";
                  };
             '';
           }
           {
-            assertion = config.age.secrets ? "${username}-ssh-passphrase";
+            assertion = config.age.secrets ? "${prefixed "ssh-passphrase"}";
             message = ''
-              Agent '${name}' requires agenix secret "${username}-ssh-passphrase".
+              Agent '${name}' requires agenix secret "${prefixed "ssh-passphrase"}".
 
               1. Add to agenix-secrets/secrets.nix:
-                 "secrets/${username}-ssh-passphrase.age".publicKeys = adminKeys ++ [ systems.workstation ];
+                 "secrets/${prefixed "ssh-passphrase"}.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
 
               2. Create the secret (use the SAME passphrase from ssh-keygen):
-                 cd agenix-secrets && agenix -e secrets/${username}-ssh-passphrase.age
+                 cd agenix-secrets && agenix -e secrets/${prefixed "ssh-passphrase"}.age
 
-              3. Declare in host config:
-                 age.secrets.${username}-ssh-passphrase = {
-                   file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-ssh-passphrase.age";
+              3. Declare in host config (or rely on auto-secrets):
+                 age.secrets.${prefixed "ssh-passphrase"} = {
+                   file = "${"$"}{inputs.agenix-secrets}/secrets/${prefixed "ssh-passphrase"}.age";
                    owner = "${username}";
                    mode = "0400";
                  };
             '';
           }
           # Bitwarden/Vaultwarden password — rbw pinentry reads from
-          # /run/agenix/agent-{name}-bitwarden-password at runtime. Without
+          # /run/agenix/<prefixed "bitwarden-password"> at runtime. Without
           # this assertion, the build succeeds but rbw silently fails.
           {
-            assertion = config.age.secrets ? "${username}-bitwarden-password";
+            assertion = config.age.secrets ? "${prefixed "bitwarden-password"}";
             message = ''
-              Agent '${name}' requires agenix secret "${username}-bitwarden-password".
+              Agent '${name}' requires agenix secret "${prefixed "bitwarden-password"}".
 
               1. Add to agenix-secrets/secrets.nix:
-                 "secrets/${username}-bitwarden-password.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
+                 "secrets/${prefixed "bitwarden-password"}.age".publicKeys = adminKeys ++ [ systems.${agentCfg.host} ];
 
               2. Create the secret:
-                 cd agenix-secrets && agenix -e secrets/${username}-bitwarden-password.age
+                 cd agenix-secrets && agenix -e secrets/${prefixed "bitwarden-password"}.age
 
-              3. Declare in host config:
-                 age.secrets.${username}-bitwarden-password = {
-                   file = "${"$"}{inputs.agenix-secrets}/secrets/${username}-bitwarden-password.age";
+              3. Declare in host config (or rely on auto-secrets):
+                 age.secrets.${prefixed "bitwarden-password"} = {
+                   file = "${"$"}{inputs.agenix-secrets}/secrets/${prefixed "bitwarden-password"}.age";
                    owner = "${username}";
                    mode = "0400";
                  };
@@ -118,8 +128,13 @@ in
           username = "agent-${name}";
           resolved = agentsWithUids.${name};
           uid = resolved.uid;
-          sshKeyPath = "/run/agenix/${username}-ssh-key";
-          sshPassphrasePath = "/run/agenix/${username}-ssh-passphrase";
+          # Match the host-prefixed naming used by auto-secrets + the
+          # assertions above.
+          prefixed =
+            suffix:
+            if agentCfg.host != null then "${agentCfg.host}-${username}-${suffix}" else "${username}-${suffix}";
+          sshKeyPath = "/run/agenix/${prefixed "ssh-key"}";
+          sshPassphrasePath = "/run/agenix/${prefixed "ssh-passphrase"}";
           homesService = if useZfs then "zfs-agent-datasets.service" else "agent-homes.service";
           # Script that outputs the passphrase for SSH_ASKPASS
           askpassScript = pkgs.writeShellScript "ssh-askpass-${username}" ''

@@ -60,7 +60,9 @@ in
           stateDir = "/var/lib/tailscale/agent-${name}-tailscaled.state";
           socketPath = "/run/tailscale/agent-${name}-tailscaled.socket";
           tunName = "tailscale-agent-${name}";
-          authKeyPath = "/run/agenix/agent-${name}-tailscale-auth-key";
+          authKeyPath = "/run/agenix/${
+            if agentCfg.host != null then "${agentCfg.host}-" else ""
+          }agent-${name}-tailscale-auth-key";
         in
         {
           "agent-${name}-tailscaled" = {
