@@ -42,8 +42,10 @@ spec-compliant naming makes one canonical tree sufficient for every agent.
 
 The merged skill map is built from conventions/archetypes.yaml.skills
 (keystone defaults) plus an optional <consumer-flake>/agents/_shared/skills.yaml
-(user overrides, wholesale-replace on key conflict). See
-docs/research/agent-skills.md for the standard.
+(user overrides). The merge is field-level via jq's recursive merge operator
+(`*`): explicit user fields override keystone fields, missing user fields
+fall back to keystone defaults, and keys only in the user file are emitted
+as new skills. See docs/research/agent-skills.md for the standard.
 EOF
 }
 
@@ -64,7 +66,7 @@ fi
 #   3. Manifest's eval-time consumerFlakeAgents value (Nix-eval fallback)
 # The runtime pointer is a *regular file* written by modules/shared/system-flake.nix
 # containing the path as text — not a symlink — so read with `read`, not
-# `readlink`. The activation in generated-agent-assets.nix uses the same pattern.
+# `readlink`. The activation in modules/terminal/agents/assets.nix uses the same pattern.
 consumer_flake_root="${KEYSTONE_CONSUMER_FLAKE:-}"
 if [[ -z "$consumer_flake_root" && -f /run/current-system/keystone-system-flake ]]; then
   IFS= read -r consumer_flake_root < /run/current-system/keystone-system-flake || consumer_flake_root=""

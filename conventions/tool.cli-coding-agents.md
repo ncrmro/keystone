@@ -199,8 +199,12 @@ discovery paths; they are legacy/reference material keystone reads itself.
 `<consumer-flake>/agents/_shared/skills.yaml` is an **optional** user-authored
 file with the same flat-map schema as `conventions/archetypes.yaml.skills` in
 the keystone repo. When present, `ks sync-agent-assets` merges it on top of
-the keystone defaults: user keys win wholesale (no field-level merge). Keys
-only in the user file are emitted as new skills.
+the keystone defaults using jq's recursive merge operator (`*`): explicit
+user fields override keystone fields per-field, missing user fields fall
+back to keystone defaults, and keys only in the user file are emitted as
+new skills. Overriding just `description` on a built-in skill preserves
+the keystone-shipped `template:` and `colocated_conventions:`/`colocated_roles:`
+automatically.
 
 ```yaml
 skills:
