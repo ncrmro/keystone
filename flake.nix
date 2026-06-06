@@ -61,7 +61,9 @@
     };
 
     # Desktop tools
-    ghostty.url = "github:ghostty-org/ghostty";
+    # Pinned to stable release tag — tracking `main` ships dev builds
+    # which have segfaulted in real use (2026-06-05 SIGSEGV killed all surfaces).
+    ghostty.url = "github:ghostty-org/ghostty?ref=v1.3.1";
     yazi = {
       url = "github:sxyazi/yazi";
       inputs.nixpkgs.follows = "nixpkgs";
