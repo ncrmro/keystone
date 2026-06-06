@@ -48,6 +48,7 @@ in
     ../shared/experimental.nix
     ../shared/repos.nix
     ../shared/update.nix
+    ../shared/password-managers.nix
     ./shell.nix
     ./zide.nix
     ./editor.nix
