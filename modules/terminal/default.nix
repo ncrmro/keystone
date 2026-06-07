@@ -1,6 +1,6 @@
 # Keystone Terminal — core terminal module entry point.
 # Implements REQ-002 (Terminal Development Environment)
-# See specs/REQ-018-repo-management/ (development mode)
+# See docs/specs/REQ-018-repo-management.md (development mode)
 #
 # All submodules are imported unconditionally. Each guards its own
 # `home.packages`/`programs.*` with `config = mkIf cfg.enable {…}`, so a

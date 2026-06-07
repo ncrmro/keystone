@@ -33,7 +33,7 @@ This convention defines how a human operator works with a team of keystone agent
     - **Progress and decisions**: Issue comments per `process.issue-journal`.
     - **Board status**: Project board columns per `process.project-board`.
 14. Agents MUST write durable state to shared platforms, not just to their notes repo. The notes repo is scratch space and local memory; GitHub/Forgejo issues, PRs, and comments are the canonical record.
-15. When an agent produces a research report, analysis, or plan, it MUST be committed to the project's repo (specs/, docs/, or notes directory) and referenced from an issue or PR — not left only in the agent's notes directory.
+15. When an agent produces a research report, analysis, or plan, it MUST be committed to the project's repo (docs/specs/, docs/, or notes directory) and referenced from an issue or PR — not left only in the agent's notes directory.
 16. DeepWork session outputs follow the same rule: final artifacts MUST be committed to a shared location. The DeepWork session directory is ephemeral working state.
 
 ## Context Engineering

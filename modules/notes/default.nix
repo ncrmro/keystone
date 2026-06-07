@@ -10,7 +10,7 @@
 # See conventions/tool.zk.md
 # See conventions/process.knowledge-management.md
 # Implements REQ-009
-# See specs/REQ-018-repo-management/requirements.md
+# See docs/specs/REQ-018-repo-management.md
 #
 # Usage:
 #   keystone.notes = {

@@ -51,7 +51,7 @@ gather_system_state()
 ## Affected Modules
 
 - `packages/ks/ks.sh` — Add `gather_repo_health` function, integrate into `gather_system_state`
-- `specs/REQ-028-doctor-devmode-repos.md` — This spec
+- `docs/specs/REQ-028-doctor-devmode-repos.md` — This spec
 
 ## Requirements
 

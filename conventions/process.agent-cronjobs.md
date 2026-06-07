@@ -103,4 +103,4 @@ Alloy/Loki integration extracts `[step=X]` labels from structured log tags for o
 - Option definitions: `keystone/modules/os/agents.nix` (lines 287–313)
 - Task loop script: `keystone/modules/os/agents.nix` (lines 489–720)
 - Scheduler script: `keystone/modules/os/agents.nix` (lines 721–843)
-- Spec: `keystone/specs/007-os-agents/spec.md` (FR-010)
+- Spec: `docs/specs/REQ-007-os-agents.md` (FR-010)

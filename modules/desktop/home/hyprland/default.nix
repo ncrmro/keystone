@@ -99,7 +99,7 @@ in
         "$browser" = mkDefault browserCommand;
 
         # Disable start-hyprland warning - UWSM handles session management
-        # See: specs/001-keystone-os/research.desktop.md#about-the-start-hyprland-warning
+        # See: docs/specs/REQ-001-keystone-os.md#about-the-start-hyprland-warning
         misc.disable_watchdog_warning = true;
 
         # Hardware cursors don't handle rotated monitors correctly,

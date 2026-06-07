@@ -271,5 +271,5 @@ milestone):
 - `modules/os/agents/scripts/task-loop.sh` — Current task loop implementation
 - `modules/terminal/calendar.nix` — Calendula CalDAV module
 - `conventions/process.agentic-team.md` — Team operating cadences (rule 30)
-- `specs/REQ-021-cfait-tasks/requirements.md` — cfait packaging (completed)
-- `specs/REQ-022-cfait-tasks/requirements.md` — cfait terminal module (completed)
+- `docs/specs/REQ-021-cfait-tasks.md` — cfait packaging (completed)
+- `docs/specs/REQ-022-cfait-tasks.md` — cfait terminal module (completed)

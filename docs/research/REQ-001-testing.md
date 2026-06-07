@@ -41,4 +41,4 @@ NixOS VM tests cause Import-From-Derivation failures in `nix flake check`. Tests
 
 ## Stale Path Reference
 
-Line 22 of original referenced `specs/001-keystone-os/requirements.md` — now `specs/REQ-001-keystone-os.md`.
+Line 22 of original referenced the legacy `_archive/001-keystone-os/requirements.md` — now `docs/specs/REQ-001-keystone-os.md`.

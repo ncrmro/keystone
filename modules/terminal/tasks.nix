@@ -12,7 +12,7 @@
 # temporary config, avoiding permanent plaintext password storage on disk.
 #
 # Implements REQ-022 (cfait CalDAV Task Manager)
-# See specs/REQ-022-cfait-tasks/requirements.md
+# See docs/specs/REQ-022-cfait-tasks.md
 #
 # ## Stalwart (self-hosted) Example
 #

@@ -214,4 +214,4 @@ implements the "Package cfait TUI calendar client" user story from GitHub issue
 - [cfait upstream](https://github.com/trougnouf/cfait) — Rust CalDAV task manager
 - [cfait on crates.io](https://crates.io/crates/cfait)
 - `modules/terminal/calendar.nix` — Calendula integration (pattern to follow)
-- `specs/REQ-020-journal-remote/requirements.md` — Most recent spec for format reference
+- `docs/specs/REQ-020-journal-remote.md` — Most recent spec for format reference

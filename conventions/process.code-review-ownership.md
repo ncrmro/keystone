@@ -14,7 +14,7 @@ This convention defines code ownership areas, maps them to team roles from `TEAM
 
 | Area                    | File Patterns                                                                             | Reviewer Role(s) |
 | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
-| Documentation & content | `docs/`, `specs/`, `blog/`                                                                | CPO              |
+| Documentation & content | `docs/` (incl. `docs/specs/`), `blog/`                                                                | CPO              |
 | Infrastructure & Nix    | `*.nix`, `flake.*`, `modules/`, `hosts/`                                                  | CTO, CEO         |
 | CI/CD pipelines         | `.github/workflows/`, `.forgejo/workflows/`, `Makefile`, `Dockerfile`, `docker-compose.*` | CTO, CEO         |
 | Application source code | `src/`, `packages/`, `*.ts`, `*.rs`, `*.py`, `*.go`                                       | CTO              |
@@ -59,7 +59,7 @@ Resolve `{ceo}`, `{cpo}`, `{cto}` from the GitHub column of `TEAM.md`:
 
 # Documentation & content — CPO reviews
 docs/                    @{cpo}
-specs/                   @{cpo}
+docs/specs/              @{cpo}
 blog/                    @{cpo}
 
 # Infrastructure & Nix — CTO + CEO review
@@ -95,7 +95,7 @@ Same ownership matrix but uses Go regex patterns. Resolve `{ceo}`, `{cpo}`, `{ct
 
 # Documentation & content — CPO reviews
 docs/.* @{cpo}
-specs/.* @{cpo}
+docs/specs/.* @{cpo}
 blog/.* @{cpo}
 
 # Infrastructure & Nix — CTO + CEO review
