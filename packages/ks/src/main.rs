@@ -90,9 +90,13 @@ async fn main() -> Result<()> {
                 json,
                 approve,
                 keystone_override,
+                emit_progress,
             } => {
                 let dev_mode = dev && !lock;
                 let pull_only = pull && dev_mode;
+                if emit_progress && approve {
+                    cmd::update_progress::enable();
+                }
                 run_update_command(
                     hosts.as_deref(),
                     dev_mode,

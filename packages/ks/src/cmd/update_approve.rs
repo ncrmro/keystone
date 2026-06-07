@@ -989,18 +989,54 @@ async fn run_build_and_activate(
     target_label: &str,
     host_label: &str,
 ) -> Result<String> {
+    use crate::cmd::update_progress::{emit_done, emit_error, emit_start, Phase};
+    use std::time::Instant;
+
     // Step 6: build against the bumped lock.
-    let store_path = build_locked(repo_root, host, target_label).await?;
+    let build_started = Instant::now();
+    emit_start(Phase::Build, Some(target_label));
+    let store_path = match build_locked(repo_root, host, target_label).await {
+        Ok(p) => {
+            emit_done(Phase::Build, build_started.elapsed().as_millis());
+            p
+        }
+        Err(e) => {
+            emit_error(
+                Phase::Build,
+                build_started.elapsed().as_millis(),
+                &format!("{e:#}"),
+            );
+            return Err(e);
+        }
+    };
     eprintln!("Built closure: {store_path}");
 
     // Step 7: activate via the privileged broker. Polkit cache from
     // the warm step should hit; if not, the user re-prompts.
+    let activate_started = Instant::now();
+    emit_start(Phase::Activate, Some(target_label));
     let reason = approval_reason(host_label);
     eprintln!("Requesting activation of {store_path}…");
-    let activated = activate_via_broker(&reason, &store_path)?;
+    let activated = match activate_via_broker(&reason, &store_path) {
+        Ok(v) => v,
+        Err(e) => {
+            emit_error(
+                Phase::Activate,
+                activate_started.elapsed().as_millis(),
+                &format!("{e:#}"),
+            );
+            return Err(e);
+        }
+    };
     if !activated {
+        emit_error(
+            Phase::Activate,
+            activate_started.elapsed().as_millis(),
+            "activation was not approved or failed",
+        );
         anyhow::bail!("activation was not approved or failed");
     }
+    emit_done(Phase::Activate, activate_started.elapsed().as_millis());
     Ok(store_path)
 }
 
