@@ -3,7 +3,14 @@ slug: v1-stabilization
 trackerMilestone: 9
 trackerIssue: 418
 flag: KEYSTONE_FLAG_MILESTONE_V1_STABILIZATION
-dependsOnSpecs: []
+dependsOnSpecs:
+  - keystone-os
+  - nixos-installer
+  - os-agents
+  - terminal
+  - keystone-desktop
+  - projects
+  - ks-cli
 status: in_progress
 ---
 
