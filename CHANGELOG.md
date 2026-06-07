@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `keystone.os.networkEgress` module — opt-in outbound firewall that drops
+  traffic to RFC1918 / link-local / ULA destinations except an explicit
+  allow-list (Tailscale CGNAT pre-allowed)
+- `keystone.server.devVm` module — declarative libvirt domain manager that
+  hosts long-lived dev VMs on a server, with an isolated NAT network and
+  per-domain UEFI Secure Boot + swtpm
+- `keystone.lib.mkAgentDevVm` — host-config helper for per-agent sandbox
+  VMs where an agent (e.g. drago, luce) iterates on a keystone fork
+  without endangering the parent host. Registers as a new `agent-dev-vm`
+  kind in `mkSystemFlake`, so `vm-image-<name>` is auto-exposed
+
 ## [0.12.0] - 2026-04-03
 
 ### Added

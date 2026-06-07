@@ -317,6 +317,104 @@ let
           }
           ENDJSON
         '';
+    # Guard: mkAgentDevVm produces a bootable agent-sandbox host config —
+    # tailscale + networkEgress + agent identity wired correctly.  Eval-only;
+    # the actual qcow2 build is exercised by the auto-exposed
+    # `vm-image-<host>` packages on consumer flakes.
+    agent-dev-vm-guest =
+      let
+        guest = self.lib.mkAgentDevVm {
+          agent = "drago";
+          agentConfig = {
+            fullName = "Drago Agent";
+            email = "agent-drago@example.com";
+          };
+          fork = "https://github.com/example/keystone.git";
+          admin = {
+            fullName = "Operator";
+            email = "operator@example.com";
+            initialPassword = "changeme";
+            admin = true;
+          };
+          modules = [ { networking.hostId = "01010101"; } ];
+        };
+        c = guest.config;
+        hasUser = builtins.hasAttr "agent-drago" c.users.users;
+        hasFork = builtins.hasAttr "agent-fork-clone" c.systemd.services;
+        egressOn = c.keystone.os.networkEgress.enable;
+        tailscaleOn = c.keystone.os.tailscale.enable;
+        agentHost = c.keystone.os.agents.drago.host;
+        ok = hasUser && hasFork && egressOn && tailscaleOn && agentHost == "agent-drago-devvm";
+      in
+      if !ok then
+        throw ''
+          agent-dev-vm-guest: wiring assertions failed.
+            hasUser=${builtins.toJSON hasUser}
+            hasFork=${builtins.toJSON hasFork}
+            egressOn=${builtins.toJSON egressOn}
+            tailscaleOn=${builtins.toJSON tailscaleOn}
+            agentHost=${agentHost}
+        ''
+      else
+        pkgs.runCommand "eval-template-agent-dev-vm-guest" { } ''
+          mkdir -p $out
+          cat > $out/agent-dev-vm-guest.json <<'ENDJSON'
+          {
+            "name": "agent-dev-vm-guest",
+            "kind": "agent-dev-vm",
+            "agentHost": "${agentHost}",
+            "egressEnabled": ${builtins.toJSON egressOn}
+          }
+          ENDJSON
+        '';
+
+    # Guard: a server host with keystone.server.devVm.hosts emits the
+    # libvirt-keystone-devnet network service and per-VM define+start
+    # one-shots, and force-enables the hypervisor.
+    agent-dev-vm-host = evalNixos "agent-dev-vm-host" (
+      let
+        fakeImage = pkgs.runCommand "fake-vm-image" { } ''
+          mkdir -p $out
+          touch $out/disk0.qcow2
+        '';
+        flake = self.lib.mkSystemFlake {
+          admin = {
+            username = "admin";
+            fullName = "Fleet Owner";
+            email = "fleet@example.com";
+            initialPassword = "changeme";
+          };
+          defaults.timeZone = "UTC";
+          keystoneServices = {
+            git.host = "ocean";
+          };
+          hosts = {
+            ocean = {
+              kind = "server";
+              hostname = "ocean";
+              hardware = null;
+              configuration = null;
+              storage.devices = [ "/dev/disk/by-id/ocean-root-001" ];
+              modules = [
+                {
+                  networking.hostId = "0ce0a01d";
+                  keystone.server.devVm = {
+                    enable = true;
+                    hosts.drago = {
+                      image = fakeImage;
+                      mac = "52:54:00:dd:dd:01";
+                    };
+                  };
+                }
+              ];
+              services.openssh.enable = true;
+            };
+          };
+        };
+      in
+      flake.nixosConfigurations.ocean
+    );
+
   };
 
   homeTests = lib.optionalAttrs (home-manager != null) {
