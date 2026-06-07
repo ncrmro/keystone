@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
 # Precompute script for the milestone_github_sync .deepreview rule.
-# Detects which docs/milestones/M*/ dirs have changed files, parses each
-# README.md's YAML frontmatter, and dumps the matching GitHub milestone +
-# tracker issue + attached issue list. Output is injected as the reviewer's
-# "Precomputed Context" so a single review pass can compare local vs remote.
+# Iterates every docs/milestones/M*/ directory, parses each README.md's
+# YAML frontmatter, and dumps the matching GitHub milestone + tracker
+# issue + attached issue list. Output is injected as the reviewer's
+# "Precomputed Context" so a single review pass can compare local vs
+# remote across every milestone.
+#
+# CRITICAL: deepwork's runtime does NOT pass the matched-file list to the
+# precompute command — the script must self-discover. Don't switch back
+# to `git diff` detection; on a clean tree (post-merge or `/review --files`)
+# it produces an empty block.
 set -euo pipefail
 
 REPO="ncrmro/keystone"
 
-# Mirror deepreview's changed-file detection: committed-on-branch + staged +
-# unstaged + untracked.
-{
-  git diff --name-only --diff-filter=AMR origin/main...HEAD 2>/dev/null || true
-  git diff --name-only --diff-filter=AMR --cached 2>/dev/null || true
-  git diff --name-only --diff-filter=AMR 2>/dev/null || true
-  git ls-files --others --exclude-standard 2>/dev/null || true
-} > /tmp/.milestone_changed_files.$$
-dirs=$(grep -E '^docs/milestones/M[0-9]+-[^/]+/' /tmp/.milestone_changed_files.$$ \
-       | awk -F/ '{print $1"/"$2"/"$3}' \
-       | sort -u)
-rm -f /tmp/.milestone_changed_files.$$
+dirs=$(find docs/milestones -mindepth 1 -maxdepth 1 -type d -name 'M[0-9]*-*' 2>/dev/null \
+       | sort)
 
 if [ -z "$dirs" ]; then
-  echo "No milestone files changed."
+  echo "No docs/milestones/M*/ directories found."
   exit 0
 fi
 
