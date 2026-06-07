@@ -41,6 +41,36 @@ let
       touch $out
     '';
 
+  # Evaluate a journal-remote server and assert the generated socket binds
+  # exactly as expected. This catches systemd list-reset regressions where the
+  # upstream wildcard ListenStream remains alongside Keystone's localhost bind.
+  assertJournalRemoteSocket =
+    name: expectedListenStreams: modules:
+    let
+      result = nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      actualListenStreams = result.config.systemd.sockets.systemd-journal-remote.listenStreams or [ ];
+      actualJson = builtins.toJSON actualListenStreams;
+      expectedJson = builtins.toJSON expectedListenStreams;
+    in
+    pkgs.runCommand "journal-remote-socket-${name}" { } ''
+      if [ '${actualJson}' != '${expectedJson}' ]; then
+        echo "FAIL: ${name}: expected ListenStream ${expectedJson}, got ${actualJson}" >&2
+        exit 1
+      fi
+      echo "OK: ${name}: ListenStream ${actualJson}"
+      touch $out
+    '';
+
   # Evaluate a module set and assert keystone.os.adminUsername resolves
   # to `expected`. Pins the auto-derivation from the admin flag.
   assertAdminUsername =
@@ -414,36 +444,42 @@ let
         touch $out
       '';
 
-    journal-remote-server = eval "journal-remote-server" [
-      {
-        keystone = {
-          domain = "example.com";
-          hosts.ocean = {
-            hostname = "journal-server";
-            role = "server";
-            journalRemote = true;
-          };
-          os = {
-            enable = true;
-            storage = {
-              type = "zfs";
-              devices = [ "/dev/vda" ];
+    journal-remote-server =
+      assertJournalRemoteSocket "journal-remote-server"
+        [
+          ""
+          "127.0.0.1:19532"
+        ]
+        [
+          {
+            keystone = {
+              domain = "example.com";
+              hosts.ocean = {
+                hostname = "journal-server";
+                role = "server";
+                journalRemote = true;
+              };
+              os = {
+                enable = true;
+                storage = {
+                  type = "zfs";
+                  devices = [ "/dev/vda" ];
+                };
+                users.testuser = {
+                  fullName = "Test User";
+                  initialPassword = "testpass";
+                  admin = true;
+                };
+              };
             };
-            users.testuser = {
-              fullName = "Test User";
-              initialPassword = "testpass";
-              admin = true;
+            networking.hostName = "journal-server";
+            networking.hostId = "deadbeef";
+            fileSystems."/" = {
+              device = lib.mkForce "rpool/crypt/system";
+              fsType = lib.mkForce "zfs";
             };
-          };
-        };
-        networking.hostName = "journal-server";
-        networking.hostId = "deadbeef";
-        fileSystems."/" = {
-          device = lib.mkForce "rpool/crypt/system";
-          fsType = lib.mkForce "zfs";
-        };
-      }
-    ];
+          }
+        ];
 
     journal-remote-client = eval "journal-remote-client" [
       {
