@@ -78,6 +78,27 @@ or validated the interaction with existing disk swap on every host.
 
 **Options**: `keystone.os.zram.enable`, `.memoryPercent`, `.swappiness`
 
+### `keystone.os.agents.<name>.dispatcher` — Agent dispatcher systemd units
+
+| | |
+|---|---|
+| **Module** | `modules/os/agents/dispatcher.nix` |
+| **Flag** | `keystone.os.agents.<name>.dispatcher.enable` (defaults to `false`) |
+| **Milestone** | [v2 — Un-experimental](https://github.com/ncrmro/keystone/milestone/10) |
+
+Declares Linux-native user units for a future dispatcher binary:
+`agent-{name}-dispatcher.path` watches `TASKS.yaml`,
+`agent-{name}-dispatcher.timer` provides a fallback trigger, and
+`agent-{name}-dispatcher.service` runs the configured command in the agent's
+user manager.
+
+**Why experimental**: The dispatcher binary and task execution contract are
+not implemented in this module yet. The units are disabled by default and
+require an explicit `dispatcher.command` when enabled.
+
+**Options**: `keystone.os.agents.<name>.dispatcher.enable`, `.command`,
+`.args`, `.tasksFile`, `.onCalendar`, `.timeout`
+
 ## For module authors
 
 To mark a module as experimental:
