@@ -7,10 +7,11 @@ let
   normalizeCommand =
     value: if builtins.isList value then builtins.concatStringsSep "\n" value else value;
 
-  evalNotes =
-    extraModules:
+  evalNotesWithOs =
+    osConfig: extraModules:
     (home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
+      extraSpecialArgs = if osConfig == null then { } else { inherit osConfig; };
       modules = [
         self.homeModules.notes
         {
@@ -28,6 +29,13 @@ let
       ++ extraModules;
     }).config;
 
+  evalNotes = evalNotesWithOs null;
+
+  osConfigFor = hostName: notesDailyHost: {
+    networking.hostName = hostName;
+    keystone.services.notesDaily.host = notesDailyHost;
+  };
+
   enabledConfig = evalNotes [
     {
       keystone.notes = {
@@ -38,6 +46,18 @@ let
   ];
 
   disabledConfig = evalNotes [ ];
+
+  singletonHostConfig = evalNotesWithOs (osConfigFor "ocean" "ocean") [ ];
+
+  singletonClientConfig = evalNotesWithOs (osConfigFor "ncrmro-laptop" "ocean") [ ];
+
+  singletonClientExplicitResult = builtins.tryEval (
+    evalNotesWithOs (osConfigFor "ncrmro-laptop" "ocean") [
+      {
+        keystone.notes.daily.enable = true;
+      }
+    ]
+  );
 
   badConfigResult = builtins.tryEval (evalNotes [
     {
@@ -59,12 +79,15 @@ let
 
   enabledExecStart = normalizeCommand enabledConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
   disabledExecStart = normalizeCommand disabledConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
+  singletonHostExecStart = normalizeCommand singletonHostConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
+  singletonClientExecStart = normalizeCommand singletonClientConfig.systemd.user.services.keystone-notes-sync.Service.ExecStart;
   execStartPost = normalizeCommand (
     enabledConfig.systemd.user.services.keystone-notes-sync.Service.ExecStartPost or ""
   );
   timerCalendar = enabledConfig.systemd.user.timers.keystone-notes-sync.Timer.OnCalendar;
   assertionTripped = !badConfigResult.success;
   parentTraversalAssertionTripped = !parentTraversalResult.success;
+  singletonClientAssertionTripped = !singletonClientExplicitResult.success;
   boolString = value: if value then "true" else "false";
 in
 pkgs.runCommand "notes-evaluation" { } ''
@@ -136,6 +159,28 @@ pkgs.runCommand "notes-evaluation" { } ''
     else
       echo "PASS: daily-disabled sync script skips rollover helper"
     fi
+
+    singleton_host_script="${singletonHostExecStart}"
+    singleton_client_script="${singletonClientExecStart}"
+
+    if ! grep -Fq 'keystone-notes-daily-rollover' "$singleton_host_script"; then
+      echo "FAIL: notesDaily singleton host should invoke rollover helper by default" >&2
+      cat "$singleton_host_script" >&2
+      errors=$((errors + 1))
+    else
+      echo "PASS: notesDaily singleton host invokes rollover helper by default"
+    fi
+
+    if grep -Fq 'keystone-notes-daily-rollover' "$singleton_client_script"; then
+      echo "FAIL: notesDaily non-host should not invoke rollover helper by default" >&2
+      cat "$singleton_client_script" >&2
+      errors=$((errors + 1))
+    else
+      echo "PASS: notesDaily non-host skips rollover helper by default"
+    fi
+
+    check "${boolString singletonClientAssertionTripped}" \
+      "notesDaily non-host explicit daily enable trips the module assertion"
 
     if [ "${timerCalendar}" != "hourly" ]; then
       echo "FAIL: expected timer OnCalendar=hourly, got '${timerCalendar}'" >&2

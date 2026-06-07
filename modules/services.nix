@@ -112,6 +112,18 @@ in
       description = "List of hostnames acting as GPU/ML workers.";
     };
 
+    notesDaily.host = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "ocean";
+      description = ''
+        The networking.hostName of the single host responsible for notes daily
+        rollover (daily.md -> journal/YYYY-MM-DD.md). Notes sync can still run
+        on every host; this host gate only controls the once-per-day journal
+        symlink migration to avoid multi-host rollover races.
+      '';
+    };
+
     vaultwarden.host = mkOption {
       type = types.nullOr types.str;
       default = null;
@@ -185,6 +197,7 @@ in
     ++ (validateHost "git" cfg.git.host)
     ++ (validateHost "immich" cfg.immich.host)
     ++ (concatMap (h: validateHost "immich.workers" h) cfg.immich.workers)
+    ++ (validateHost "notesDaily" cfg.notesDaily.host)
     ++ (validateHost "vaultwarden" cfg.vaultwarden.host)
     ++ (optional (cfg.vaultwarden.host != null && cfg.vaultwarden.domain == null) {
       assertion = false;
