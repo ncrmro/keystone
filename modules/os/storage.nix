@@ -61,8 +61,8 @@ let
 in
 {
   config = mkMerge [
-    # ZFS configuration
-    (mkIf (osCfg.enable && cfg.enable && cfg.type == "zfs") {
+    # ZFS configuration — UEFI platform (x86_64, systemd-boot, LUKS credstore)
+    (mkIf (osCfg.enable && cfg.enable && cfg.type == "zfs" && cfg.platform == "uefi") {
       # Ensure ZFS support is enabled
       boot.supportedFilesystems = [ "zfs" ];
 
@@ -349,6 +349,245 @@ in
       boot.kernelModules = [ "zfs" ];
       boot.extraModulePackages = [ config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute} ];
     })
+
+    # ZFS configuration — Pi platform (aarch64, UEFI via pftf/RPi4, systemd-boot)
+    #
+    # The Pi boots pftf/RPi4 UEFI firmware from the ESP, which then loads systemd-boot
+    # — same boot stack as x86 UEFI hosts. The Pi EEPROM must be configured to allow
+    # SD/USB boot; the pftf firmware files must be present on the ESP (handled by
+    # boot.loader.systemd-boot.extraFiles below).
+    #
+    # Two sub-layouts selected by cfg.pi.bootMedium:
+    #   sd       — single-device: ESP (with pftf firmware) + zfs partition on cfg.devices[0]
+    #   external — ESP on cfg.pi.bootDevice; zfs pool on cfg.devices (multi-disk ok)
+    #
+    # No LUKS credstore: Pi has no TPM. For at-rest encryption use native ZFS
+    # encryption with an agenix-delivered keyfile (follow-up).
+    #
+    # Consumers MUST set networking.hostId (required by ZFS for pool identity).
+    (mkIf (osCfg.enable && cfg.enable && cfg.type == "zfs" && cfg.platform == "pi") (
+      let
+        piBootDevice = if cfg.pi.bootMedium == "sd" then firstDevice else cfg.pi.bootDevice;
+      in
+      {
+        assertions = [
+          {
+            assertion = cfg.pi.bootMedium == "sd" || cfg.pi.bootDevice != null;
+            message = ''
+              keystone.os.storage.pi.bootDevice must be set when
+              keystone.os.storage.pi.bootMedium = "external".
+            '';
+          }
+          {
+            assertion = cfg.pi.bootMedium != "sd" || length cfg.devices == 1;
+            message = ''
+              keystone.os.storage.pi.bootMedium = "sd" requires exactly one device in
+              keystone.os.storage.devices (the SD/eMMC card is both boot and pool).
+              For multi-disk pools set bootMedium = "external".
+            '';
+          }
+          {
+            assertion = cfg.pi.bootMedium != "external" || length cfg.devices > 0;
+            message = ''
+              keystone.os.storage.pi.bootMedium = "external" requires at least one
+              device in keystone.os.storage.devices for the ZFS pool.
+            '';
+          }
+          {
+            assertion = cfg.pi.bootMedium != "external" || !(lib.elem cfg.pi.bootDevice cfg.devices);
+            message = ''
+              keystone.os.storage.pi.bootDevice (${toString cfg.pi.bootDevice}) must not
+              also appear in keystone.os.storage.devices — disko cannot manage the same
+              physical disk twice. Remove it from devices or switch to bootMedium = "sd".
+            '';
+          }
+          {
+            assertion = cfg.pi.uefiFirmware != { };
+            message = ''
+              keystone.os.storage.pi.uefiFirmware is empty. The Pi UEFI boot path
+              requires pftf/RPi4 firmware files on the ESP — fetch a pftf release
+              and map its files here, or the Pi will not boot.
+            '';
+          }
+          {
+            assertion = config.networking.hostId != "";
+            message = ''
+              networking.hostId must be set for ZFS pool identity on the Pi platform.
+              Pick a stable 8-hex-char value (e.g. `networking.hostId = "deadbeef";`).
+            '';
+          }
+          {
+            assertion = !enableSwap;
+            message = ''
+              keystone.os.storage.swap is not yet supported on platform = "pi".
+              Set storage.swap.size = "0" (or use zram via zramSwap) until Pi swap
+              layout is implemented.
+            '';
+          }
+          {
+            assertion = !cfg.hibernate.enable;
+            message = ''
+              keystone.os.storage.hibernate is not supported on platform = "pi".
+            '';
+          }
+        ];
+
+        boot.supportedFilesystems = [ "zfs" ];
+
+        boot.kernelPackages =
+          if cfg.zfs.kernel == "latest" then
+            pkgs.linuxPackages_latest
+          else if cfg.zfs.kernel == "default" then
+            pkgs.linuxPackages
+          else
+            cfg.zfs.kernel;
+
+        # Pi boot: pftf/RPi4 UEFI firmware loads systemd-boot from the ESP.
+        boot.loader.systemd-boot.enable = true;
+        boot.loader.efi.canTouchEfiVariables = false; # pftf doesn't persist EFI vars
+        boot.loader.generic-extlinux-compatible.enable = false;
+
+        # Drop the pftf UEFI firmware onto the ESP alongside systemd-boot.
+        # Override cfg.pi.uefiFirmware to pin a specific pftf release.
+        boot.loader.systemd-boot.extraFiles = cfg.pi.uefiFirmware;
+
+        boot.initrd.systemd.enable = true;
+
+        boot.zfs = {
+          forceImportRoot = false;
+          allowHibernation = false;
+          devNodes = importDir;
+        };
+
+        boot.kernelParams = [
+          "zfs.zfs_arc_max=${toString arcMaxBytes}"
+        ];
+
+        boot.kernelModules = [ "zfs" ];
+        boot.extraModulePackages = [ config.boot.kernelPackages.${pkgs.zfs.kernelModuleAttribute} ];
+
+        services.zfs = {
+          autoScrub = mkIf cfg.zfs.autoScrub {
+            enable = true;
+            interval = "weekly";
+          };
+          trim = {
+            enable = true;
+            interval = "weekly";
+          };
+        };
+
+        disko.devices = {
+          disk =
+            let
+              # Boot disk: ESP holds pftf UEFI firmware + systemd-boot entries.
+              bootDisk = {
+                bootdisk = {
+                  type = "disk";
+                  device = piBootDevice;
+                  content = {
+                    type = "gpt";
+                    partitions = {
+                      esp = {
+                        name = "ESP";
+                        size = cfg.pi.firmwareSize;
+                        type = "EF00";
+                        content = {
+                          type = "filesystem";
+                          format = "vfat";
+                          mountpoint = "/boot";
+                          mountOptions = [ "umask=0077" ];
+                        };
+                      };
+                      # On bootMedium = "sd", the rest of the SD becomes the zfs partition.
+                      zfs = mkIf (cfg.pi.bootMedium == "sd") {
+                        end = "-0";
+                        content = {
+                          type = "zfs";
+                          pool = "rpool";
+                        };
+                      };
+                    };
+                  };
+                };
+              };
+
+              # External pool disks: whole-partition ZFS, no ESP/firmware on these.
+              mkPoolDisk = idx: device: {
+                name = "pool${toString idx}";
+                value = {
+                  type = "disk";
+                  inherit device;
+                  content = {
+                    type = "gpt";
+                    partitions.zfs = {
+                      end = "-0";
+                      content = {
+                        type = "zfs";
+                        pool = "rpool";
+                      };
+                    };
+                  };
+                };
+              };
+
+              poolDisks =
+                if cfg.pi.bootMedium == "external" then
+                  builtins.listToAttrs (imap0 mkPoolDisk cfg.devices)
+                else
+                  { };
+            in
+            bootDisk // poolDisks;
+
+          zpool.rpool = {
+            type = "zpool";
+            mode = zfsVdevType;
+            rootFsOptions = {
+              mountpoint = "none";
+              compression = cfg.zfs.compression;
+              acltype = "posixacl";
+              xattr = "sa";
+              atime = cfg.zfs.atime;
+              "com.sun:auto-snapshot" = "true";
+            };
+            options.ashift = "12";
+            datasets = {
+              root = {
+                type = "zfs_fs";
+                mountpoint = "/";
+              };
+              nix = {
+                type = "zfs_fs";
+                mountpoint = "/nix";
+                options."com.sun:auto-snapshot" = "false";
+              };
+              var = {
+                type = "zfs_fs";
+                mountpoint = "/var";
+              };
+            };
+          };
+        };
+
+        fileSystems = {
+          "/" = {
+            device = "rpool/root";
+            fsType = "zfs";
+            options = [ "zfsutil" ];
+          };
+          "/nix" = {
+            device = "rpool/nix";
+            fsType = "zfs";
+            options = [ "zfsutil" ];
+          };
+          "/var" = {
+            device = "rpool/var";
+            fsType = "zfs";
+            options = [ "zfsutil" ];
+          };
+        };
+      }
+    ))
 
     # ext4 configuration (simpler alternative to ZFS)
     (mkIf (osCfg.enable && cfg.enable && cfg.type == "ext4") {
