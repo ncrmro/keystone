@@ -162,7 +162,87 @@ let
       touch $out
     '';
 
+  assertContainerWorkload =
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+          adminBase
+          {
+            users.users.svc-vega = {
+              isSystemUser = true;
+              group = "svc-vega";
+              home = "/var/lib/keystone-containers/svc-vega";
+            };
+            users.groups.svc-vega = { };
+            keystone.os.users.alice = {
+              fullName = "Alice";
+              initialPassword = "pw";
+              admin = true;
+            };
+            keystone.os.containers.workloads.vega = {
+              enable = true;
+              user = "svc-vega";
+              image = "git.ncrmro.com/ncrmro/vega:latest";
+              ports = [ "127.0.0.1:17878:17878" ];
+              volumes = [ "/var/lib/vega:/var/lib/vega" ];
+              environment.PUBLIC_SERVER_PORT = "17878";
+              environmentFiles = [ "/run/agenix/vega-env" ];
+              registryLogin = {
+                enable = true;
+                username = "svc-vega";
+                passwordFile = "/run/agenix/vega-registry-token";
+              };
+            };
+          }
+        ];
+      };
+      rules = result.config.systemd.tmpfiles.rules;
+      quadletRules = builtins.filter (rule: lib.hasInfix "/vega.container" rule) rules;
+      quadletRule = if quadletRules == [ ] then "" else builtins.head quadletRules;
+      quadletPath = if quadletRule == "" then "" else lib.last (lib.splitString " " quadletRule);
+      quadletText = if quadletPath == "" then "" else builtins.readFile quadletPath;
+      serviceNames = builtins.attrNames result.config.systemd.services;
+      hasUserManagerService = builtins.elem "keystone-container-workload-vega" serviceNames;
+      hasLingerRule = builtins.any (rule: lib.hasInfix "/var/lib/systemd/linger/svc-vega" rule) rules;
+      requiredFragments = [
+        "Image=git.ncrmro.com/ncrmro/vega:latest"
+        "AutoUpdate=registry"
+        "PublishPort=127.0.0.1:17878:17878"
+        "Volume=/var/lib/vega:/var/lib/vega"
+        "Environment=PUBLIC_SERVER_PORT=17878"
+        "EnvironmentFile=/run/agenix/vega-env"
+        "ExecStartPre=/nix/store/"
+      ];
+      missingFragments = builtins.filter (
+        fragment: !(lib.hasInfix fragment quadletText)
+      ) requiredFragments;
+      ok = quadletRules != [ ] && hasUserManagerService && hasLingerRule && missingFragments == [ ];
+    in
+    pkgs.runCommand "containers-workload-quadlet" { } ''
+      if ${if ok then "true" else "false"}; then
+        echo "OK: containers workload Quadlet generated"
+      else
+        echo "FAIL: containers workload Quadlet generation" >&2
+        echo "quadletRule: ${quadletRule}" >&2
+        echo "hasUserManagerService: ${builtins.toJSON hasUserManagerService}" >&2
+        echo "hasLingerRule: ${builtins.toJSON hasLingerRule}" >&2
+        echo "missingFragments: ${builtins.toJSON missingFragments}" >&2
+        echo "quadletText:" >&2
+        cat ${quadletPath} >&2 || true
+        exit 1
+      fi
+      touch $out
+    '';
+
   tests = {
+    containers-workload-quadlet = assertContainerWorkload;
+
     minimal-zfs = eval "minimal-zfs" [
       {
         keystone.os = {
@@ -720,6 +800,7 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - full-zfs: Full ZFS with all options"
     echo "  - ext4-simple: Simple ext4 setup"
     echo "  - ext4-hibernate: ext4 with hibernation enabled"
+    echo "  - containers-workload-quadlet: rootless Quadlet workload generation"
     echo "  - zram-experimental: experimental keystone.os.zram defaults"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"

@@ -395,6 +395,7 @@ in
               createHome = true;
               group = "gitea-runner";
               home = "/var/lib/gitea-runner";
+              linger = true;
             };
             users.groups.gitea-runner = { };
 
