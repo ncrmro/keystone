@@ -16,7 +16,6 @@ in
       };
 
       dwindle = mkDefault {
-        pseudotile = true;
         preserve_split = true;
         force_split = 2;
       };
