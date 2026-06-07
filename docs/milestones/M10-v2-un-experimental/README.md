@@ -3,7 +3,10 @@ slug: v2-un-experimental
 trackerMilestone: 10
 trackerIssue: null
 flag: KEYSTONE_FLAG_MILESTONE_V2_UN_EXPERIMENTAL
-dependsOnSpecs: []
+dependsOnSpecs:
+  - notes
+  - conventions-grafana-mcp
+  - projects
 status: planned
 ---
 
