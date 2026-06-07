@@ -150,6 +150,9 @@ Secrets:
   - A fast model for ingest (default: haiku)
   - A fast model for prioritize (default: haiku)
   - A capable model for execute (default: sonnet), overridable per-task via the `model` field
+- Each `TASKS.yaml` task intended for OS-agent execution MUST include `repo` and `branch_name`
+- Each `TASKS.yaml` task MAY include per-task `provider`, `profile`, and `model` overrides for OS-agent execution
+- Human-only, imported, completed, or otherwise non-executable tasks MAY omit OS-agent execution fields for backwards compatibility
 - Each task in `TASKS.yaml` MAY specify a `needs` field for dependency ordering
 - Each task in `TASKS.yaml` MAY specify a `workflow` field for DeepWork workflow dispatch
 - The task loop MUST validate `TASKS.yaml` after each write and restore from a pre-stage backup on validation failure

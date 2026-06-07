@@ -46,6 +46,26 @@ pub enum TaskCommand {
         /// Associated project.
         #[arg(long)]
         project: Option<String>,
+
+        /// Repository URL or owner/name slug for OS-agent execution.
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Git branch name OS agents should use for execution.
+        #[arg(long = "branch-name")]
+        branch_name: Option<String>,
+
+        /// OS-agent execution provider override (claude, gemini, codex).
+        #[arg(long)]
+        provider: Option<String>,
+
+        /// OS-agent semantic profile override.
+        #[arg(long)]
+        profile: Option<String>,
+
+        /// Provider-specific model override.
+        #[arg(long)]
+        model: Option<String>,
     },
 
     /// Mark a task as in-progress.
@@ -120,6 +140,14 @@ pub struct Task {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<String>,
@@ -165,6 +193,14 @@ pub struct IngestTask {
     pub source_ref: Option<String>,
     #[serde(default)]
     pub project: Option<String>,
+    #[serde(default)]
+    pub repo: Option<String>,
+    #[serde(default)]
+    pub branch_name: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
 }
@@ -338,6 +374,10 @@ pub fn apply_ingest(task_file: &mut TaskFile, ingest: &IngestResult) -> (usize, 
             description: it.description.clone(),
             status: "pending".to_string(),
             project: it.project.clone(),
+            repo: it.repo.clone(),
+            branch_name: it.branch_name.clone(),
+            provider: it.provider.clone(),
+            profile: it.profile.clone(),
             source: it.source.clone(),
             source_ref: it.source_ref.clone(),
             model: it.model.clone(),
@@ -369,13 +409,23 @@ pub async fn execute(args: &TaskArgs) -> Result<()> {
             source,
             source_ref,
             project,
-        }) => execute_add(
+            repo,
+            branch_name,
+            provider,
+            profile,
+            model,
+        }) => execute_add(AddTaskInput {
             description,
-            name.as_deref(),
+            name: name.as_deref(),
             source,
-            source_ref.as_deref(),
-            project.as_deref(),
-        ),
+            source_ref: source_ref.as_deref(),
+            project: project.as_deref(),
+            repo: repo.as_deref(),
+            branch_name: branch_name.as_deref(),
+            provider: provider.as_deref(),
+            profile: profile.as_deref(),
+            model: model.as_deref(),
+        }),
         Some(TaskCommand::Start { name }) => execute_start(name),
         Some(TaskCommand::Done { name }) => execute_done(name),
         Some(TaskCommand::Block { name, reason }) => execute_block(name, reason.as_deref()),
@@ -483,27 +533,39 @@ fn print_task(task: &Task) {
 
 // ── Add ───────────────────────────────────────────────────────────────
 
-fn execute_add(
-    description: &str,
-    name: Option<&str>,
-    source: &str,
-    source_ref: Option<&str>,
-    project: Option<&str>,
-) -> Result<()> {
+struct AddTaskInput<'a> {
+    description: &'a str,
+    name: Option<&'a str>,
+    source: &'a str,
+    source_ref: Option<&'a str>,
+    project: Option<&'a str>,
+    repo: Option<&'a str>,
+    branch_name: Option<&'a str>,
+    provider: Option<&'a str>,
+    profile: Option<&'a str>,
+    model: Option<&'a str>,
+}
+
+fn execute_add(input: AddTaskInput<'_>) -> Result<()> {
     let path = tasks_file_path();
     let mut task_file = load_tasks_from(&path)?;
 
-    let task_name = name
+    let task_name = input
+        .name
         .map(String::from)
-        .unwrap_or_else(|| slugify(description));
+        .unwrap_or_else(|| slugify(input.description));
     let task = Task {
         name: task_name.clone(),
-        description: description.to_string(),
+        description: input.description.to_string(),
         status: "pending".to_string(),
-        project: project.map(String::from),
-        source: Some(source.to_string()),
-        source_ref: source_ref.map(String::from),
-        model: None,
+        project: input.project.map(String::from),
+        source: Some(input.source.to_string()),
+        source_ref: input.source_ref.map(String::from),
+        repo: input.repo.map(String::from),
+        branch_name: input.branch_name.map(String::from),
+        provider: input.provider.map(String::from),
+        profile: input.profile.map(String::from),
+        model: input.model.map(String::from),
         workflow: None,
         needs: None,
         blocked_reason: None,
@@ -617,7 +679,10 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
         "instructions": "Review these notifications and decide which are actionable tasks. \
             Return JSON matching the IngestResult schema: {\"tasks\": [{\"name\": \"kebab-case-name\", \
             \"description\": \"what to do\", \"source\": \"email|github|forgejo\", \
-            \"source_ref\": \"unique-ref\", \"project\": \"optional-project\"}]}. \
+            \"source_ref\": \"unique-ref\", \"project\": \"optional-project\", \
+            \"repo\": \"optional execution repo\", \"branch_name\": \"optional execution branch\", \
+            \"provider\": \"optional provider\", \"profile\": \"optional profile\", \
+            \"model\": \"optional model\"}]}. \
             Skip notifications that already have a matching source_ref in existing_refs. \
             Skip automated notifications, newsletters, and CI status. \
             Any message containing 'ping' MUST create a reply-with-pong task.",
@@ -638,6 +703,10 @@ async fn execute_ingest(file: Option<&PathBuf>, apply: bool) -> Result<()> {
                             "source": {"type": "string"},
                             "source_ref": {"type": "string"},
                             "project": {"type": "string"},
+                            "repo": {"type": "string"},
+                            "branch_name": {"type": "string"},
+                            "provider": {"type": "string"},
+                            "profile": {"type": "string"},
                             "model": {"type": "string"}
                         }
                     }
@@ -793,6 +862,10 @@ mod tests {
             project: None,
             source: None,
             source_ref: None,
+            repo: None,
+            branch_name: None,
+            provider: None,
+            profile: None,
             model: None,
             workflow: None,
             needs: None,
@@ -1061,6 +1134,10 @@ mod tests {
                 source: Some("email".to_string()),
                 source_ref: Some("email-99-user@host".to_string()),
                 project: None,
+                repo: Some("ncrmro/keystone".to_string()),
+                branch_name: Some("fix/reply-ping".to_string()),
+                provider: Some("codex".to_string()),
+                profile: Some("medium".to_string()),
                 model: Some("haiku".to_string()),
             }],
         };
@@ -1069,6 +1146,10 @@ mod tests {
         assert_eq!(added, 1);
         assert_eq!(skipped, 0);
         assert_eq!(tf.tasks[0].name, "reply-to-ping");
+        assert_eq!(tf.tasks[0].repo, Some("ncrmro/keystone".to_string()));
+        assert_eq!(tf.tasks[0].branch_name, Some("fix/reply-ping".to_string()));
+        assert_eq!(tf.tasks[0].provider, Some("codex".to_string()));
+        assert_eq!(tf.tasks[0].profile, Some("medium".to_string()));
         assert_eq!(tf.tasks[0].model, Some("haiku".to_string()));
     }
 
@@ -1085,6 +1166,10 @@ mod tests {
                     source: Some("email".to_string()),
                     source_ref: Some("email-42-user@host".to_string()),
                     project: None,
+                    repo: None,
+                    branch_name: None,
+                    provider: None,
+                    profile: None,
                     model: None,
                 },
                 IngestTask {
@@ -1093,6 +1178,10 @@ mod tests {
                     source: Some("github".to_string()),
                     source_ref: Some("https://github.com/o/r/issues/1".to_string()),
                     project: None,
+                    repo: None,
+                    branch_name: None,
+                    provider: None,
+                    profile: None,
                     model: None,
                 },
             ],
