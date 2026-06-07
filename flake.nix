@@ -478,6 +478,9 @@
           desktopWalkerSurfaces = import ./tests/module/desktop-walker-surfaces.nix {
             inherit pkgs;
           };
+          desktopPhotosAutoGate = import ./tests/module/desktop-photos-auto-gate.nix {
+            inherit pkgs;
+          };
           desktopAutostartAssertion = import ./tests/module/desktop-autostart-assertion.nix {
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
@@ -547,6 +550,7 @@
           keystone-update-approve-flow = keystoneUpdateApproveFlow;
           hyprland-bindings-agent-conflict = hyprlandBindingsAgentConflict;
           desktop-walker-surfaces = desktopWalkerSurfaces;
+          desktop-photos-auto-gate = desktopPhotosAutoGate;
           desktop-autostart-assertion = desktopAutostartAssertion;
           hyprland-config-smoke = hyprlandConfigSmoke;
           desktop-fprintd = desktopFprintd;
@@ -609,6 +613,7 @@
             mkdir -p "$out"
             ln -s ${hyprlandBindingsAgentConflict} "$out/hyprland-bindings-agent-conflict"
             ln -s ${desktopWalkerSurfaces} "$out/desktop-walker-surfaces"
+            ln -s ${desktopPhotosAutoGate} "$out/desktop-photos-auto-gate"
             ln -s ${desktopAutostartAssertion} "$out/desktop-autostart-assertion"
             ln -s ${hyprlandConfigSmoke} "$out/hyprland-config-smoke"
             ln -s ${desktopFprintd} "$out/desktop-fprintd"
