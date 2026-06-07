@@ -122,7 +122,10 @@ Keep development workflows separate from initial setup:
 
 ## Quick Links
 
+- **[Milestones](milestones/)** — current product deliverables, mirrored from GitHub milestones
+- **[Specs](specs/)** — normative requirement specs (`REQ-NNN-slug.md`)
 - **[Release notes](releasing.md)** - Release process and stable-release reference
+- **[Past releases](releases/)** — release artifacts, summaries, and changelogs per tag
 - **[Project posts](posts.md)** - Working-backwards and narrative project material
 - **[Research notes](research/universal-deepwork-job-library.md)** - Long-form supporting research captured in the docs tree
 - **[Experimental features](experimental.md)** - Stability tiers and the `keystone.experimental` flag

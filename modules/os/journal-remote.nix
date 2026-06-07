@@ -1,7 +1,7 @@
 # Centralized journal collection via systemd-journal-remote/upload.
 #
 # Implements REQ-020 (Centralized Journal Collection)
-# See specs/REQ-020-journal-remote/requirements.md
+# See docs/specs/REQ-020-journal-remote.md
 #
 # Configuration is auto-derived from keystone.hosts: the host with
 # `journalRemote = true` becomes the server, all other hosts auto-forward

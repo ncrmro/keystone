@@ -107,6 +107,6 @@ programs.helix.enable = true;
 ## References
 
 - Module implementation: `modules/users/default.nix`
-- Complete spec: `specs/007-zfs-user-module/`
+- Complete spec: the legacy `_archive/007-zfs-user-module/` (removed in v1 docs cleanup; see git history)
 - ZFS delegation: `man zfs-allow`
 - Linux mount limitation: https://github.com/openzfs/zfs/discussions/10648

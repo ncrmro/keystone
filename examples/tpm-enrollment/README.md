@@ -250,5 +250,5 @@ keystone.tpmEnrollment = {
 
 - **User Documentation**: `/usr/share/doc/keystone/tpm-enrollment.md` (after installation)
 - **Module Source**: `modules/tpm-enrollment/default.nix`
-- **Specification**: `specs/006-tpm-enrollment/spec.md`
-- **Implementation Plan**: `specs/006-tpm-enrollment/plan.md`
+- **Specification**: `docs/specs/REQ-006-tpm-enrollment.md` (history in git for the original `_archive/006-tpm-enrollment/spec.md`)
+- **Implementation Plan**: `docs/specs/REQ-006-tpm-enrollment.md` (history in git for the original `_archive/006-tpm-enrollment/plan.md`)

@@ -43,7 +43,7 @@ user stories issue MUST exist before engineering planning starts.
 
 12. Engineering planning MUST NOT begin until the milestone and user stories issue exist.
 13. The engineering phase produces three artifacts:
-    - **Spec files** in `specs/{NNN}-{slug}.md` with behavioral requirements (RFC 2119: MUST/SHOULD/MAY)
+    - **Spec files** in `docs/specs/REQ-{NNN}-{slug}.md` with behavioral requirements (RFC 2119: MUST/SHOULD/MAY)
     - **Plan issue** — master implementation plan referencing specs, with happy paths, test expectations, design mockups, and demo descriptions
     - **Child issues** — small, non-blocking issues decomposed from the plan, each mapping to a single PR
 14. Specs MUST be committed to a branch and opened as a draft PR for review before implementation.

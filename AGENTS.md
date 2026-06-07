@@ -30,6 +30,15 @@ list to deploy multiple: `ks update --lock ocean,mercury`.
 - `modules/server/` — Server services: DNS, mail, monitoring, Forgejo, Grafana, Immich, Vaultwarden
 - `modules/notes/` — Zettelkasten notebook management via zk
 
+## Docs
+
+- `docs/index.md` — entry point for users
+- `docs/milestones/` — product deliverables, one dir per GitHub milestone (`M<N>-<slug>/`)
+- `docs/specs/` — normative requirement specs (`REQ-NNN-<slug>.md`, flat files)
+- `docs/releases/` — release artifacts and per-tag release notes
+- `docs/{os,desktop,terminal,agents,cluster,research,posts}/` — topical guides and supporting material
+- `conventions/` — project-level conventions (process, code style, archetypes)
+
 ## Packages
 
 - `packages/ks/` — Keystone CLI/TUI: build, deploy, notifications, tasks, projects, doctor

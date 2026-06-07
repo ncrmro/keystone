@@ -326,7 +326,7 @@ Testing scripts to keep in sync:
 - **VM Management**: `bin/virtual-machine --help`
 - **Secure Boot Testing**: `docs/examples/vm-secureboot-testing.md`
 - **TPM Enrollment**: `docs/tpm-enrollment.md`
-- **Manual Test Plans**: `specs/*/test-plan.md`
+- **Manual Test Plans**: `docs/specs/REQ-*-test-plan.md`
 
 ---
 

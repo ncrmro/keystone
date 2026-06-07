@@ -44,10 +44,8 @@ implementation_sync:
       - "flake.nix"
       - "AGENTS.md"
       - "conventions/AGENTS.md"
-      - "releases/AGENTS.md"
       - "docs/**"
       - "templates/**"
-      - "specs/**"
       - "tests/**"
       - ".deepwork/jobs/**"
     exclude:
@@ -89,13 +87,13 @@ implementation_sync:
       If a module change adds new user-facing features or options not yet documented,
       flag as "missing documentation".
 
-      ## 2. Specs (specs/)
+      ## 2. Specs (docs/specs/)
 
-      Specs are flat files at `specs/REQ-NNN-slug.md` (no subdirectories).
+      Specs are flat files at `docs/specs/REQ-NNN-slug.md` (no subdirectories).
       The `specs_review` rule handles deep spec-vs-implementation review.
       Here, only check structural hygiene:
-      - Flag any `specs/REQ-*/` subdirectory that contains a `requirements.md`
-        (violates flat-file convention — should be migrated to `specs/REQ-NNN-slug.md`)
+      - Flag any `docs/specs/REQ-*/` subdirectory that contains a `requirements.md`
+        (violates flat-file convention — should be migrated to `docs/specs/REQ-NNN-slug.md`)
       - Flag any spec file whose "Affected Modules" section references a path
         that no longer exists in the repository
 
@@ -141,7 +139,7 @@ requirements_traceability:
 
       2. **Spec references** — If the module implements requirements from a spec,
          the header MUST reference the spec ID.
-         Format: `# Implements REQ-XXX` or `# See specs/REQ-XXX-<name>.md`
+         Format: `# Implements REQ-XXX` or `# See docs/specs/REQ-XXX-<name>.md`
          Example: `# Implements REQ-007 (OS Agents)`
 
       These MUST be links/references only — do NOT inline convention content
@@ -152,7 +150,7 @@ requirements_traceability:
       - Read the module's header comment (first comment block before the opening `{`)
       - Read the module body to understand what it does
       - Check conventions/ for any convention that covers this module's domain
-      - Check specs/ for any REQ that lists this file in its "Affected Modules"
+      - Check docs/specs/ for any REQ that lists this file in its "Affected Modules"
       - Flag missing references as "missing convention link" or "missing spec reference"
 
       **Exceptions** (do not flag):
@@ -242,15 +240,14 @@ rust_code_review:
 # When any spec file changes, use ripgrep to find all implementation
 # files referenced by that spec's REQ numbers, then review them
 # holistically against the spec's requirements. Also enforces the
-# flat-file convention: no specs/REQ-*/requirements.md subdirs.
+# flat-file convention: no docs/specs/REQ-*/requirements.md subdirs.
 # =====================================================================
 specs_review:
   description: "When a spec changes, find related implementation files via ripgrep and review them against the spec's requirements. Enforces the flat-file convention."
   match:
     include:
-      - "specs/REQ-*.md"
-      - "specs/[0-9][0-9][0-9]-*.md"
-      - "specs/AGENTS.md"
+      - "docs/specs/REQ-*.md"
+      - "docs/specs/AGENTS.md"
   review:
     strategy: individual
     instructions: |
@@ -260,11 +257,11 @@ specs_review:
       ## 1. Flat-file convention check
 
       Run:
-        find specs/ -mindepth 2 -name "requirements.md"
+        find docs/specs/ -mindepth 2 -name "requirements.md"
 
       If any results are returned, flag each as a violation:
-        "VIOLATION: specs/REQ-NNN-slug/requirements.md must be migrated to
-        specs/REQ-NNN-slug.md (flat file). See specs/AGENTS.md."
+        "VIOLATION: docs/specs/REQ-NNN-slug/requirements.md must be migrated to
+        docs/specs/REQ-NNN-slug.md (flat file). See docs/specs/AGENTS.md."
 
       ## 2. Find related implementation files
 
@@ -276,7 +273,7 @@ specs_review:
       Then run ripgrep to discover every file that references this spec:
         rg "REQ-023" --type nix --type sh -l
         rg "REQ-023" .deepwork/jobs/ conventions/ -l
-        rg "specs/REQ-023" -l
+        rg "docs/specs/REQ-023" -l
 
       Combine the "Affected Modules" list with the ripgrep results into a
       unified set of related files.
@@ -310,7 +307,7 @@ specs_review:
         to look at `requirements.md` inside a subdir — all specs are flat files.
       - **REQ numbers unique**: the spec's own REQ-NNN.X numbers must not
         duplicate numbers in adjacent spec files. Run:
-          rg "REQ-NNN\." specs/ | grep -v "^specs/REQ-NNN-"
+          rg "REQ-NNN\." docs/specs/ | grep -v "^docs/specs/REQ-NNN-"
         to check for cross-spec number leakage.
       - **Press release / plan links**: if the spec has a "Press release:"
         or "Plan:" link, fetch the issue to confirm it still exists and
@@ -327,6 +324,106 @@ specs_review:
         - Overall verdict: SPEC IN SYNC or SPEC DRIFT DETECTED
     additional_context:
       unchanged_matching_files: true
+
+# =====================================================================
+# Milestone ↔ GitHub Sync
+# When a milestone's README.md (frontmatter or scope) or tracker.md
+# changes, validate that local state matches the GitHub milestone and
+# tracker issue. Precomputed context fetches live GitHub state so the
+# reviewer compares files-on-disk vs. tracker-of-record.
+# =====================================================================
+milestone_github_sync:
+  description: "Validate docs/milestones/M<N>-*/ files against the GitHub milestone and tracker issue."
+  match:
+    include:
+      - "docs/milestones/M*/README.md"
+      - "docs/milestones/M*/tracker.md"
+      - "docs/milestones/M*/press-release.md"
+      - "docs/milestones/M*/internal-faq.md"
+      - "docs/milestones/M*/designs.md"
+  review:
+    strategy: matches_together
+    precomputed_info_for_reviewer_bash_command: .deepwork/review/fetch_milestone_state.sh
+    additional_context:
+      unchanged_matching_files: true
+    instructions: |
+      A milestone doc-set under `docs/milestones/M<N>-<slug>/` changed. Validate
+      it against the live GitHub state injected as Precomputed Context below.
+
+      The frontmatter at the top of each `README.md` is the machine-readable
+      header (the schema lives at `docs/milestones/README.md` § "README.md
+      frontmatter"):
+
+      ```yaml
+      ---
+      slug: <kebab-case>
+      trackerMilestone: <int>          # GitHub milestone number, matches M<N>
+      trackerIssue: <int | null>       # release-tracker issue number
+      flag: KEYSTONE_FLAG_MILESTONE_<UPPER>
+      dependsOnSpecs: [<spec-slug>, ...]
+      status: planned | in_progress | shipped | cancelled
+      ---
+      ```
+
+      Precomputed Context will include one block per changed milestone:
+        - `gh api repos/ncrmro/keystone/milestones/<trackerMilestone>` (title,
+          description, state, open/closed issue counts, due_on)
+        - `gh api repos/ncrmro/keystone/issues/<trackerIssue>` if non-null
+        - `gh issue list --milestone "<title>"` (all issues attached to the
+          milestone, both open and closed)
+
+      ## 1. Hard validations — fail the review on any of these
+
+      - **Frontmatter shape**: every required field present (slug,
+        trackerMilestone, flag, dependsOnSpecs, status). `status` is one of
+        the four allowed values. `flag` matches `KEYSTONE_FLAG_MILESTONE_<UPPER>`
+        where `<UPPER>` is the slug uppercased with hyphens → underscores.
+      - **Directory ↔ trackerMilestone**: the `M<N>` prefix in the directory
+        name matches `trackerMilestone`. If the dir is `M9-v1-stabilization/`
+        then `trackerMilestone: 9`. Mismatch = FAIL.
+      - **slug ↔ directory**: the `slug:` value equals the dir suffix after
+        `M<N>-`. (`M9-v1-stabilization/` → `slug: v1-stabilization`.)
+      - **GitHub milestone exists**: the `gh api .../milestones/<N>` block in
+        Precomputed Context returned data (not a 404). If GitHub reports the
+        milestone doesn't exist, FAIL — the local file is referencing a
+        tracker that's gone.
+      - **trackerIssue alignment**: if `trackerIssue:` is non-null, the
+        `gh api .../issues/<I>` block MUST show `.milestone.number ==
+        trackerMilestone`. If the issue exists but isn't attached to the
+        milestone on GitHub, FAIL.
+      - **status ↔ GitHub state agreement**: if local `status: shipped`,
+        the GitHub milestone state MUST be `closed`. If local
+        `status: cancelled`, GitHub state MUST be `closed`. If local is
+        `planned` or `in_progress`, GitHub state MUST be `open`.
+      - **dependsOnSpecs resolve**: every entry in `dependsOnSpecs:` MUST be
+        a slug matching exactly one `docs/specs/REQ-NNN-<slug>.md` file. If a
+        slug resolves to zero or multiple files, FAIL.
+
+      ## 2. Drift warnings — surface for human judgment, do not auto-fail
+
+      - **Description prose drift**: compare the GitHub milestone description
+        to the `## Scope` section of the local `README.md`. They will not be
+        character-for-character identical; that's fine. Surface a side-by-side
+        diff if the goals/scope bullets differ materially (added items,
+        removed items, changed wording that flips meaning).
+      - **tracker.md staleness**: if `tracker.md` is in the changeset, compare
+        its issue checklist against the `gh issue list` block. Flag missing
+        issues or stale state (e.g. tracker shows `[ ]` for an issue that
+        GitHub reports as CLOSED). Suggest `bin/sync-milestone-tracker
+        <trackerMilestone>` to regenerate.
+      - **Open issues with closed milestone**: if GitHub state is `closed`
+        but the milestone has `open_issues > 0`, surface it. This usually
+        means a v1.1 / post-release issue is still attached.
+
+      ## 3. Report
+
+      Produce a structured report with two sections:
+      - **Hard validation results** — PASS / FAIL per check, with the
+        offending value when it fails.
+      - **Drift warnings** — bullet list of human-judgment items.
+
+      Overall verdict: MILESTONE IN SYNC, MILESTONE DRIFT (warnings only),
+      or MILESTONE VIOLATION (any hard validation failed).
 
 # =====================================================================
 # Experimental Feature Consistency

@@ -6,7 +6,7 @@
 # the Tailscale network.
 #
 # See conventions/tool.journal-remote.md
-# See specs/REQ-020-journal-remote/requirements.md
+# See docs/specs/REQ-020-journal-remote.md
 {
   lib,
   config,
