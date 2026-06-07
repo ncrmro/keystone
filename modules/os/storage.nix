@@ -30,20 +30,44 @@ let
   # Compute device directory for ZFS import (matches devNodes)
   importDir = builtins.dirOf firstDevice;
 
-  # Convert arcMax to bytes for kernel param
+  # Look up the current host in the registry for per-host metadata (physicalMemoryGB).
+  # Returns null when the host is not in the registry or has not declared physicalMemoryGB.
+  currentHost = findFirst (h: h.hostname == config.networking.hostName) null (
+    attrValues config.keystone.hosts
+  );
+
+  # physicalMemoryGB from the host registry; null when absent.
+  # Used for the 25%-of-RAM ARC cap computation.
+  physicalMemoryGB = if currentHost != null then currentHost.physicalMemoryGB else null;
+
+  # Bytes per GiB — named constant to make size arithmetic readable.
+  bytesPerGiB = 1024 * 1024 * 1024;
+
+  # Convert arcMax to bytes for the zfs_arc_max kernel parameter.
+  #
+  # Resolution order:
+  #   1. Explicit arcMax string (e.g. "8G") → parsed verbatim
+  #   2. physicalMemoryGB in host registry  → 25% of RAM
+  #   3. Neither set → assertion fires; the fallback value is never used in a
+  #      valid configuration.
   arcMaxBytes =
     let
       # Parse size string like "4G" or "8G"
       parseSize =
         s:
         if hasSuffix "G" s then
-          (toInt (removeSuffix "G" s)) * 1024 * 1024 * 1024
+          (toInt (removeSuffix "G" s)) * bytesPerGiB
         else if hasSuffix "M" s then
           (toInt (removeSuffix "M" s)) * 1024 * 1024
         else
           toInt s;
     in
-    if cfg.zfs.arcMax != null then parseSize cfg.zfs.arcMax else 4 * 1024 * 1024 * 1024; # Default 4GB
+    if cfg.zfs.arcMax != null then
+      parseSize cfg.zfs.arcMax
+    else if physicalMemoryGB != null then
+      builtins.div (physicalMemoryGB * bytesPerGiB) 4 # 25% of RAM (integer division)
+    else
+      throw "keystone.os.storage: arcMaxBytes reached the unreachable else branch — neither keystone.os.storage.zfs.arcMax nor physicalMemoryGB is set, but the assertion (cfg.zfs.arcMax != null || physicalMemoryGB != null) should have caught this. Please report.";
 
   # Build ZFS vdev type based on mode and device count
   zfsVdevType =
@@ -75,7 +99,7 @@ in
         else
           cfg.zfs.kernel;
 
-      # Build-time ZFS compatibility assertion
+      # Build-time ZFS compatibility and ARC cap assertions
       assertions = [
         {
           assertion =
@@ -89,6 +113,24 @@ in
             ZFS (${config.boot.zfs.package.version}).
             Pin a compatible kernel via keystone.os.storage.zfs.kernel, e.g.:
               keystone.os.storage.zfs.kernel = pkgs.linuxPackages_6_12;
+          '';
+        }
+        # REQ-10: physicalMemoryGB is required when arcMax is null so the module
+        # can compute a 25%-of-RAM ARC cap. Fail early with a clear message.
+        {
+          assertion = cfg.zfs.arcMax != null || physicalMemoryGB != null;
+          message = ''
+            keystone.os.storage.zfs.arcMax is null and no physicalMemoryGB has been
+            found in keystone.hosts for host "${config.networking.hostName}".
+            Either set an explicit ARC size:
+              keystone.os.storage.zfs.arcMax = "8G";
+            or provide the host's physical RAM on the keystone.hosts entry whose
+            hostname = "${config.networking.hostName}":
+              keystone.hosts.<registry-key> = {
+                hostname = "${config.networking.hostName}";
+                physicalMemoryGB = 64;
+              };
+            The module will then compute zfs_arc_max as 25% of physical RAM.
           '';
         }
       ];
@@ -243,6 +285,8 @@ in
                       content = {
                         type = "swap";
                         randomEncryption = true;
+                        # priority = -1 keeps disk swap below zram (priority 100) at all times
+                        priority = -1;
                       };
                     };
                   };
@@ -328,10 +372,13 @@ in
         devNodes = importDir;
       };
 
-      # Kernel parameters for ZFS
-      boot.kernelParams = [
-        "zfs.zfs_arc_max=${toString arcMaxBytes}"
-      ];
+      # Kernel parameters for ZFS.
+      # lib.optional guards against forcing arcMaxBytes (which throws) when both
+      # arcMax and physicalMemoryGB are null — the assertion below will catch that
+      # case. The throw is a backstop against future assertion-bypass scenarios.
+      boot.kernelParams = lib.optional
+        (cfg.zfs.arcMax != null || physicalMemoryGB != null)
+        "zfs.zfs_arc_max=${toString arcMaxBytes}";
 
       # Enable ZFS services
       services.zfs = {
@@ -399,12 +446,17 @@ in
                       passwordFile = "${./scripts/credstore-password}";
                       content = {
                         type = "swap";
+                        # priority = 0: above random-encryption swap (−1), below zram (100).
+                        # Must be positive for a valid hibernation resume target.
+                        priority = 0;
                       };
                     }
                   else
                     {
                       type = "swap";
                       randomEncryption = true;
+                      # priority = -1 keeps disk swap below zram (priority 100) at all times
+                      priority = -1;
                     };
               };
             };
@@ -432,6 +484,22 @@ in
       boot.resumeDevice = mkIf cfg.hibernate.enable "/dev/mapper/cryptswap";
 
       boot.initrd.availableKernelModules = mkIf cfg.hibernate.enable (lib.mkAfter [ "resume" ]);
+    })
+
+    # Global assertions — active for all storage types when keystone.os is enabled
+    (mkIf osCfg.enable {
+      assertions = [
+        # REQ-17: Swap MUST NOT target a ZFS zvol — known deadlock hazard.
+        # See https://github.com/openzfs/zfs/issues/7734
+        {
+          assertion = !(any (sd: lib.hasPrefix "/dev/zvol/" sd.device) config.swapDevices);
+          message = ''
+            Swap MUST NOT be placed on a ZFS zvol — this is a known deadlock hazard.
+            See https://github.com/openzfs/zfs/issues/7734.
+            Remove the zvol-backed entry from boot.swapDevices or swapDevices.
+          '';
+        }
+      ];
     })
   ];
 }

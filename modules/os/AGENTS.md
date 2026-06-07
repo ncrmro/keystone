@@ -15,14 +15,43 @@ keystone.os.storage = {
   esp.size = "1G";
   swap.size = "8G";
   credstore.size = "100M";  # LUKS volume for ZFS encryption keys
-  zfs = { compression = "zstd"; atime = "off"; arcMax = "4G";
+  zfs = { compression = "zstd"; atime = "off";
           autoSnapshot = true; autoScrub = true; };
+  # arcMax is optional — omit it and set physicalMemoryGB in keystone.hosts
+  # to let the module auto-compute 25% of RAM (recommended):
+  # zfs.arcMax = null;  ← default; requires keystone.hosts.<name>.physicalMemoryGB
+  # zfs.arcMax = "8G";  ← explicit override (skips auto-computation)
+};
+
+# Host registry entry — physicalMemoryGB is required on ZFS hosts with arcMax = null
+keystone.hosts.myhostname = {
+  hostname = "myhostname";
+  physicalMemoryGB = 64;  # used to compute ZFS ARC cap (25% = 16 GiB)
+  # …
 };
 ```
 
 **Boot sequence** (ZFS): Import pool → Unlock credstore (TPM or password) → Load ZFS key → Mount encrypted datasets.
 
 **ext4 alternative**: LUKS-encrypted ext4 with optional hibernate. No snapshots/compression.
+
+## Memory Pressure (`memory-pressure.nix`)
+
+Default-on for all hosts. Controls zram swap, systemd-oomd, and vm sysctls.
+
+```nix
+# Enabled by default — no explicit opt-in required
+keystone.os.memoryPressure.enable = true;
+
+# Disable entirely (e.g., for custom swap layout)
+keystone.os.memoryPressure.enable = false;
+
+# Override a single sysctl
+boot.kernel.sysctl."vm.swappiness" = lib.mkForce 100;
+```
+
+See `docs/os/memory-pressure.md` for the full layered memory-pressure response
+rationale, ZFS ARC cap auto-computation, and laptop (zram + cryptswap) notes.
 
 ## Users (`users.nix`)
 

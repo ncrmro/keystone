@@ -89,6 +89,22 @@ in
               default = false;
               description = "Whether this host is the centralized journal-remote server. Exactly one host should set this to true.";
             };
+            physicalMemoryGB = mkOption {
+              type = types.nullOr types.ints.positive;
+              default = null;
+              description = ''
+                Physical RAM installed in this host, in GiB.
+
+                Required when keystone.os.storage.type = "zfs" and
+                keystone.os.storage.zfs.arcMax = null. The storage module
+                uses this value to compute a 25%-of-RAM ZFS ARC cap
+                (physicalMemoryGB * 1024³ / 4).
+
+                Set to null (the default) only when arcMax is provided
+                explicitly via keystone.os.storage.zfs.arcMax.
+              '';
+              example = 64;
+            };
             zfs = mkOption {
               type = types.nullOr (
                 types.submodule {
