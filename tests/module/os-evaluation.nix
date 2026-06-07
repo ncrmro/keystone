@@ -680,6 +680,103 @@ let
     # is disentangled or once we can emit warnings via a narrower
     # option.
 
+    # systemd-oomd is wired up by default and applies the keystone-specific
+    # 20-second pressure window.  Two independent keystone signatures are
+    # checked so the test cannot pass vacuously if nixpkgs ever happens to
+    # adopt the same value as its own default:
+    #   1. DefaultMemoryPressureDurationSec is present in extraConfig and = "20s"
+    #   2. enableRootSlice = true  (NixOS upstream default is false)
+    oomd-default-on =
+      let
+        result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+            adminBase
+            {
+              keystone.os.users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            }
+          ];
+        };
+        oomdCfg = result.config.systemd.oomd;
+        hasDuration = builtins.hasAttr "DefaultMemoryPressureDurationSec" oomdCfg.extraConfig;
+        actualDuration = oomdCfg.extraConfig.DefaultMemoryPressureDurationSec or "<unset>";
+        actualRootSlice = oomdCfg.enableRootSlice;
+      in
+      pkgs.runCommand "oomd-default-on" { } ''
+        ok=1
+        if [ "${builtins.toJSON hasDuration}" != "true" ]; then
+          echo "FAIL: oomd-default-on: DefaultMemoryPressureDurationSec absent from extraConfig" >&2
+          ok=0
+        fi
+        if [ "${actualDuration}" != "20s" ]; then
+          echo "FAIL: oomd-default-on: expected DefaultMemoryPressureDurationSec=20s, got '${actualDuration}'" >&2
+          ok=0
+        fi
+        if [ "${builtins.toJSON actualRootSlice}" != "true" ]; then
+          echo "FAIL: oomd-default-on: expected enableRootSlice=true (keystone default), got '${builtins.toJSON actualRootSlice}'" >&2
+          ok=0
+        fi
+        [ "$ok" = "1" ] || exit 1
+        echo "OK: oomd-default-on: duration=${actualDuration} enableRootSlice=${builtins.toJSON actualRootSlice}"
+        touch $out
+      '';
+
+    # When keystone.os.oomd.enable = false, the keystone module MUST NOT inject
+    # its settings.  Two independent keystone-absence checks are made so the
+    # test cannot produce a false negative if nixpkgs ever also defaults one of
+    # these to the same value:
+    #   1. DefaultMemoryPressureDurationSec must be ABSENT from extraConfig
+    #      (key presence, not value comparison — robust against upstream adopting "20s")
+    #   2. enableRootSlice must be false  (the NixOS upstream default)
+    oomd-disabled =
+      let
+        result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+          system = "x86_64-linux";
+          modules = [
+            self.nixosModules.operating-system
+            {
+              system.stateVersion = "25.05";
+              boot.loader.systemd-boot.enable = true;
+            }
+            adminBase
+            {
+              keystone.os.oomd.enable = false;
+              keystone.os.users.testuser = {
+                fullName = "Test User";
+                initialPassword = "testpass";
+                admin = true;
+              };
+            }
+          ];
+        };
+        oomdCfg = result.config.systemd.oomd;
+        hasDuration = builtins.hasAttr "DefaultMemoryPressureDurationSec" oomdCfg.extraConfig;
+        actualRootSlice = oomdCfg.enableRootSlice;
+      in
+      pkgs.runCommand "oomd-disabled" { } ''
+        ok=1
+        if [ "${builtins.toJSON hasDuration}" = "true" ]; then
+          echo "FAIL: oomd-disabled: keystone still injected DefaultMemoryPressureDurationSec into extraConfig" >&2
+          ok=0
+        fi
+        if [ "${builtins.toJSON actualRootSlice}" = "true" ]; then
+          echo "FAIL: oomd-disabled: keystone still set enableRootSlice=true" >&2
+          ok=0
+        fi
+        [ "$ok" = "1" ] || exit 1
+        echo "OK: oomd-disabled: keystone contribution absent (hasDuration=${builtins.toJSON hasDuration} enableRootSlice=${builtins.toJSON actualRootSlice})"
+        touch $out
+      '';
+
     # Containers disabled → admin does NOT get podman, but still gets
     # the unconditional admin groups (dialout, media).
     auto-groups-admin-no-containers =
@@ -724,6 +821,8 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - oomd-default-on: keystone.os.oomd.enable defaults to true and applies 20 s pressure window"
+    echo "  - oomd-disabled: keystone.os.oomd.enable = false drops the keystone-specific oomd contribution"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out
