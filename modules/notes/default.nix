@@ -17,10 +17,22 @@
   lib,
   config,
   pkgs,
+  osConfig ? null,
   ...
 }:
 let
   cfg = config.keystone.notes;
+  currentHost =
+    if osConfig != null && lib.hasAttrByPath [ "networking" "hostName" ] osConfig then
+      osConfig.networking.hostName
+    else
+      null;
+  notesDailyHost =
+    if osConfig != null && lib.hasAttrByPath [ "keystone" "services" "notesDaily" "host" ] osConfig then
+      osConfig.keystone.services.notesDaily.host
+    else
+      null;
+  isNotesDailyHost = notesDailyHost != null && currentHost == notesDailyHost;
   pathHasParentTraversal = path: builtins.elem ".." (lib.splitString "/" path);
   sshAuthSock =
     if
@@ -189,7 +201,21 @@ in
     };
 
     daily = {
-      enable = lib.mkEnableOption "git-tracked daily note rollover";
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = isNotesDailyHost;
+        defaultText = lib.literalExpression ''
+          osConfig.keystone.services.notesDaily.host == osConfig.networking.hostName
+        '';
+        description = ''
+          Enable git-tracked daily note rollover for this user's notes repo.
+
+          When the NixOS service singleton `keystone.services.notesDaily.host`
+          is set, this defaults to true only on that host and false everywhere
+          else. Explicitly enabling daily rollover on a different host is
+          rejected to avoid multiple hosts racing to move the daily symlink.
+        '';
+      };
 
       symlinkPath = lib.mkOption {
         type = lib.types.str;
@@ -213,18 +239,29 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = lib.optionals cfg.daily.enable [
-      {
-        assertion =
-          !lib.hasPrefix "/" cfg.daily.symlinkPath && !pathHasParentTraversal cfg.daily.symlinkPath;
-        message = "keystone.notes.daily.symlinkPath must stay under keystone.notes.path and must not contain '..' segments.";
-      }
-      {
-        assertion =
-          !lib.hasPrefix "/" cfg.daily.journalPath && !pathHasParentTraversal cfg.daily.journalPath;
-        message = "keystone.notes.daily.journalPath must stay under keystone.notes.path and must not contain '..' segments.";
-      }
-    ];
+    assertions =
+      lib.optionals cfg.daily.enable [
+        {
+          assertion =
+            !lib.hasPrefix "/" cfg.daily.symlinkPath && !pathHasParentTraversal cfg.daily.symlinkPath;
+          message = "keystone.notes.daily.symlinkPath must stay under keystone.notes.path and must not contain '..' segments.";
+        }
+        {
+          assertion =
+            !lib.hasPrefix "/" cfg.daily.journalPath && !pathHasParentTraversal cfg.daily.journalPath;
+          message = "keystone.notes.daily.journalPath must stay under keystone.notes.path and must not contain '..' segments.";
+        }
+      ]
+      ++ lib.optionals (cfg.daily.enable && notesDailyHost != null && currentHost != null) [
+        {
+          assertion = currentHost == notesDailyHost;
+          message = ''
+            keystone.notes.daily.enable is true on host "${currentHost}", but
+            keystone.services.notesDaily.host selects "${notesDailyHost}".
+            Disable keystone.notes.daily.enable here or move the singleton host.
+          '';
+        }
+      ];
 
     systemd.user.services.keystone-notes-sync = lib.mkIf (cfg.sync.enable && cfg.repo != "") {
       Unit = {
