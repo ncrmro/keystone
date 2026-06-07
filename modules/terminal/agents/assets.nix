@@ -188,6 +188,16 @@ in
           ]
         }:$PATH"
 
+        asset_backup_root="$HOME/.local/state/keystone/agent-asset-symlink-backups/$(date +%Y%m%d-%H%M%S)"
+        backup_regular_file_for_symlink() {
+          link="$1"
+          rel="''${link#$HOME/}"
+          backup="$asset_backup_root/$rel"
+          mkdir -p "$(dirname "$backup")"
+          mv "$link" "$backup"
+          echo "keystone-agent-asset-symlinks: moved regular file $link to $backup before installing managed symlink" >&2
+        }
+
         # Resolve consumer-flake agents root at runtime. Prefer the runtime
         # pointer file (survives Nix evaluation, follows the active system
         # flake) so re-evaluating with a different flake doesn't strand the
@@ -319,13 +329,11 @@ in
             fi
             rm -f "$link"
           elif [ -f "$link" ]; then
-            # A regular file at the link site — possibly user-edited, possibly
-            # a leftover from a pre-symlink generation home-manager hasn't
-            # cleaned. Refuse rather than silently clobbering user content.
-            echo "keystone-agent-asset-symlinks: refusing to replace regular file $link with symlink to $target" >&2
-            echo "  Move or remove the file, then re-run home-manager activation." >&2
-            refusal_count=$((refusal_count + 1))
-            continue
+            # A regular file at these managed instruction paths is either a
+            # legacy generated file or user-edited content. Preserve it, then
+            # converge to the symlink topology required by the current agent
+            # asset layout so OS updates do not wedge on old generations.
+            backup_regular_file_for_symlink "$link"
           elif [ -e "$link" ]; then
             echo "keystone-agent-asset-symlinks: $link exists and is not a file or symlink; leaving untouched" >&2
             refusal_count=$((refusal_count + 1))
@@ -393,8 +401,8 @@ in
               ln -s "$pi_target" "$pi_link"
             fi
           elif [ -f "$pi_link" ]; then
-            echo "keystone-agent-asset-symlinks: refusing to replace regular file $pi_link with symlink to $pi_target" >&2
-            refusal_count=$((refusal_count + 1))
+            backup_regular_file_for_symlink "$pi_link"
+            ln -s "$pi_target" "$pi_link"
           elif [ -e "$pi_link" ]; then
             echo "keystone-agent-asset-symlinks: $pi_link exists and is not a file or symlink; leaving untouched" >&2
             refusal_count=$((refusal_count + 1))

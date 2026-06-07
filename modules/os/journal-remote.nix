@@ -144,6 +144,10 @@ in
     # When nginx is proxying, bind journal-remote to localhost only.
     (mkIf (isServer && useNginxProxy) {
       systemd.sockets.systemd-journal-remote.listenStreams = mkForce [
+        # Reset systemd's upstream ListenStream=19532 before adding the
+        # localhost-only listener. Without the empty assignment, systemd keeps
+        # both sockets and the wildcard listener races the explicit IPv4 bind.
+        ""
         "127.0.0.1:${toString cfg.server.port}"
       ];
     })
