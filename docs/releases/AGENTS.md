@@ -22,12 +22,13 @@ Keystone uses semantic versioning. The ROADMAP.md originally used `v0.0.x` for f
 
 ## Conventions
 
-- Release artifacts stored in `releases/[version]/` — see `releases/0.1.0/` for the established pattern
-- CHANGELOG.md at repo root follows Keep a Changelog format
+- Release artifacts stored in `docs/releases/[version]/` — see `docs/releases/0.1.0/` for the established pattern
+- `CHANGELOG.md` at repo root follows Keep a Changelog format
 - Tags use `v` prefix: `v0.1.0`, `v0.2.0`, etc.
 - Pre-1.0 releases are alpha channel
+- v1 ship criteria live at [`docs/milestones/M9-v1-stabilization/`](../milestones/M9-v1-stabilization/)
 
 ## Last Updated
 
-- Date: 2026-03-03
-- From conversation about: First release workflow test run — versioning correction learning
+- Date: 2026-06-06
+- From conversation about: v1 docs cleanup — `releases/` folded into `docs/releases/`
