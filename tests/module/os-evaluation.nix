@@ -162,6 +162,51 @@ let
       touch $out
     '';
 
+  # Evaluate an Immich ROCm worker and assert the machine-learning environment.
+  assertImmichRocmWorker =
+    name: expectedHsaGfxVersion: modules:
+    let
+      result = (import "${pkgs.path}/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        modules = [
+          self.nixosModules.operating-system
+          {
+            system.stateVersion = "25.05";
+            boot.loader.systemd-boot.enable = true;
+          }
+        ]
+        ++ modules;
+      };
+      env = result.config.services.immich.machine-learning.environment;
+      actualDevice = env.DEVICE or null;
+      actualHsaGfxVersion = env.HSA_OVERRIDE_GFX_VERSION or null;
+      # The rocm onnxruntime is plumbed via services.immich.package, so the
+      # override is no longer in nixpkgs.overlays. The module sets a
+      # passthru marker on the override branch we probe here.
+      packageOverridden = result.config.services.immich.package.keystoneRocmEnabled or false;
+      deviceOk = actualDevice == "rocm";
+      hsaOk = actualHsaGfxVersion == expectedHsaGfxVersion;
+      actualDeviceJson = builtins.toJSON actualDevice;
+      actualHsaGfxVersionJson = builtins.toJSON actualHsaGfxVersion;
+      expectedHsaGfxVersionJson = builtins.toJSON expectedHsaGfxVersion;
+      packageOverriddenJson = builtins.toJSON packageOverridden;
+    in
+    pkgs.runCommand "immich-rocm-worker-${name}" { } ''
+      ${
+        if deviceOk && hsaOk && packageOverridden then
+          ''
+            echo "OK: ${name}: DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, package overridden=${packageOverriddenJson}"
+          ''
+        else
+          ''
+            echo "FAIL: ${name}: expected DEVICE=\"rocm\", HSA_OVERRIDE_GFX_VERSION=${expectedHsaGfxVersionJson}, services.immich.package overridden" >&2
+            echo "  actual DEVICE=${actualDeviceJson}, HSA_OVERRIDE_GFX_VERSION=${actualHsaGfxVersionJson}, package overridden=${packageOverriddenJson}" >&2
+            exit 1
+          ''
+      }
+      touch $out
+    '';
+
   tests = {
     minimal-zfs = eval "minimal-zfs" [
       {
@@ -424,6 +469,124 @@ let
         fileSystems."/" = {
           device = lib.mkForce "rpool/crypt/system";
           fsType = lib.mkForce "zfs";
+        };
+      }
+    ];
+
+    immich-worker-rocm-custom-hsa = assertImmichRocmWorker "custom-hsa" "12.0.1" [
+      {
+        keystone = {
+          services.immich = {
+            host = "ocean";
+            workers = [ "gpu-worker" ];
+          };
+          hosts.gpu-worker = {
+            hostname = "gpu-worker";
+            role = "client";
+          };
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            services.immich.hsaGfxVersion = "12.0.1";
+          };
+        };
+        networking.hostName = "gpu-worker";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    immich-worker-rocm-rx-7900-xtx = assertImmichRocmWorker "rx-7900-xtx" "11.0.0" [
+      {
+        keystone = {
+          services.immich = {
+            host = "ocean";
+            workers = [ "gpu-worker" ];
+          };
+          hosts.gpu-worker = {
+            hostname = "gpu-worker";
+            role = "client";
+          };
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+            services.immich.hsaGfxVersion = "11.0.0";
+          };
+        };
+        networking.hostName = "gpu-worker";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Setting hsaGfxVersion without rocm acceleration must fire the module
+    # assertion rather than be silently ignored.
+    immich-hsa-without-rocm =
+      assertHasFailingAssertion "immich-hsa-without-rocm" "hsaGfxVersion only applies"
+        [
+          {
+            keystone = {
+              services.immich = {
+                host = "ocean";
+                workers = [ "gpu-worker" ];
+              };
+              hosts.gpu-worker = {
+                hostname = "gpu-worker";
+                role = "client";
+              };
+              os = {
+                enable = true;
+                storage = {
+                  type = "ext4";
+                  devices = [ "/dev/vda" ];
+                };
+                services.immich = {
+                  acceleration = lib.mkForce null;
+                  hsaGfxVersion = "11.0.0";
+                };
+              };
+            };
+            networking.hostName = "gpu-worker";
+            fileSystems."/" = {
+              device = lib.mkForce "/dev/vda2";
+              fsType = lib.mkForce "ext4";
+            };
+          }
+        ];
+
+    immich-worker-rocm-native-hsa = assertImmichRocmWorker "native-hsa" null [
+      {
+        keystone = {
+          services.immich = {
+            host = "ocean";
+            workers = [ "gpu-worker" ];
+          };
+          hosts.gpu-worker = {
+            hostname = "gpu-worker";
+            role = "client";
+          };
+          os = {
+            enable = true;
+            storage = {
+              type = "ext4";
+              devices = [ "/dev/vda" ];
+            };
+          };
+        };
+        networking.hostName = "gpu-worker";
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
         };
       }
     ];
@@ -724,6 +887,9 @@ pkgs.runCommand "test-os-evaluation"
     echo "  - journal-remote-server: Journal collection server (HTTPS via nginx)"
     echo "  - journal-remote-client: Journal upload client (HTTPS via nginx)"
     echo "  - journal-remote-client-no-domain: Journal upload client (HTTP fallback)"
+    echo "  - immich-worker-rocm-custom-hsa: Immich ML worker with ROCm + custom HSA gfx override"
+    echo "  - immich-worker-rocm-rx-7900-xtx: Immich ML worker with ROCm + RX 7900 XTX HSA override"
+    echo "  - immich-worker-rocm-native-hsa: Immich ML worker with ROCm native gfx target"
     echo ""
     echo "All configurations evaluated successfully!"
     touch $out

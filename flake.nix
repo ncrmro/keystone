@@ -482,13 +482,12 @@
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
             inherit home-manager;
-            self = self;
           };
           hyprlandConfigSmoke = import ./tests/module/hyprland-config-smoke.nix {
             pkgs = ksPkgs;
             lib = ksPkgs.lib;
             inherit home-manager;
-            self = self;
+            inherit keystoneInputs;
           };
           desktopFprintd = import ./tests/module/desktop-fprintd.nix {
             pkgs = ksPkgs;
