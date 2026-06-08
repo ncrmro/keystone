@@ -71,23 +71,27 @@ let
                 # convention rules 13-17: raw send, no-sync-snap, skip-parent, exclude, compress
                 target = "${hostname}-sync@${sshTarget}:${parsed.pool}/backups/${hostname}/${sourcePool}";
                 sendOptions = "w";
+                # The upstream NixOS syncoid module runs ExecStart inside
+                # RootDirectory=/run/syncoid/<name>.  Use a chroot-relative key
+                # path so ssh reads /run/syncoid/<name>/ssh_key on the host,
+                # and force it to win over any legacy consumer-flake command
+                # fragments with the same command name.
+                sshKey = mkForce "/ssh_key";
                 extraArgs = [
                   "--no-sync-snap"
                   "--skip-parent"
                   "--exclude-datasets=nix|docker|containers|images|libvirt"
                   "--compress=none"
-                  "--sshkey"
-                  "${keyDir}/ssh_key"
                 ];
                 # convention rules 18-21: SSH key handling with sandbox fix
                 service = {
                   serviceConfig = {
                     ExecStartPre = [
-                      "+${pkgs.coreutils}/bin/install -d -m 0700 ${keyDir}"
-                      "+${pkgs.coreutils}/bin/install -m 0600 /etc/ssh/ssh_host_ed25519_key ${keyDir}/ssh_key"
+                      "+${pkgs.coreutils}/bin/install -d -o syncoid -g syncoid -m 0700 ${keyDir}"
+                      "+${pkgs.coreutils}/bin/install -o syncoid -g syncoid -m 0400 /etc/ssh/ssh_host_ed25519_key ${keyDir}/ssh_key"
                     ];
                     ReadWritePaths = [ keyDir ];
-                    ExecStopPost = [ "${backupMetricsScript} ${name}" ];
+                    ExecStopPost = [ "+${backupMetricsScript} ${name}" ];
                   };
                 };
               })

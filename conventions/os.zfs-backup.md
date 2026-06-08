@@ -70,10 +70,15 @@ all configuration auto-derives from that single declaration.
     in the receiver host's sync user `authorized_keys`.
 20. The syncoid systemd service MUST copy the host SSH key to a syncoid-readable
     path (e.g., `/run/syncoid/<name>/ssh_key`) via an `ExecStartPre=+` script
-    running as root.
+    running as root, and the copied key MUST be owned/readable by the `syncoid`
+    service user.
 21. The systemd service MUST NOT have `InaccessiblePaths` directives that block
     access to the SSH key path — if the NixOS syncoid module's default sandboxing
     conflicts, the service override MUST add `ReadWritePaths` for the key directory.
+    Because the NixOS syncoid service runs `ExecStart` inside
+    `RootDirectory=/run/syncoid/<name>`, the `--sshkey` path SHOULD be
+    chroot-relative (for example `/ssh_key`) rather than the host-absolute
+    `/run/syncoid/<name>/ssh_key` path.
 
 ## Receiver Configuration
 
@@ -99,7 +104,9 @@ these metrics and present backup state on system and host dashboard pages.
     - `zfs_backup_last_success_timestamp` — timestamp of the last successful sync
 26. The snapshot metrics timer MUST run at least every 5 minutes.
 27. Syncoid services MUST write per-target metrics via `ExecStopPost` scripts,
-    capturing both success and failure states.
+    capturing both success and failure states. Metrics scripts that write to the
+    node-exporter textfile directory MUST run with `ExecStopPost=+` so they are
+    not blocked by the `syncoid` service user's sandbox/root-directory context.
 
 ## Verification (ks doctor)
 
