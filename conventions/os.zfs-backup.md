@@ -44,7 +44,9 @@ all configuration auto-derives from that single declaration.
    `"maia:lake"`).
 10. A host MAY declare both local and remote replication targets — local targets
     replicate within the same machine to a different pool; remote targets replicate
-    over SSH.
+    over SSH. Same-host targets MUST be generated as local syncoid targets
+    (`<targetPool>/backups/<hostname>/<sourcePool>`), not as SSH targets to the
+    host's own MagicDNS name.
 11. Every host with user data SHOULD have at least one off-site replication target
     to protect against single-host failure.
 
@@ -83,7 +85,8 @@ all configuration auto-derives from that single declaration.
 ## Receiver Configuration
 
 22. Receiver hosts MUST auto-create sync users (`<hostname>-sync`) derived from
-    `keystone.hosts` entries — no manual user creation in nixos-config.
+    remote `keystone.hosts` entries — no manual user creation in nixos-config.
+    Same-host local targets MUST NOT create or require a sync user.
 23. Receiver hosts MUST auto-initialize backup datasets
     (`<targetPool>/backups/<sourceHostname>/<sourcePool>`) and delegate ZFS
     permissions (`receive`, `create`, `mount`, `rollback`, `destroy`) to the

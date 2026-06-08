@@ -60,32 +60,43 @@ let
           let
             parsed = parseTarget target;
             targetHost = hosts.${parsed.hostKey} or null;
+            isLocalTarget = targetHost != null && targetHost.hostname == hostname;
             sshTarget = if targetHost.sshTarget != null then targetHost.sshTarget else targetHost.hostname;
-            name = "${sourcePool}-to-${parsed.hostKey}";
+            targetDataset = "${parsed.pool}/backups/${hostname}/${sourcePool}";
+            name =
+              if isLocalTarget then
+                "${sourcePool}-local-${parsed.pool}"
+              else
+                "${sourcePool}-to-${parsed.hostKey}";
             keyDir = "/run/syncoid/${name}";
           in
           if targetHost != null then
             [
-              (nameValuePair name {
-                source = sourcePool;
-                # convention rules 13-17: raw send, no-sync-snap, skip-parent, exclude, compress
-                target = "${hostname}-sync@${sshTarget}:${parsed.pool}/backups/${hostname}/${sourcePool}";
-                sendOptions = "w";
-                # The upstream NixOS syncoid module runs ExecStart inside
-                # RootDirectory=/run/syncoid/<name>.  Use a chroot-relative key
-                # path so ssh reads /run/syncoid/<name>/ssh_key on the host,
-                # and force it to win over any legacy consumer-flake command
-                # fragments with the same command name.
-                sshKey = mkForce "/ssh_key";
-                extraArgs = [
-                  "--no-sync-snap"
-                  "--skip-parent"
-                  "--exclude-datasets=nix|docker|containers|images|libvirt"
-                  "--compress=none"
-                ];
-                # convention rules 18-21: SSH key handling with sandbox fix
-                service = {
-                  serviceConfig = {
+              (nameValuePair name (
+                {
+                  source = sourcePool;
+                  target = if isLocalTarget then targetDataset else "${hostname}-sync@${sshTarget}:${targetDataset}";
+                  recursive = true;
+                  # convention rules 13-17: raw send, no-sync-snap, skip-parent, include sanoid snaps, exclude, compress
+                  sendOptions = "w";
+                  extraArgs = [
+                    "--no-sync-snap"
+                    "--skip-parent"
+                    "--include-snaps=autosnap"
+                    "--exclude-datasets=nix|docker|containers|images|libvirt"
+                    "--compress=none"
+                  ];
+                  service.serviceConfig.ExecStopPost = [ "+${backupMetricsScript} ${name}" ];
+                }
+                // optionalAttrs (!isLocalTarget) {
+                  # The upstream NixOS syncoid module runs ExecStart inside
+                  # RootDirectory=/run/syncoid/<name>.  Use a chroot-relative key
+                  # path so ssh reads /run/syncoid/<name>/ssh_key on the host,
+                  # and force it to win over any legacy consumer-flake command
+                  # fragments with the same command name.
+                  sshKey = mkForce "/ssh_key";
+                  # convention rules 18-21: SSH key handling with sandbox fix
+                  service.serviceConfig = {
                     ExecStartPre = [
                       "+${pkgs.coreutils}/bin/install -d -o syncoid -g syncoid -m 0700 ${keyDir}"
                       "+${pkgs.coreutils}/bin/install -o syncoid -g syncoid -m 0400 /etc/ssh/ssh_host_ed25519_key ${keyDir}/ssh_key"
@@ -93,8 +104,8 @@ let
                     ReadWritePaths = [ keyDir ];
                     ExecStopPost = [ "+${backupMetricsScript} ${name}" ];
                   };
-                };
-              })
+                }
+              ))
             ]
           else
             [ ]
@@ -117,7 +128,9 @@ let
                   parsed = parseTarget target;
                   targetHostEntry = hosts.${parsed.hostKey} or null;
                 in
-                if targetHostEntry != null && targetHostEntry.hostname == hostname then
+                if
+                  targetHostEntry != null && targetHostEntry.hostname == hostname && hostCfg.hostname != hostname
+                then
                   {
                     senderHostname = hostCfg.hostname;
                     senderPublicKey = hostCfg.hostPublicKey;
