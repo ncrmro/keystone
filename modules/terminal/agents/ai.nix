@@ -45,7 +45,16 @@ in
     };
   };
 
-  config = mkIf (cfg.enable && cfg.ai.enable) {
+  config = mkMerge [
+    # Pi is decoupled from the rest of the AI stack: it installs whenever
+    # terminal.pi.enable is set (which defaults to terminal.ai.enable), so a
+    # machine can run Pi without pulling in claude-code/gemini/codex/opencode.
+    (mkIf (cfg.enable && cfg.pi.enable) {
+      # Pi - tool-using coding assistant from llm-agents
+      home.packages = [ pkgs.keystone.pi ];
+    })
+
+    (mkIf (cfg.enable && cfg.ai.enable) {
     home.packages = [
       # Claude Code - AI-powered CLI assistant from Anthropic
       # https://claude.com/claude-code
@@ -59,10 +68,6 @@ in
 
       # OpenCode - Open-source AI coding agent
       pkgs.keystone.opencode
-
-      # Pi - tool-using coding assistant from llm-agents
-      pkgs.keystone.pi
-
     ]
     ++ optionals cfg.deepwork.enable [
       # DeepWork - workflow orchestration MCP server
@@ -119,5 +124,6 @@ in
         }
       ''
     );
-  };
+    })
+  ];
 }

@@ -186,6 +186,17 @@ in
   };
 
   options.keystone.terminal.pi = {
+    enable = mkOption {
+      type = types.bool;
+      default = config.keystone.terminal.ai.enable;
+      description = ''
+        Install the Pi coding assistant (pkgs.keystone.pi). Defaults to
+        terminal.ai.enable so machines running the full AI stack keep Pi,
+        while a machine that wants only Pi — without claude-code/gemini/codex
+        — can opt in independently of terminal.ai.enable.
+      '';
+    };
+
     extensions = {
       defaults.mcp.enable = mkOption {
         type = types.bool;
