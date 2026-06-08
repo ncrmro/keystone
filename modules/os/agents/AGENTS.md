@@ -74,7 +74,13 @@ keystone.os.agents.drago = {
   email = "agent-drago@example.com";
   terminal.enable = true;
   desktop = { enable = true; resolution = "1920x1080"; vncPort = null; };
-  chrome = { enable = true; debugPort = null; mcp.port = null; };
+  chrome = {
+    enable = true;
+    debugPort = null;
+    mode = "headed"; # or "headless" to run Chromium without labwc/wayvnc
+    mcp = { enable = true; port = null; };
+    healthCheck = { enable = true; interval = "5min"; probeMcp = true; };
+  };
   pi.extensions = { mcp.enable = true; packages = []; };
   grafana.mcp = { enable = false; url = "https://grafana.example.com"; };
   mail = { provision = false; address = "agent-drago@example.com"; };

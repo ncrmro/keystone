@@ -8,7 +8,12 @@
 with lib;
 let
   agentsLib = import ./lib.nix { inherit lib config pkgs; };
-  inherit (agentsLib) osCfg cfg agentsWithUids;
+  inherit (agentsLib)
+    osCfg
+    cfg
+    agentsWithUids
+    useZfs
+    ;
   inherit (agentsLib) chromeAgents hasChromeAgents agentChromeDebugPort;
 in
 {
@@ -58,6 +63,26 @@ in
           debugPort = agentChromeDebugPort name agentCfg;
           xdgRuntimeDir = "/run/user/${toString uid}";
           profileDir = "/home/${username}/.config/chromium-agent";
+          isHeadless = agentCfg.chrome.mode == "headless";
+          homeReadyUnit = if useZfs then "zfs-agent-datasets.service" else "agent-homes.service";
+          waylandReadyCheck = "${pkgs.bash}/bin/bash -c 'for i in $(seq 1 100); do [ -S \"${xdgRuntimeDir}/wayland-0\" ] && exit 0; sleep 0.1; done; echo \"Timed out waiting for Wayland socket\" >&2; exit 1'";
+          chromiumArgs = [
+            "${pkgs.chromium}/bin/chromium"
+            "--user-data-dir=${profileDir}"
+            "--remote-debugging-port=${toString debugPort}"
+            "--remote-debugging-address=127.0.0.1"
+            "--no-first-run"
+            "--no-default-browser-check"
+            "--disable-gpu"
+          ]
+          ++ optionals isHeadless [
+            "--headless=new"
+            "--disable-dev-shm-usage"
+          ]
+          ++ optionals (!isHeadless) [
+            "--enable-features=UseOzonePlatform"
+            "--ozone-platform=wayland"
+          ];
           healthCheck = pkgs.writeShellScript "agent-${name}-chromium-healthcheck" ''
             set -eu
 
@@ -75,67 +100,70 @@ in
               exec ${pkgs.systemd}/bin/systemctl restart "$service"
             fi
 
-            probe="$(${pkgs.coreutils}/bin/mktemp --suffix=.mjs)"
-            trap 'rm -f "$probe"' EXIT
-            cat > "$probe" <<'EOF'
-            import { Client } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js';
-            import { StdioClientTransport } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js';
+            ${optionalString agentCfg.chrome.healthCheck.probeMcp ''
+              probe="$(${pkgs.coreutils}/bin/mktemp --suffix=.mjs)"
+              trap 'rm -f "$probe"' EXIT
+              cat > "$probe" <<'EOF'
+              import { Client } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js';
+              import { StdioClientTransport } from '${pkgs.keystone.pi-mcp-extension}/lib/node_modules/pi-mcp-extension/node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.js';
 
-            const transport = new StdioClientTransport({
-              command: '${pkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp',
-              args: [
-                '--browserUrl',
-                'http://127.0.0.1:${toString debugPort}',
-                '--no-usage-statistics',
-                '--no-performance-crux',
-              ],
-            });
-            const client = new Client({ name: 'keystone-healthcheck', version: '0.0.0' }, { capabilities: {} });
+              const transport = new StdioClientTransport({
+                command: '${pkgs.keystone.chrome-devtools-mcp}/bin/chrome-devtools-mcp',
+                args: [
+                  '--browserUrl',
+                  'http://127.0.0.1:${toString debugPort}',
+                  '--no-usage-statistics',
+                  '--no-performance-crux',
+                ],
+              });
+              const client = new Client({ name: 'keystone-healthcheck', version: '0.0.0' }, { capabilities: {} });
 
-            try {
-              await client.connect(transport);
-              await client.callTool({ name: 'list_pages', arguments: {} });
-            } finally {
-              await client.close();
-            }
-            EOF
+              try {
+                await client.connect(transport);
+                await client.callTool({ name: 'list_pages', arguments: {} });
+              } finally {
+                await client.close();
+              }
+              EOF
 
-            if ! ${pkgs.coreutils}/bin/timeout 20 ${pkgs.nodejs}/bin/node "$probe"; then
-              echo "$service: Chrome DevTools MCP list_pages probe failed; restarting" >&2
-              exec ${pkgs.systemd}/bin/systemctl restart "$service"
-            fi
+              if ! ${pkgs.coreutils}/bin/timeout 20 ${pkgs.nodejs}/bin/node "$probe"; then
+                echo "$service: Chrome DevTools MCP list_pages probe failed; restarting" >&2
+                exec ${pkgs.systemd}/bin/systemctl restart "$service"
+              fi
+            ''}
           '';
         in
         {
           "agent-${name}-chromium" = {
             description = "Chromium browser for ${username}";
-            after = [ "agent-${name}-labwc.service" ];
-            requires = [ "agent-${name}-labwc.service" ];
-            wantedBy = [ "agent-desktops.target" ];
+            after = if isHeadless then [ homeReadyUnit ] else [ "agent-${name}-labwc.service" ];
+            requires = if isHeadless then [ homeReadyUnit ] else [ "agent-${name}-labwc.service" ];
+            wantedBy = if isHeadless then [ "multi-user.target" ] else [ "agent-desktops.target" ];
             environment = {
+              XDG_CONFIG_HOME = "/home/${username}/.config";
+            }
+            // optionalAttrs isHeadless {
+              XDG_RUNTIME_DIR = xdgRuntimeDir;
+            }
+            // optionalAttrs (!isHeadless) {
               WAYLAND_DISPLAY = "wayland-0";
               XDG_RUNTIME_DIR = xdgRuntimeDir;
-              XDG_CONFIG_HOME = "/home/${username}/.config";
             };
             serviceConfig = {
               Type = "simple";
               User = username;
               Group = "agents";
-              # Poll for Wayland socket before starting Chromium
-              ExecStartPre = "${pkgs.bash}/bin/bash -c 'for i in $(seq 1 100); do [ -S \"${xdgRuntimeDir}/wayland-0\" ] && exit 0; sleep 0.1; done; echo \"Timed out waiting for Wayland socket\" >&2; exit 1'";
-              ExecStart = builtins.concatStringsSep " " [
-                "${pkgs.chromium}/bin/chromium"
-                "--user-data-dir=${profileDir}"
-                "--remote-debugging-port=${toString debugPort}"
-                "--remote-debugging-address=127.0.0.1"
-                "--no-first-run"
-                "--no-default-browser-check"
-                "--disable-gpu"
-                "--enable-features=UseOzonePlatform"
-                "--ozone-platform=wayland"
-              ];
+              ExecStart = builtins.concatStringsSep " " chromiumArgs;
               Restart = "always";
               RestartSec = 5;
+            }
+            // optionalAttrs isHeadless {
+              RuntimeDirectory = "user/${toString uid}";
+              RuntimeDirectoryMode = "0700";
+            }
+            // optionalAttrs (!isHeadless) {
+              # Poll for Wayland socket before starting Chromium
+              ExecStartPre = waylandReadyCheck;
             };
           };
 
@@ -152,13 +180,13 @@ in
     );
 
     systemd.timers = mkMerge (
-      mapAttrsToList (name: _: {
-        "agent-${name}-chromium-healthcheck" = {
+      mapAttrsToList (name: agentCfg: {
+        "agent-${name}-chromium-healthcheck" = mkIf agentCfg.chrome.healthCheck.enable {
           description = "Periodic Chromium DevTools health check for agent-${name}";
           wantedBy = [ "timers.target" ];
           timerConfig = {
             OnBootSec = "2min";
-            OnUnitActiveSec = "5min";
+            OnUnitActiveSec = agentCfg.chrome.healthCheck.interval;
             AccuracySec = "30s";
             Unit = "agent-${name}-chromium-healthcheck.service";
           };

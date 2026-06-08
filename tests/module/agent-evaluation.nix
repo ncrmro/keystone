@@ -981,6 +981,101 @@ let
       }
     ];
 
+    # Agent with headless Chrome — no labwc/wayvnc desktop required, but the
+    # remote debugging port and chrome-devtools MCP remain available.
+    agent-chrome-headless = eval "agent-chrome-headless" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            default = true;
+            notes.repo = "git@example.com:researcher/notes.git";
+            desktop.enable = false;
+            chrome = {
+              enable = true;
+              mode = "headless";
+              mcp.enable = true;
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with lightweight Chrome health checks — keeps DevTools HTTP checks
+    # but avoids periodically invoking chrome-devtools-mcp in headed sessions.
+    agent-chrome-healthcheck-lightweight = eval "agent-chrome-healthcheck-lightweight" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            default = true;
+            notes.repo = "git@example.com:researcher/notes.git";
+            chrome.healthCheck = {
+              interval = "30min";
+              probeMcp = false;
+            };
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
+    # Agent with Chrome health check timer disabled — Chromium and MCP config
+    # still evaluate so agents can connect when the browser is running.
+    agent-chrome-healthcheck-disabled = eval "agent-chrome-healthcheck-disabled" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+          };
+          agents.researcher = {
+            fullName = "Research Agent";
+            default = true;
+            notes.repo = "git@example.com:researcher/notes.git";
+            chrome.healthCheck.enable = false;
+          };
+        };
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
     # Agent with GitHub and Forgejo source usernames
     # forgejo.username defaults to agent name; github.username must be set explicitly
     agent-source-usernames = eval "agent-source-usernames" [

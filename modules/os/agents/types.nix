@@ -249,6 +249,20 @@ in
             description = "Chrome remote debugging port. If null, auto-assigned starting from 9222.";
           };
 
+          mode = mkOption {
+            type = types.enum [
+              "headed"
+              "headless"
+            ];
+            default = "headed";
+            description = ''
+              Chromium runtime mode. Use "headed" to run inside the agent's
+              labwc/wayvnc desktop, or "headless" to run Chromium without an
+              agent desktop while keeping the remote-debugging port and Chrome
+              DevTools MCP available.
+            '';
+          };
+
           mcp = {
             enable = mkOption {
               type = types.bool;
@@ -260,6 +274,30 @@ in
               type = types.nullOr types.port;
               default = null;
               description = "Chrome DevTools MCP server port. If null, auto-assigned starting from 3101.";
+            };
+          };
+
+          healthCheck = {
+            enable = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Enable the periodic Chromium DevTools health check timer.";
+            };
+
+            interval = mkOption {
+              type = types.str;
+              default = "5min";
+              description = "systemd OnUnitActiveSec interval for Chromium DevTools health checks.";
+            };
+
+            probeMcp = mkOption {
+              type = types.bool;
+              default = true;
+              description = ''
+                Run a full chrome-devtools-mcp list_pages probe during health checks.
+                Disable this to keep lightweight HTTP endpoint checks while avoiding
+                periodic MCP browser interaction in headed sessions.
+              '';
             };
           };
         };
