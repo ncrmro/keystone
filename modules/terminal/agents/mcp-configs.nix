@@ -18,7 +18,12 @@ let
   cfg = config.keystone.terminal.cliCodingAgents;
   terminalCfg = config.keystone.terminal;
   piCfg = terminalCfg.pi;
-  deepworkEnabled = terminalCfg.ai.enable && terminalCfg.deepwork.enable;
+  # DeepWork is self-contained (pkgs.keystone.deepwork + DEEPWORK_ADDITIONAL_JOBS_FOLDERS
+  # from terminal/deepwork.nix, both independent of the broader AI toolchain), so it
+  # can be enabled on its own. Gating it on terminal.ai.enable would force the full
+  # AI stack (claude-code/gemini/codex packages) on just to get the deepwork MCP
+  # server; keep it tied only to terminal.deepwork.enable.
+  deepworkEnabled = terminalCfg.deepwork.enable;
   deepworkAdditionalJobsFolders =
     config.home.sessionVariables.DEEPWORK_ADDITIONAL_JOBS_FOLDERS or null;
 
