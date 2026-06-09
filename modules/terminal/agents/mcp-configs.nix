@@ -109,6 +109,12 @@ let
   piJsonMcpServers = pkgs.writeText "pi-mcp-servers.json" (builtins.toJSON piMcpServers);
   piJsonSettings = pkgs.writeText "pi-settings.json" (
     builtins.toJSON {
+      npmCommand = [
+        "${pkgs.bash}/bin/bash"
+        "-lc"
+        "export PATH=${pkgs.nodejs}/bin:$PATH; exec ${pkgs.nodejs}/bin/npm \"$@\""
+        "npm"
+      ];
       packages = piPackages;
     }
   );
@@ -465,7 +471,7 @@ in
             fi
     '';
 
-    home.activation.piAgentSettings = mkIf (piPackages != [ ]) (
+    home.activation.piAgentSettings = mkIf piCfg.enable (
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         piSettings="$HOME/.pi/agent/settings.json"
         mkdir -p "$(dirname "$piSettings")"
@@ -475,7 +481,7 @@ in
         fi
 
         if [ -f "$piSettings" ]; then
-          ${pkgs.jq}/bin/jq -s '.[0] * {packages: .[1].packages}' \
+          ${pkgs.jq}/bin/jq -s '.[0] * {npmCommand: .[1].npmCommand, packages: .[1].packages}' \
             "$piSettings" ${piJsonSettings} > "$piSettings.tmp" \
             && mv "$piSettings.tmp" "$piSettings"
         else
