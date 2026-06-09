@@ -195,6 +195,13 @@ let
           echo "  Actual home files: ${homeFilesJson}"
           exit 1
         fi
+        if echo '${homeFilesJson}' | grep -q '".bridl/settings.yml"' && echo '${homeFilesJson}' | grep -q '".bridl/profiles"'; then
+          echo "  ✓ Found default bridl home files when AI is enabled"
+        else
+          echo "  ✗ Missing default bridl home files when AI is enabled"
+          echo "  Actual home files: ${homeFilesJson}"
+          exit 1
+        fi
         if echo ${canonicalAgentsTextJson} | grep -q 'process.privileged-approval'; then
           echo "  ✓ Found privileged approval guidance in ~/.keystone/AGENTS.md"
         else
@@ -206,6 +213,17 @@ let
         else
           echo "  ✗ Missing shared-surface tracking guidance in ~/.keystone/AGENTS.md"
           exit 1
+        fi
+      fi
+
+      if [ "${name}" = "ai-disabled" ]; then
+        echo "Verifying bridl follows keystone.terminal.ai.enable..."
+        if echo '${homeFilesJson}' | grep -q '".bridl/'; then
+          echo "  ✗ Found bridl home files even though AI is disabled"
+          echo "  Actual home files: ${homeFilesJson}"
+          exit 1
+        else
+          echo "  ✓ Bridl home files absent when AI is disabled"
         fi
       fi
 
@@ -293,14 +311,6 @@ let
         else
           echo "  ✗ Luce capability resolution is wrong"
           echo "  Actual Luce capabilities: ${luceCapabilitiesJson}"
-          exit 1
-        fi
-        if echo '${dragoCapabilitiesJson}' | grep -q '"notes"' && echo '${luceCapabilitiesJson}' | grep -q '"notes"'; then
-          echo "  ✓ Both agents keep notes capability"
-        else
-          echo "  ✗ Missing notes capability on one or both agents"
-          echo "  Drago: ${dragoCapabilitiesJson}"
-          echo "  Luce: ${luceCapabilitiesJson}"
           exit 1
         fi
       fi
@@ -425,6 +435,29 @@ let
       }
     ];
 
+    ai-disabled = eval "ai-disabled" [
+      {
+        keystone.os = {
+          enable = true;
+          storage = {
+            type = "ext4";
+            devices = [ "/dev/vda" ];
+          };
+          users.testuser = {
+            fullName = "Test User";
+            initialPassword = "testpass";
+            admin = true;
+            terminal.enable = true;
+          };
+        };
+        home-manager.users.testuser.keystone.terminal.ai.enable = false;
+        fileSystems."/" = {
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
+        };
+      }
+    ];
+
     # Development mode verification
     development-mode = eval "development-mode" [
       {
@@ -472,7 +505,6 @@ let
             default = true;
             capabilities = [
               "engineer"
-              "notes"
             ];
             notes.repo = "git@example.com:drago/notes.git";
           };
@@ -481,7 +513,6 @@ let
             email = "luce@example.com";
             archetype = "product";
             capabilities = [
-              "notes"
               "executive-assistant"
             ];
             notes.repo = "git@example.com:luce/notes.git";

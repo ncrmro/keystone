@@ -24,7 +24,9 @@ let
   cfg = config.keystone.terminal.bridl;
   inherit (lib)
     mkEnableOption
+    mkDefault
     mkIf
+    mkMerge
     mkOption
     types
     ;
@@ -57,12 +59,18 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
-    home.packages = [ pkgs.keystone.bridl ];
+  config = mkMerge [
+    {
+      keystone.terminal.bridl.enable = mkDefault config.keystone.terminal.ai.enable;
+    }
 
-    home.file.".bridl/settings.yml".source =
-      config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/settings.yml";
-    home.file.".bridl/profiles".source =
-      config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/profiles";
-  };
+    (mkIf cfg.enable {
+      home.packages = [ pkgs.keystone.bridl ];
+
+      home.file.".bridl/settings.yml".source =
+        config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/settings.yml";
+      home.file.".bridl/profiles".source =
+        config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/profiles";
+    })
+  ];
 }
