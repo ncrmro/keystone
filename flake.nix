@@ -520,6 +520,9 @@
           agentTaskLoopHashRegression = import ./tests/module/agent-task-loop-hash-regression.nix {
             inherit pkgs lib;
           };
+          agentTaskLoopInvalidPendingTask = import ./tests/module/agent-task-loop-invalid-pending-task.nix {
+            inherit pkgs lib;
+          };
           agentTaskLoopPingPong = import ./tests/module/agent-task-loop-ping-pong.nix {
             inherit pkgs lib;
           };
@@ -562,6 +565,7 @@
           zellij-tab-prompt = zellijTabPrompt;
           terminal-zide = terminalZide;
           agent-task-loop-hash-regression = agentTaskLoopHashRegression;
+          agent-task-loop-invalid-pending-task = agentTaskLoopInvalidPendingTask;
           agent-task-loop-ping-pong = agentTaskLoopPingPong;
           agent-runtime-coherence = agentRuntimeCoherence;
           agent-queue-migration = agentQueueMigration;
@@ -618,6 +622,7 @@
           check-agents = pkgs.runCommand "check-agents" { } ''
             mkdir -p "$out"
             ln -s ${agentTaskLoopHashRegression} "$out/agent-task-loop-hash-regression"
+            ln -s ${agentTaskLoopInvalidPendingTask} "$out/agent-task-loop-invalid-pending-task"
             ln -s ${agentTaskLoopPingPong} "$out/agent-task-loop-ping-pong"
             ln -s ${agentRuntimeCoherence} "$out/agent-runtime-coherence"
             ln -s ${agentQueueMigration} "$out/agent-queue-migration"

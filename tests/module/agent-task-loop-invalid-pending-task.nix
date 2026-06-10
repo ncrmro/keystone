@@ -87,13 +87,25 @@ pkgs.runCommand "test-agent-task-loop-invalid-pending-task"
 
         mkdir -p "$HOME" "$TASK_LOOP_TEST_STATE_DIR" "$PWD/stubs" ${notesDir}
 
-        cat > ${notesDir}/TASKS.yaml <<'EOF'
+        # Queue files live in $HOME post-23b164f8 refactor; seed them there
+        # directly so the task loop operates on the same file the test reads back.
+        cat > "$HOME/TASKS.yaml" <<'EOF'
     tasks:
       - name: ""
         description: "Malformed pending task"
         status: pending
         source: email
         source_ref: "email-empty-name@test"
+      - name: "ping"
+        description: "Bare ping residue from failed e2e run"
+        status: pending
+        source: email
+        source_ref: "email-pingpong-residue-ping@test"
+      - name: "Pong"
+        description: "Bare pong residue (case-insensitive match) from failed e2e run"
+        status: pending
+        source: email
+        source_ref: "email-pingpong-residue-pong@test"
       - name: "reply-pong-to-test"
         description: "Reply with pong to the ping email from test@ncrmro.com"
         status: pending
@@ -101,7 +113,7 @@ pkgs.runCommand "test-agent-task-loop-invalid-pending-task"
         source_ref: "email-1-test@ncrmro.com"
     EOF
 
-        mkdir -p ${notesDir}/.deepwork
+        mkdir -p "$HOME/.deepwork"
 
         printf '%s\n' '#!${pkgs.bash}/bin/bash' 'exit 0' > "$PWD/stubs/systemctl"
         chmod +x "$PWD/stubs/systemctl"
@@ -133,23 +145,33 @@ pkgs.runCommand "test-agent-task-loop-invalid-pending-task"
         fi
 
         printf '%s\n' '{"total_tokens":1}'
-        STUBEOF
+    STUBEOF
         chmod +x "$PWD/stubs/claude"
 
         bash "${taskLoopScript}"
 
-        invalid_status="$(yq '[.tasks[] | select(.source_ref == "email-empty-name@test")] | .[0].status' ${notesDir}/TASKS.yaml)"
+        invalid_status="$(yq '[.tasks[] | select(.source_ref == "email-empty-name@test")] | .[0].status' "$HOME/TASKS.yaml")"
         if [[ "$invalid_status" != "error" ]]; then
           echo "FAIL: invalid pending task status is '$invalid_status', expected 'error'" >&2
-          cat ${notesDir}/TASKS.yaml >&2
+          cat "$HOME/TASKS.yaml" >&2
           exit 1
         fi
         echo "PASS: invalid pending task marked error"
 
-        valid_status="$(yq '[.tasks[] | select(.source_ref == "email-1-test@ncrmro.com")] | .[0].status' ${notesDir}/TASKS.yaml)"
+        for residue_ref in "email-pingpong-residue-ping@test" "email-pingpong-residue-pong@test"; do
+          residue_status="$(yq "[.tasks[] | select(.source_ref == \"$residue_ref\")] | .[0].status" "$HOME/TASKS.yaml")"
+          if [[ "$residue_status" != "error" ]]; then
+            echo "FAIL: ping/pong residue task ($residue_ref) status is '$residue_status', expected 'error'" >&2
+            cat "$HOME/TASKS.yaml" >&2
+            exit 1
+          fi
+          echo "PASS: ping/pong residue task ($residue_ref) marked error"
+        done
+
+        valid_status="$(yq '[.tasks[] | select(.source_ref == "email-1-test@ncrmro.com")] | .[0].status' "$HOME/TASKS.yaml")"
         if [[ "$valid_status" != "completed" ]]; then
           echo "FAIL: valid pending task status is '$valid_status', expected 'completed'" >&2
-          cat ${notesDir}/TASKS.yaml >&2
+          cat "$HOME/TASKS.yaml" >&2
           exit 1
         fi
         echo "PASS: valid pending task completed"
