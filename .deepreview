@@ -116,6 +116,124 @@ implementation_sync:
       Report which tests cover which changes, and flag any gaps.
 
 # =====================================================================
+# Service Network Topology
+# Reviews cross-host service URLs, nginx upstreams, OS firewall exposure,
+# and Headscale/Tailscale ACL implications together. Catches drift where a
+# service is declared in one module but consumed through the wrong network
+# identity or exposed on the wrong firewall surface.
+# =====================================================================
+service_network_topology:
+  description: "Review Keystone service networking for Headscale DNS, nginx upstreams, and firewall/ACL consistency."
+  match:
+    include:
+      - "modules/services.nix"
+      - "modules/server/**/*.nix"
+      - "modules/os/**/*.nix"
+      - "modules/hosts.nix"
+      - "tests/module/**/*evaluation.nix"
+      - "docs/**/*.md"
+      - "modules/**/AGENTS.md"
+    exclude:
+      - "modules/os/agents/archetypes/**"
+      - "modules/os/agents/scripts/**"
+  review:
+    strategy: matches_together
+    additional_context:
+      unchanged_matching_files: true
+    instructions: |
+      Review changed service/networking code as one topology, not as isolated files.
+      Read the relevant service producer, service consumer, nginx/DNS module, and
+      firewall/ACL module before deciding PASS/FAIL.
+
+      ## 1. Internal service hostnames
+
+      Cross-host internal Keystone service URLs MUST use the Headscale/MagicDNS
+      identity derived from `keystone.hosts` and `keystone.headscaleDomain`.
+
+      Flag any new or changed cross-host URL that:
+      - Uses a raw Tailscale IP (`100.64.0.0/10`) instead of the host's
+        Headscale DNS name, unless the code is specifically generating DNS A
+        records or documents why DNS cannot be used.
+      - Uses a bare hostname when `keystone.headscaleDomain` is available and the
+        consumer runs on another host.
+      - Hardcodes fleet-specific hostnames in reusable Keystone modules instead
+        of deriving them from `keystone.hosts`, `keystone.services.*`, or module
+        options.
+      - Points an OS-agent or user-facing generated config at localhost unless
+        the service is guaranteed to run on the same host.
+
+      Acceptable patterns:
+      - Service registry options such as `keystone.services.<name>.host` identify
+        the providing host by its `networking.hostName`.
+      - Consumer URLs derive `host.headscaleDomain` / `sshTarget` from
+        `keystone.hosts` rather than hardcoding addresses.
+      - DNS-generation modules may use `tailscaleIP` as DNS record values.
+
+      ## 2. Nginx upstreams and service FQDNs
+
+      Host nginx reverse proxies SHOULD target same-host upstreams with loopback
+      or a Unix socket, e.g. `http://127.0.0.1:${port}`. Flag nginx proxy_pass /
+      proxyPass values that route same-host services through:
+      - Headscale DNS names,
+      - public service FQDNs,
+      - raw Tailscale IPs,
+      - `0.0.0.0`, or
+      - container-published addresses when loopback is available.
+
+      Exceptions MUST be documented at the proxy site. Same-host rootless
+      container-to-host traffic may use `host.containers.internal` outside nginx
+      when loopback is not reachable from the container namespace.
+
+      For service FQDN generation, verify `subdomain + keystone.domain`, nginx
+      virtualHosts, and `keystone.server.generatedDNSRecords` stay consistent.
+
+      ## 3. OS firewall exposure
+
+      For every added or changed service listener, verify the NixOS firewall
+      exposure matches the intended audience:
+      - Tailnet-only internal service ports SHOULD be opened on
+        `networking.firewall.interfaces.tailscale0.allowedTCPPorts`, not global
+        `networking.firewall.allowedTCPPorts`.
+      - Public services may use global firewall ports only when the service's
+        access mode or module comments explicitly state public exposure.
+      - Local-only services SHOULD bind to loopback and normally need no global
+        firewall opening.
+      - If a module has `openFirewall`, verify its default and docs match the
+        service's bind address and expected consumer network.
+      - Opening `services.tailscale.port` UDP and trusting `tailscale0` is the
+        Tailscale client plumbing; do not confuse that with application service
+        exposure.
+
+      Flag mismatches with the exact option path and a suggested replacement,
+      e.g. `networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ port ];`.
+
+      ## 4. Headscale ACL and DNS implications
+
+      When a service becomes cross-host, verify one of these is true:
+      - The consumer path is already covered by a documented static Headscale ACL;
+      - The module generates `keystone.services.generatedACLRules` and
+        `generatedTagOwners` for the topology; or
+      - The service intentionally relies on broad existing tailnet reachability,
+        with a comment explaining why no narrower ACL is needed.
+
+      Also verify generated DNS records are consumed through
+      `keystone.headscale.dnsRecords` / `extra_records` where applicable. Flag
+      services that register DNS without a server `tailscaleIP`, or consumers
+      that assume a DNS name before the producing module exports it.
+
+      ## 5. Report format
+
+      For each finding, include:
+      - File and option/expression path.
+      - The service producer and consumer involved.
+      - Whether the failure is hostname derivation, nginx upstream, OS firewall,
+        Headscale ACL, or DNS wiring.
+      - The concrete Nix option or URL shape that should replace it.
+
+      Return PASS when changed files preserve the topology and no mismatches are
+      found.
+
+# =====================================================================
 # Requirements Traceability
 # Every Nix module header comment should link to its relevant
 # conventions (conventions/*.md) and spec requirements (specs/REQ-*).
