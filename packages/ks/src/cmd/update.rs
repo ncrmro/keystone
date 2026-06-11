@@ -115,6 +115,29 @@ async fn verify_repo_lock_ready(path: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Absolute `path`-type input locations recorded in the consumer flake.lock.
+/// Relative path locks (e.g. a flake's own `path:./code` sub-input) resolve
+/// against the declaring flake, not a local checkout, so they are skipped.
+fn path_locked_input_paths(repo_root: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(raw) = std::fs::read_to_string(repo_root.join("flake.lock")) else {
+        return Vec::new();
+    };
+    let Ok(lock) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(nodes) = lock.get("nodes").and_then(|nodes| nodes.as_object()) else {
+        return Vec::new();
+    };
+    nodes
+        .values()
+        .filter_map(|node| node.get("locked"))
+        .filter(|locked| locked.get("type").and_then(|ty| ty.as_str()) == Some("path"))
+        .filter_map(|locked| locked.get("path").and_then(|path| path.as_str()))
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .collect()
+}
+
 async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
     let registry = repo::get_repos_registry(repo_root).await?;
     let obj = match registry.as_object() {
@@ -122,10 +145,24 @@ async fn verify_all_repos_lock_ready(repo_root: &Path) -> Result<()> {
         None => return Ok(()),
     };
 
+    // Only checkouts that flake.lock references as path inputs can leak
+    // local state into a locked build; inputs locked to remote revs
+    // (github/git) build from the lock regardless of checkout state.
+    let path_locked = path_locked_input_paths(repo_root);
+
     for (key, _value) in obj {
         let candidates = repo::repo_checkout_candidates(repo_root, key);
         if let Some(path) = candidates.iter().find(|candidate| candidate.is_dir()) {
-            verify_repo_lock_ready(path, key).await?;
+            let checkout = path.canonicalize().unwrap_or_else(|_| path.clone());
+            let lock_references_checkout = path_locked.iter().any(|locked| {
+                locked
+                    .canonicalize()
+                    .unwrap_or_else(|_| locked.clone())
+                    .starts_with(&checkout)
+            });
+            if lock_references_checkout {
+                verify_repo_lock_ready(path, key).await?;
+            }
         }
     }
 
@@ -235,5 +272,48 @@ mod tests {
         assert_eq!(json["hosts"][0], "ocean");
         assert_eq!(json["dev"], false);
         assert_eq!(json["mode"], "switch");
+    }
+
+    #[test]
+    fn path_locked_input_paths_only_absolute_path_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("flake.lock"),
+            serde_json::json!({
+                "nodes": {
+                    "keystone": {
+                        "locked": {
+                            "type": "github",
+                            "owner": "ncrmro",
+                            "repo": "keystone",
+                            "rev": "abc"
+                        }
+                    },
+                    "local-tree": {
+                        "locked": { "type": "path", "path": "/home/user/repos/local-tree" }
+                    },
+                    "relative-subflake": {
+                        "locked": { "type": "path", "path": "./code" }
+                    },
+                    "root": {}
+                },
+                "root": "root",
+                "version": 7
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let paths = path_locked_input_paths(dir.path());
+        assert_eq!(
+            paths,
+            vec![std::path::PathBuf::from("/home/user/repos/local-tree")]
+        );
+    }
+
+    #[test]
+    fn path_locked_input_paths_missing_lock_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(path_locked_input_paths(dir.path()).is_empty());
     }
 }
