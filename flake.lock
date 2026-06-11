@@ -119,11 +119,11 @@
     "bridl-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1780420616,
-        "narHash": "sha256-2hxr/xonCXV3uVIQkOufJV8m2kqW263QjQVtizsc2S4=",
+        "lastModified": 1781140812,
+        "narHash": "sha256-POuWoNOfdUcTZyywZ0cXYSriXduKzJL90xh6FWlEGQI=",
         "ref": "refs/heads/main",
-        "rev": "12d275a24b192125998511c6cf8bb63a87bd05fe",
-        "revCount": 79,
+        "rev": "87d2e7de798fbf9bd18dd0561cb142dcffdeb378",
+        "revCount": 108,
         "type": "git",
         "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
       },

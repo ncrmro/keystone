@@ -14,7 +14,8 @@ buildNpmPackage {
 
   src = bridl-src;
 
-  npmDepsHash = "sha256-2XDq7aNc5lZsfcFAV6mancSjyQte/aOf2GF1z18Fx7U=";
+  npmDepsHash = "sha256-yC+2UdB29auGoBRnNztDICJnfo2Wp25svDLwrQMU9Q8=";
+  npmDepsFetcherVersion = 2;
 
   # Bridl's `prepare` script invokes `npm run build` which runs tsc + schemas
   # copy + chmod +x dist/cli.js. That's exactly what we want for installation,
