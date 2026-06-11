@@ -45,6 +45,11 @@ in
             # When applepi is enabled for this agent, prepend `applepi run --profile`
             # so the pi subprocess pi-task-runner spawns inherits the profile's
             # controls, skills, and append-system-prompt.
+            # TODO: applepi's pi adapter launches `pi` directly and treats
+            # everything after `--` as pi args, so wrapping pi-task-runner this
+            # way runs pi with a bogus positional arg instead of the runner.
+            # Enabling piTaskRunner together with applepi will not work until
+            # the runner itself launches pi through `applepi run`.
             script =
               let
                 applepiPrefix =
