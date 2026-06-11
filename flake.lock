@@ -25,6 +25,22 @@
         "type": "github"
       }
     },
+    "applepi-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781140812,
+        "narHash": "sha256-POuWoNOfdUcTZyywZ0cXYSriXduKzJL90xh6FWlEGQI=",
+        "ref": "refs/heads/main",
+        "rev": "87d2e7de798fbf9bd18dd0561cb142dcffdeb378",
+        "revCount": 108,
+        "type": "git",
+        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
+      }
+    },
     "aquamarine": {
       "inputs": {
         "hyprutils": [
@@ -114,22 +130,6 @@
         "owner": "numtide",
         "repo": "blueprint",
         "type": "github"
-      }
-    },
-    "bridl-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1781140812,
-        "narHash": "sha256-POuWoNOfdUcTZyywZ0cXYSriXduKzJL90xh6FWlEGQI=",
-        "ref": "refs/heads/main",
-        "rev": "87d2e7de798fbf9bd18dd0561cb142dcffdeb378",
-        "revCount": 108,
-        "type": "git",
-        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
-      },
-      "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/Unsupervisedcom/bridl.git"
       }
     },
     "browser-previews": {
@@ -1512,7 +1512,7 @@
     "root": {
       "inputs": {
         "agenix": "agenix",
-        "bridl-src": "bridl-src",
+        "applepi-src": "applepi-src",
         "browser-previews": "browser-previews",
         "calendula": "calendula",
         "cardamum": "cardamum",

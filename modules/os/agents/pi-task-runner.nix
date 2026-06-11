@@ -42,19 +42,19 @@ in
               SyslogIdentifier = "agent-${name}-pi-task-runner";
               LogRateLimitIntervalSec = 0;
             };
-            # When bridl is enabled for this agent, prepend `bridl run --profile`
+            # When applepi is enabled for this agent, prepend `applepi run --profile`
             # so the pi subprocess pi-task-runner spawns inherits the profile's
             # controls, skills, and append-system-prompt.
             script =
               let
-                bridlPrefix =
-                  if agentCfg.bridl.enable then
-                    "${pkgs.keystone.bridl}/bin/bridl run --profile ${escapeShellArg agentCfg.bridl.profile} -- "
+                applepiPrefix =
+                  if agentCfg.applepi.enable then
+                    "${pkgs.keystone.applepi}/bin/applepi run --profile ${escapeShellArg agentCfg.applepi.profile} -- "
                   else
                     "";
               in
               ''
-                exec ${bridlPrefix}${pkgs.keystone.pi-task-runner}/bin/pi-task-runner \
+                exec ${applepiPrefix}${pkgs.keystone.pi-task-runner}/bin/pi-task-runner \
                   --agent ${escapeShellArg name} \
                   --model ${escapeShellArg runner.model} \
                   --sources ${escapeShellArg runner.sources} \

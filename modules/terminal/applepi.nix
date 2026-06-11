@@ -1,9 +1,9 @@
-# bridl — profile-oriented wrapper for launching pi/claude agent CLIs.
+# applepi — profile-oriented wrapper for launching pi/claude agent CLIs.
 #
-# Installs the `bridl` binary and symlinks ~/.bridl/{settings.yml,profiles}
-# to an external bridl config tree (typically a ks-config checkout's
-# agents/bridl/ directory) so profile edits propagate live, without a
-# nixos-rebuild. ~/.bridl/cache stays outside the symlinked tree and is
+# Installs the `applepi` binary and symlinks ~/.applepi/{settings.yml,profiles}
+# to an external applepi config tree (typically a ks-config checkout's
+# agents/applepi/ directory) so profile edits propagate live, without a
+# nixos-rebuild. ~/.applepi/cache stays outside the symlinked tree and is
 # writable by the user.
 #
 # Used in two places:
@@ -21,7 +21,7 @@
   ...
 }:
 let
-  cfg = config.keystone.terminal.bridl;
+  cfg = config.keystone.terminal.applepi;
   inherit (lib)
     mkEnableOption
     mkDefault
@@ -41,19 +41,19 @@ let
       "${config.home.homeDirectory}/repos/ks-config";
 in
 {
-  options.keystone.terminal.bridl = {
-    enable = mkEnableOption "bridl ~/.bridl symlinks and CLI install.";
+  options.keystone.terminal.applepi = {
+    enable = mkEnableOption "applepi ~/.applepi symlinks and CLI install.";
 
     configDir = mkOption {
       type = types.str;
-      default = "${systemFlakePath}/agents/bridl";
+      default = "${systemFlakePath}/agents/applepi";
       defaultText = lib.literalExpression ''
-        "''${osConfig.keystone.systemFlake.path}/agents/bridl"
+        "''${osConfig.keystone.systemFlake.path}/agents/applepi"
       '';
       description = ''
-        Absolute path to the bridl config directory (containing
-        settings.yml and profiles/). ~/.bridl/settings.yml and
-        ~/.bridl/profiles are symlinked here as out-of-store links so
+        Absolute path to the applepi config directory (containing
+        settings.yml and profiles/). ~/.applepi/settings.yml and
+        ~/.applepi/profiles are symlinked here as out-of-store links so
         live edits propagate without a rebuild.
       '';
     };
@@ -61,15 +61,15 @@ in
 
   config = mkMerge [
     {
-      keystone.terminal.bridl.enable = mkDefault config.keystone.terminal.ai.enable;
+      keystone.terminal.applepi.enable = mkDefault config.keystone.terminal.ai.enable;
     }
 
     (mkIf cfg.enable {
-      home.packages = [ pkgs.keystone.bridl ];
+      home.packages = [ pkgs.keystone.applepi ];
 
-      home.file.".bridl/settings.yml".source =
+      home.file.".applepi/settings.yml".source =
         config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/settings.yml";
-      home.file.".bridl/profiles".source =
+      home.file.".applepi/profiles".source =
         config.lib.file.mkOutOfStoreSymlink "${cfg.configDir}/profiles";
     })
   ];

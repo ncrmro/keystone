@@ -213,13 +213,13 @@ in
                   url = agentCfg.grafana.mcp.url;
                 };
 
-                # bridl symlinks ~/.bridl/{settings.yml,profiles} into the
-                # consumer flake's agents/bridl/ tree. The agent traversal
+                # applepi symlinks ~/.applepi/{settings.yml,profiles} into the
+                # consumer flake's agents/applepi/ tree. The agent traversal
                 # ACL on the admin's home (modules/shared/system-flake.nix:60)
                 # makes this path reachable from the agent user.
-                keystone.terminal.bridl = mkIf agentCfg.bridl.enable {
+                keystone.terminal.applepi = mkIf agentCfg.applepi.enable {
                   enable = true;
-                  configDir = "${osConfig.keystone.systemFlake.path}/agents/bridl";
+                  configDir = "${osConfig.keystone.systemFlake.path}/agents/applepi";
                 };
 
                 # Add chrome-devtools-mcp to PATH when chrome MCP is enabled.

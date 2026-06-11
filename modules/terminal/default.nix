@@ -69,7 +69,7 @@ in
     ./forgejo.nix
     ./github-token-nix.nix
     ./grafana.nix
-    ./bridl.nix
+    ./applepi.nix
   ];
 
   options.keystone.terminal = {

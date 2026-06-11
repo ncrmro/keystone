@@ -195,10 +195,10 @@ let
           echo "  Actual home files: ${homeFilesJson}"
           exit 1
         fi
-        if echo '${homeFilesJson}' | grep -q '".bridl/settings.yml"' && echo '${homeFilesJson}' | grep -q '".bridl/profiles"'; then
-          echo "  ✓ Found default bridl home files when AI is enabled"
+        if echo '${homeFilesJson}' | grep -q '".applepi/settings.yml"' && echo '${homeFilesJson}' | grep -q '".applepi/profiles"'; then
+          echo "  ✓ Found default applepi home files when AI is enabled"
         else
-          echo "  ✗ Missing default bridl home files when AI is enabled"
+          echo "  ✗ Missing default applepi home files when AI is enabled"
           echo "  Actual home files: ${homeFilesJson}"
           exit 1
         fi
@@ -217,13 +217,13 @@ let
       fi
 
       if [ "${name}" = "ai-disabled" ]; then
-        echo "Verifying bridl follows keystone.terminal.ai.enable..."
-        if echo '${homeFilesJson}' | grep -q '".bridl/'; then
-          echo "  ✗ Found bridl home files even though AI is disabled"
+        echo "Verifying applepi follows keystone.terminal.ai.enable..."
+        if echo '${homeFilesJson}' | grep -q '".applepi/'; then
+          echo "  ✗ Found applepi home files even though AI is disabled"
           echo "  Actual home files: ${homeFilesJson}"
           exit 1
         else
-          echo "  ✓ Bridl home files absent when AI is disabled"
+          echo "  ✓ ApplePi home files absent when AI is disabled"
         fi
       fi
 

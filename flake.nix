@@ -110,9 +110,9 @@
       flake = false;
     };
 
-    # bridl — profile-oriented wrapper for launching pi/claude agent CLIs.
+    # applepi — profile-oriented wrapper for launching pi/claude agent CLIs.
     # Private repo; build hosts need SSH access to github.com/Unsupervisedcom.
-    bridl-src = {
+    applepi-src = {
       url = "git+ssh://git@github.com/Unsupervisedcom/bridl.git";
       flake = false;
     };
@@ -150,7 +150,7 @@
       deepwork,
       grafana-mcp-src,
       lfs-s3-src,
-      bridl-src,
+      applepi-src,
       ...
     }:
     let
@@ -278,7 +278,7 @@
           deepwork
           grafana-mcp-src
           lfs-s3-src
-          bridl-src
+          applepi-src
           ;
       };
 
@@ -721,7 +721,7 @@
             keystone-deepwork-jobs
             keystone-conventions
             slidev
-            bridl
+            applepi
             ;
           keystone-ha-tui-client = pkgs.callPackage ./packages/keystone-ha/tui { };
         };

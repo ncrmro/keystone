@@ -658,15 +658,15 @@ in
           };
         };
 
-        bridl = {
+        applepi = {
           enable = mkOption {
             type = types.bool;
             default = true;
             description = ''
-              Wrap pi launches for this agent with `bridl run --profile
+              Wrap pi launches for this agent with `applepi run --profile
               <profile>`. Requires the admin's ks-config checkout to be
-              traversable so the agent's ~/.bridl symlinks resolve. Also
-              installs the bridl CLI in the agent's home-manager profile.
+              traversable so the agent's ~/.applepi symlinks resolve. Also
+              installs the applepi CLI in the agent's home-manager profile.
 
               Default-on because every OS agent needs profile-driven pi
               launches; set to false only for spike/disabled agents.
@@ -677,7 +677,7 @@ in
             type = types.str;
             default = name;
             description = ''
-              Bridl profile name passed as `--profile`. Defaults to the
+              ApplePi profile name passed as `--profile`. Defaults to the
               agent's slug (e.g. `luce`, `drago`).
             '';
           };
