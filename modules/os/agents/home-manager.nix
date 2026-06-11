@@ -227,6 +227,12 @@ in
                 # path, but agents may also invoke the binary directly (e.g. diagnostics,
                 # `which chrome-devtools-mcp`). Adding it to home.packages satisfies both.
                 home.file.".pi/agent/models.json" = mkIf config.keystone.os.services.ollama.enable {
+                  # CRITICAL: consumer activation scripts (ks-config
+                  # zzVegaPiMcpConfig) replace this symlink with a copied real
+                  # file. Without force, the next activation tries to back the
+                  # copy up and aborts once models.json.backup exists — which
+                  # skips ALL remaining home.file links for the agent.
+                  force = true;
                   text = builtins.toJSON {
                     providers.ollama = {
                       baseUrl = "http://${ollamaHostAddress}:${toString config.keystone.os.services.ollama.port}/v1";
