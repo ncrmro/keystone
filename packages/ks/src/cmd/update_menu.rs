@@ -539,7 +539,9 @@ async fn highest_release_branch() -> Result<String> {
         .filter_map(|b| b.get("name").and_then(|v| v.as_str()).map(str::to_string))
         .collect();
     pick_highest_release_branch(&names).ok_or_else(|| {
-        anyhow!("no release/<major>.<minor> branch is published yet — the stable line is unavailable")
+        anyhow!(
+            "no release/<major>.<minor> branch is published yet — the stable line is unavailable"
+        )
     })
 }
 
@@ -1058,8 +1060,7 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                 // (`main`, `release/1.0`) and channel. `latest_tag` carries
                 // the branch label for both channels; naming the channel
                 // keeps a flipped host visibly distinct from the stable line.
-                let subtext =
-                    format!("Latest commit on {} ({} channel)", s.latest_tag, s.channel);
+                let subtext = format!("Latest commit on {} ({} channel)", s.latest_tag, s.channel);
                 entries.push(serde_json::json!({
                     "Text": format!("Latest: {}", s.latest_tag),
                     "Subtext": subtext,
@@ -1869,8 +1870,9 @@ mod tests {
         assert!(rendered.contains("Ref: release/1.0"));
         assert!(rendered.contains("Published: 2026-04-01T10:00:00Z"));
         assert!(rendered.contains("add Walker update menu"));
-        assert!(rendered
-            .contains("https://github.com/ncrmro/keystone/commit/bbbbbbbbccccccccddddddddeeeeeeeeffffffff"));
+        assert!(rendered.contains(
+            "https://github.com/ncrmro/keystone/commit/bbbbbbbbccccccccddddddddeeeeeeeeffffffff"
+        ));
     }
 
     #[test]
