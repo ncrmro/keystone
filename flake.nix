@@ -12,7 +12,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     omarchy = {
-      url = "github:basecamp/omarchy/v3.0.2";
+      url = "github:basecamp/omarchy/v3.8.2";
       flake = false;
     };
     lanzaboote = {
