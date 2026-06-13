@@ -48,7 +48,10 @@ in
       description = "Bitwarden password manager install options.";
     };
 
-    "1password" = mkOption {
+    # Identifier-safe key (matches `bitwarden`); the display name stays
+    # "1Password". A `"1password"` key would force quoted-attribute syntax
+    # in every consumer config.
+    onepassword = mkOption {
       type = managerType "1Password" {
         cli = pkgs._1password-cli;
         cliText = "pkgs._1password-cli";
@@ -63,6 +66,6 @@ in
   config.home.packages =
     optional (terminalEnabled && pm.bitwarden.cli.enable) pm.bitwarden.cli.package
     ++ optional (desktopEnabled && pm.bitwarden.desktop.enable) pm.bitwarden.desktop.package
-    ++ optional (terminalEnabled && pm."1password".cli.enable) pm."1password".cli.package
-    ++ optional (desktopEnabled && pm."1password".desktop.enable) pm."1password".desktop.package;
+    ++ optional (terminalEnabled && pm.onepassword.cli.enable) pm.onepassword.cli.package
+    ++ optional (desktopEnabled && pm.onepassword.desktop.enable) pm.onepassword.desktop.package;
 }
