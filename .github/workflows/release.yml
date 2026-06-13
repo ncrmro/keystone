@@ -88,6 +88,13 @@ jobs:
       - prepare
       - validate
     if: needs.prepare.outputs.publish_iso == 'true' && needs.validate.outputs.iso_built == 'true'
+    # Serialize all publishers across release lines: every `release/*` push
+    # mutates the single shared `latest-iso` tag/release, so concurrent runs
+    # (e.g. release/1.0 and release/2.0) must not race. Keyed by a constant,
+    # independent of the workflow-level per-ref concurrency group.
+    concurrency:
+      group: publish-latest-iso
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Download starter ISO artifact

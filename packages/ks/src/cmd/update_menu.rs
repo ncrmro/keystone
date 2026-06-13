@@ -509,12 +509,17 @@ fn pick_highest_release_branch(names: &[String]) -> Option<String> {
         .map(|(name, _)| name)
 }
 
-/// Resolve the highest `release/<M>.<m>` branch by listing the repo's
-/// branches. `per_page=100` is well above the handful of release lines
-/// Keystone will ever carry concurrently, so a single page suffices.
+/// Resolve the highest `release/<M>.<m>` branch.
+///
+/// Uses `GET /git/matching-refs/heads/release/`, which returns *only* refs
+/// under `refs/heads/release/` — so unrelated branches can never crowd a
+/// release line off a paginated `/branches` listing, and there is nothing to
+/// paginate (Keystone carries a handful of release lines at most). Returns an
+/// empty array (not 404) when no release branch exists, which maps to the
+/// fail-closed "stable line unavailable" error.
 async fn highest_release_branch() -> Result<String> {
     let url = format!(
-        "https://api.github.com/repos/{}/{}/branches?per_page=100",
+        "https://api.github.com/repos/{}/{}/git/matching-refs/heads/release/",
         RELEASE_OWNER, RELEASE_REPO
     );
     let mut req = github_client()?
@@ -534,9 +539,14 @@ async fn highest_release_branch() -> Result<String> {
         .context("GitHub response was not valid JSON")?;
     let names: Vec<String> = json
         .as_array()
-        .ok_or_else(|| anyhow!("GitHub branches response was not an array"))?
+        .ok_or_else(|| anyhow!("GitHub matching-refs response was not an array"))?
         .iter()
-        .filter_map(|b| b.get("name").and_then(|v| v.as_str()).map(str::to_string))
+        .filter_map(|r| {
+            r.get("ref")
+                .and_then(|v| v.as_str())
+                .and_then(|r| r.strip_prefix("refs/heads/"))
+                .map(str::to_string)
+        })
         .collect();
     pick_highest_release_branch(&names).ok_or_else(|| {
         anyhow!(
@@ -556,6 +566,10 @@ async fn highest_release_branch() -> Result<String> {
 ///                 "commit": { "committer": {"date": "..."},
 ///                             "message": "..." } } }
 async fn fetch_branch_tip(branch: &str) -> Result<ReleaseInfo> {
+    // The branch name is interpolated with its literal `/` (e.g.
+    // `release/1.0`). GitHub's `/branches/{branch}` endpoint matches the
+    // slashed remainder of the path greedily, so a slashed name resolves
+    // unencoded — percent-encoding the slash as `%2F` would instead 404.
     let url = format!(
         "https://api.github.com/repos/{}/{}/branches/{}",
         RELEASE_OWNER, RELEASE_REPO, branch
