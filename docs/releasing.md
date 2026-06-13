@@ -1,58 +1,81 @@
 # Keystone releasing
 
-Keystone uses `main` as the unstable integration branch. Every merge to `main`
-is eligible for the next release train, but `main` is not the branch that
-publishes stable releases.
+Keystone distributes the way nixpkgs does: consumers track a **branch**, and
+`ks update` follows that branch's head. There is no version tag to cut —
+shipping a fix is just landing it on the right branch.
+
+- `main` is the unstable integration branch. The `unstable` channel tracks it.
+- `release/X.Y` branches are the stabilized release lines. The `stable` channel
+  tracks the highest one.
 
 ## Branch model
 
 - `main` is unstable and always open for ongoing development.
-- `release/X.Y` branches are the stabilization branches for the `X.Y` release line.
-- `hotfix/X.Y.Z` branches are optional and only used for urgent post-release fixes.
+- `release/X.Y` is the stabilization branch for the `X.Y` release line. Fixes
+  land on `main` first and are backported onto the line by pull request
+  (cherry-pick), exactly like a nixpkgs `release-*` branch.
+- Patch-level releases are commits *on* `release/X.Y`, not separate branches or
+  tags — the line advances, consumers relock, done.
 
 ## Release cadence
 
-1. A human starts the GitHub Actions `Release` workflow from `main`.
-2. The workflow takes `X.Y.Z` as the release input and derives `release/X.Y`.
-3. If `release/X.Y` does not exist, the workflow creates it from `main`.
-4. If `release/X.Y` already exists, the workflow reuses it as the stabilization branch for the next patch in that series.
-5. The workflow builds, tests, tags `vX.Y.Z`, and publishes a GitHub Release with generated notes from the `release/X.Y` branch head.
-6. Any stabilization fixes to `release/X.Y` happen through pull requests with human approval.
-7. Merge the finalized `release/X.Y` branch back into `main` after the series is stabilized.
+1. A human creates `release/X.Y` from `main` once the line is ready to
+   stabilize (`git push origin main:refs/heads/release/X.Y`, or via the GitHub
+   UI). The `release/*` ruleset is PR-only after creation, so this first push
+   is the one operator-owned step.
+2. Stabilization fixes land on `main`, then backport to `release/X.Y` through
+   pull requests with human approval.
+3. Each push to `release/X.Y` runs the `Release` workflow: it builds and
+   validates the tree and republishes the rolling starter ISO (see
+   [Publishing model](#publishing-model)).
+4. There is nothing to "tag" or "cut". A consumer on the `stable` channel picks
+   up the line's new head on its next `ks update --lock`.
 
 ## Versioning
 
-- Stable project releases are identified by git tags in the form `vX.Y.Z`.
-- The git tag is the canonical release version for Keystone.
-- `main` does not carry a stable version number. It represents the next unstable state after the latest tag.
-- Package-local versions may remain package-specific, but they do not define the Keystone release line.
+- The release line is identified by its branch name, `release/X.Y`. That branch
+  head is the canonical stable state for the line.
+- `main` represents the unstable state; the `unstable` channel exposes it as
+  `main@<short-sha>`, and `stable` exposes the line head as
+  `release/X.Y@<short-sha>`.
+- Historical `v0.x` / `v1.0.0-rc.*` tags remain in the repo as inert history.
+  Nothing in the update path reads them anymore.
+- Package-local versions may remain package-specific, but they do not define
+  the Keystone release line.
 
 ## Release notes
 
-- GitHub Releases are the canonical generated release notes for each stable release.
-- GitHub generates release notes from merged pull requests and labels using `.github/release.yml`.
-- `CHANGELOG.md` remains available as the curated historical summary for the repository.
+- The merged pull requests on a `release/X.Y` line are the change record for
+  that line; GitHub's branch compare view (`main...release/X.Y`, or between two
+  line heads) shows exactly what a relock will pick up.
+- `CHANGELOG.md` remains available as the curated historical summary.
 
 ## Publishing model
 
-- Keystone releases publish to GitHub Releases.
-- Keystone does not currently publish release binaries or packages from this workflow.
-- Consumers primarily consume Keystone through the git repository and flake input.
+- Consumers consume Keystone through the git repository and flake input — they
+  pin `keystone.url = "github:ncrmro/keystone/release/X.Y"` (stable) or
+  `.../keystone` i.e. `main` (unstable), and relocking follows the branch head.
+- The **starter installer ISO** is the one build artifact published to GitHub.
+  Each push to a `release/*` branch republishes a single rolling release tagged
+  `latest-iso`, pointing at the newest stabilized line. This is bootstrap
+  artifact hosting only — `ks update` never reads it.
+- `main` pushes are validation-only; they build the ISO to keep the installer
+  green but do not publish it.
 
 ## Update channels
 
 Hosts running the Walker update menu (`ks menu update`, wired up via
-`modules/desktop/home/services.nix`) track one of two sources. Selection is
+`modules/desktop/home/services.nix`) track one of two branches. Selection is
 declarative, through the `keystone.update.channel` option:
 
-- `stable` (default) — the Walker menu reads `/releases/latest` and only
-  treats strict `v<major>.<minor>.<patch>` tags as release-tag matches.
-  If the repository has no matching tagged release, `/releases/latest`
-  returns 404 and the menu renders `Keystone OS unavailable`.
-- `unstable` — the menu reads `GET /repos/OWNER/REPO/branches/main` —
-  this tracks the tip commit, not a tagged release. The displayed
-  `latest` row renders as `main@<short-sha>` and always reflects the
-  current head of `main`.
+- `stable` (default) — the menu resolves the highest `release/<major>.<minor>`
+  branch via the GitHub branches API and reads its tip commit. The `latest` row
+  renders as `release/X.Y@<short-sha>`. If no `release/*` branch is published
+  yet, the menu renders `Keystone OS unavailable`.
+- `unstable` — the menu reads `GET /repos/OWNER/REPO/branches/main` and tracks
+  the tip commit of `main`. The `latest` row renders as `main@<short-sha>`.
+
+Both channels track a moving branch head; neither reads release tags.
 
 To change a host's channel:
 
@@ -65,7 +88,7 @@ Then run `ks update --dev` (deploy the current checkout) to pick up the
 new value. The channel is embedded into the `ks-update.service` unit
 environment and the shell's `home.sessionVariables` at activation time,
 so interactive `ks menu update status` and background Walker dispatches
-agree on which source the host polls.
+agree on which branch the host polls.
 
 The stable channel remains the default and requires no per-host declaration.
 
@@ -104,7 +127,7 @@ module-level declarations always win.
 
 ## Branch protection
 
-Keystone now uses GitHub repository rulesets for branch protection.
+Keystone uses GitHub repository rulesets for branch protection.
 
 Configured `main` rules:
 
@@ -126,16 +149,21 @@ Configured `release/X.Y` rules:
 Notes:
 
 - The release rules are implemented as a wildcard GitHub ruleset targeting `refs/heads/release/*`.
-- No bypass actors are configured for the `release/*` ruleset, so direct updates to existing release branches are blocked for every actor.
-- The `Release` workflow is a human-owned `workflow_dispatch` action from `main`. It is the only supported path for creating new `release/*` branches.
-- GitHub repository rulesets on this repo cannot currently express "GitHub Actions may create `release/*`, but no other actor may do so." Keystone therefore treats branch creation as an operator policy enforced by process, and the ruleset enforces PR-only updates after the branch exists.
-- Agents may propose changes to `release/*` through pull requests, but they must not create release branches directly and they must not merge stabilization changes without human approval.
+- No bypass actors are configured for the `release/*` ruleset, so direct updates to existing release branches are blocked for every actor — stabilization lands by PR only.
+- Creating a new `release/X.Y` branch is a human-owned operator step (the
+  ruleset enforces PR-only updates *after* the branch exists, but cannot
+  express "only Actions may create the branch"). Agents may propose changes to
+  `release/*` through pull requests, but must not create release branches
+  directly and must not merge stabilization changes without human approval.
 - If Keystone starts using `hotfix/*` branches, add a matching GitHub ruleset for that namespace.
 
 ## Operating notes
 
-- Only run the `Release` workflow from `main`.
-- The workflow rejects duplicate tags.
-- The workflow derives `release/X.Y` from the supplied `X.Y.Z`.
-- If a release series already exists, the workflow releases from the current `release/X.Y` branch head rather than from `main`.
-- If a release needs an urgent patch after publication, branch `hotfix/X.Y.Z` from the released tag, land the fix there, rerun the release process for the next patch version, and merge the result back into `main`.
+- The `Release` workflow runs automatically on every push to `main` and
+  `release/*`. It validates the tree and, for `release/*`, republishes the
+  rolling `latest-iso` starter image. There is no manual dispatch and no
+  version input.
+- To open a new stable line, create `release/X.Y` from `main` (operator step),
+  then land fixes via backport PRs.
+- An urgent post-release fix is just another backport PR onto the existing
+  `release/X.Y` line; the line head advances and consumers relock.
