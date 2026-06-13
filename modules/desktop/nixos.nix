@@ -95,10 +95,16 @@ in
     # sufficient — pam_systemd gives XDG_SESSION_CLASS env var highest precedence.
     # Without this, the session registers as Class=greeter on seat0, causing polkit's
     # allow_active=yes policy to deny access — breaking pcscd, YubiKey PIV, and power management.
+    # uwsm 0.26.4 (nixpkgs 26.11) gained a readability check in
+    # `check_path()`. Resolving the bare name "Hyprland" lands on
+    # `/run/wrappers/bin/Hyprland` (setuid wrapper, mode 4750), which
+    # has no read bit, so env-preloader fails before Hyprland starts.
+    # Pass the unwrapped binary path; this drops CAP_SYS_NICE but
+    # keeps the compositor launchable.
     services.greetd = {
       enable = mkDefault true;
       settings.default_session = {
-        command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F Hyprland";
+        command = mkDefault "env XDG_SESSION_CLASS=user uwsm start -F ${config.programs.hyprland.package}/bin/Hyprland";
         user = cfg.user;
       };
     };
