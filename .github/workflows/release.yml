@@ -81,10 +81,12 @@ jobs:
     secrets: inherit
 
   publish-iso:
+    # Intentionally does NOT depend on warm-cache: publishing the installer
+    # artifact needs the validated ISO, not a populated binary cache. Gating
+    # on warm-cache would let a flaky cache push block the rolling ISO.
     needs:
       - prepare
       - validate
-      - warm-cache
     if: needs.prepare.outputs.publish_iso == 'true' && needs.validate.outputs.iso_built == 'true'
     runs-on: ubuntu-latest
     steps:
