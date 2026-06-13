@@ -48,10 +48,13 @@ pub(crate) const RELEASE_REPO: &str = "keystone";
 /// (`cmd::update`) can resolve the same target the menu surfaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Channel {
-    /// `/releases/latest` — latest tagged release `v<M>.<m>.<p>`.
+    /// Tip of the highest `release/<M>.<m>` branch — the stabilized release
+    /// line. Like a nixpkgs release channel, this tracks a moving branch
+    /// head (fixes are backported onto the line) rather than a tagged
+    /// release.
     Stable,
-    /// `/repos/OWNER/REPO/branches/main` — HEAD of `main`, a moving commit
-    /// SHA rather than a tagged release.
+    /// `/repos/OWNER/REPO/branches/main` — HEAD of `main`, the moving
+    /// development source.
     Unstable,
 }
 
@@ -428,11 +431,10 @@ fn github_client() -> Result<reqwest::Client> {
 }
 
 /// Normalized release metadata consumed by `load_state`. Both channels
-/// produce this shape: stable from a `/releases/latest` body, unstable from
-/// a `/branches/main` body. Keeping the extraction pure (in
-/// `parse_stable_release` and `parse_unstable_branch`) means unit tests can
-/// exercise the full unstable path — which otherwise cannot be mocked
-/// without an HTTP dep.
+/// produce this shape from a `/branches/<branch>` body — stable from the
+/// highest `release/<M>.<m>` line, unstable from `main`. Keeping the
+/// extraction pure (in `parse_branch_release`) means unit tests can
+/// exercise the full path without an HTTP dep.
 ///
 /// Crate-visible so `cmd::update` can drive the same channel-aware target
 /// resolution the menu surfaces.
@@ -448,102 +450,76 @@ pub(crate) struct ReleaseInfo {
 
 /// Fetch the release metadata for the active channel.
 ///
-/// - Stable (`/releases/latest`) returns the latest tagged release. This
-///   endpoint returns 404 when the repo has no tagged releases, which we
-///   surface to the caller as an error so the menu renders
+/// Both channels track a moving branch tip, so they share one fetch path
+/// (`fetch_branch_tip`), which reads the commit SHA inline from
+/// `GET /repos/OWNER/REPO/branches/<branch>` — no separate ref-to-sha
+/// lookup.
+///
+/// - Stable resolves the highest `release/<M>.<m>` branch (the stabilized
+///   line) via `highest_release_branch`, then reads its tip. When no
+///   `release/*` branch is published yet, this errors so the menu renders
 ///   `Keystone OS unavailable`.
-/// - Unstable (`/repos/OWNER/REPO/branches/main`) returns the tip commit
-///   of `main` — a moving SHA, not a tagged release. The `latest_rev` is
-///   inline in the response so we never need a separate ref-to-sha lookup.
+/// - Unstable reads the tip of `main` — the moving development source.
 pub(crate) async fn fetch_latest_release(channel: Channel) -> Result<ReleaseInfo> {
     match channel {
         Channel::Stable => fetch_stable_latest_release().await,
-        Channel::Unstable => fetch_unstable_latest_release().await,
+        Channel::Unstable => fetch_branch_tip("main").await,
     }
 }
 
 async fn fetch_stable_latest_release() -> Result<ReleaseInfo> {
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/releases/latest",
-        RELEASE_OWNER, RELEASE_REPO
-    );
-    let mut req = github_client()?
-        .get(&url)
-        .header("Accept", "application/vnd.github+json");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("Bearer {token}"));
-        }
-    }
-    let response = req.send().await.context("GitHub request failed")?;
-    let json = response
-        .error_for_status()
-        .context("GitHub returned non-success status")?
-        .json::<Value>()
-        .await
-        .context("GitHub response was not valid JSON")?;
-    let tag = parse_stable_release(&json)?;
-    let rev = fetch_release_commit_rev(&tag.latest_tag).await?;
-    Ok(ReleaseInfo {
-        latest_rev: rev,
-        ..tag
-    })
+    let branch = highest_release_branch().await?;
+    fetch_branch_tip(&branch).await
 }
 
-/// Pure extraction: map a `/releases/latest` body into `ReleaseInfo`
-/// (without the commit rev, which requires a second API call).
-fn parse_stable_release(json: &Value) -> Result<ReleaseInfo> {
-    let latest_tag = json
-        .get("tag_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    if latest_tag.is_empty() {
-        anyhow::bail!("GitHub did not return a latest release tag for Keystone.");
-    }
-    let latest_name = json
-        .get("name")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or(&latest_tag)
-        .to_string();
-    let latest_url = json
-        .get("html_url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let latest_published = json
-        .get("published_at")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let latest_body = json
-        .get("body")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("No release notes available.")
-        .to_string();
-    Ok(ReleaseInfo {
-        latest_tag,
-        latest_name,
-        latest_url,
-        latest_published,
-        latest_body,
-        latest_rev: String::new(),
-    })
+/// Sortable `release/<major>.<minor>` line key. The release line is the
+/// branch granularity (`release/1.0`), so patch is not part of the key —
+/// patch-level releases are commits *on* the line, not separate branches.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+struct ReleaseLine {
+    major: u32,
+    minor: u32,
 }
 
-async fn fetch_unstable_latest_release() -> Result<ReleaseInfo> {
-    // `GET /repos/OWNER/REPO/branches/main` returns the tip commit of
-    // `main` inline — no separate ref-to-sha lookup needed. The response
-    // has the shape:
-    //   { "name": "main",
-    //     "commit": { "sha": "...",
-    //                 "html_url": "...",
-    //                 "commit": { "committer": {"date": "..."},
-    //                             "message": "..." } } }
+/// Parse a `release/<M>.<m>` branch name into a sortable line key. Anything
+/// not matching that exact shape (extra components, pre-release/build
+/// suffixes, non-numeric parts) yields `None` and is dropped at the call
+/// site so an unrelated branch can never masquerade as a release line.
+fn parse_release_branch(name: &str) -> Option<ReleaseLine> {
+    let rest = name.strip_prefix("release/")?;
+    if rest.contains('-') || rest.contains('+') {
+        return None;
+    }
+    let mut parts = rest.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(ReleaseLine { major, minor })
+}
+
+/// Pick the highest `release/<M>.<m>` branch from a list of branch names.
+/// Returns `None` when no name matches the release-line shape.
+fn pick_highest_release_branch(names: &[String]) -> Option<String> {
+    names
+        .iter()
+        .filter_map(|name| parse_release_branch(name).map(|line| (name.clone(), line)))
+        .max_by(|a, b| a.1.cmp(&b.1))
+        .map(|(name, _)| name)
+}
+
+/// Resolve the highest `release/<M>.<m>` branch.
+///
+/// Uses `GET /git/matching-refs/heads/release/`, which returns *only* refs
+/// under `refs/heads/release/` — so unrelated branches can never crowd a
+/// release line off a paginated `/branches` listing, and there is nothing to
+/// paginate (Keystone carries a handful of release lines at most). Returns an
+/// empty array (not 404) when no release branch exists, which maps to the
+/// fail-closed "stable line unavailable" error.
+async fn highest_release_branch() -> Result<String> {
     let url = format!(
-        "https://api.github.com/repos/{}/{}/branches/main",
+        "https://api.github.com/repos/{}/{}/git/matching-refs/heads/release/",
         RELEASE_OWNER, RELEASE_REPO
     );
     let mut req = github_client()?
@@ -561,13 +537,67 @@ async fn fetch_unstable_latest_release() -> Result<ReleaseInfo> {
         .json()
         .await
         .context("GitHub response was not valid JSON")?;
-    parse_unstable_branch(&json)
+    let names: Vec<String> = json
+        .as_array()
+        .ok_or_else(|| anyhow!("GitHub matching-refs response was not an array"))?
+        .iter()
+        .filter_map(|r| {
+            r.get("ref")
+                .and_then(|v| v.as_str())
+                .and_then(|r| r.strip_prefix("refs/heads/"))
+                .map(str::to_string)
+        })
+        .collect();
+    pick_highest_release_branch(&names).ok_or_else(|| {
+        anyhow!(
+            "no release/<major>.<minor> branch is published yet — the stable line is unavailable"
+        )
+    })
 }
 
-/// Pure extraction: map a `/branches/main` body into `ReleaseInfo`. Errors
-/// only when the commit SHA is missing, since without it the menu cannot
-/// compare against the locked rev.
-fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
+/// Read the tip commit of `branch` from
+/// `GET /repos/OWNER/REPO/branches/<branch>`. The response carries the
+/// commit SHA inline, so no separate ref-to-sha lookup is needed. Shared by
+/// both channels: stable passes the resolved `release/<M>.<m>` branch,
+/// unstable passes `main`. The response shape:
+///   { "name": "<branch>",
+///     "commit": { "sha": "...",
+///                 "html_url": "...",
+///                 "commit": { "committer": {"date": "..."},
+///                             "message": "..." } } }
+async fn fetch_branch_tip(branch: &str) -> Result<ReleaseInfo> {
+    // The branch name is interpolated with its literal `/` (e.g.
+    // `release/1.0`). GitHub's `/branches/{branch}` endpoint matches the
+    // slashed remainder of the path greedily, so a slashed name resolves
+    // unencoded — percent-encoding the slash as `%2F` would instead 404.
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/branches/{}",
+        RELEASE_OWNER, RELEASE_REPO, branch
+    );
+    let mut req = github_client()?
+        .get(&url)
+        .header("Accept", "application/vnd.github+json");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("Bearer {token}"));
+        }
+    }
+    let response = req.send().await.context("GitHub request failed")?;
+    let json: Value = response
+        .error_for_status()
+        .context("GitHub returned non-success status")?
+        .json()
+        .await
+        .context("GitHub response was not valid JSON")?;
+    parse_branch_release(&json, branch)
+}
+
+/// Pure extraction: map a `/branches/<branch>` body into `ReleaseInfo`. The
+/// `latest_tag`/`latest_name` carry the branch label (`main`,
+/// `release/1.0`) and its short sha — branch tracking has no tag to name.
+/// Errors only when the commit SHA is missing, since without it the menu
+/// cannot compare against the locked rev.
+fn parse_branch_release(json: &Value, branch: &str) -> Result<ReleaseInfo> {
     let commit = json
         .get("commit")
         .ok_or_else(|| anyhow!("GitHub branch response missing 'commit' object"))?;
@@ -577,7 +607,7 @@ fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("GitHub branch response missing 'commit.sha'"))?
         .to_string();
-    // `html_url` points at the commit on GitHub; fall back to the `main`
+    // `html_url` points at the commit on GitHub; fall back to the branch
     // tree view when the field is absent so the menu always has a link.
     let latest_url = commit
         .get("html_url")
@@ -586,8 +616,8 @@ fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
             format!(
-                "https://github.com/{}/{}/tree/main",
-                RELEASE_OWNER, RELEASE_REPO
+                "https://github.com/{}/{}/tree/{}",
+                RELEASE_OWNER, RELEASE_REPO, branch
             )
         });
     let inner = commit.get("commit");
@@ -617,8 +647,8 @@ fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
         latest_body
     };
     Ok(ReleaseInfo {
-        latest_tag: "main".to_string(),
-        latest_name: format!("main@{}", short(&sha)),
+        latest_tag: branch.to_string(),
+        latest_name: format!("{branch}@{}", short(&sha)),
         latest_url,
         latest_published,
         latest_body,
@@ -626,71 +656,10 @@ fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
     })
 }
 
-/// Resolve a tag to its commit sha by querying the GitHub refs API.
-/// Handles both annotated and lightweight tags.
-async fn fetch_release_commit_rev(tag: &str) -> Result<String> {
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/git/ref/tags/{}",
-        RELEASE_OWNER, RELEASE_REPO, tag
-    );
-    let mut req = github_client()?
-        .get(&url)
-        .header("Accept", "application/vnd.github+json");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("Bearer {token}"));
-        }
-    }
-    let response = req.send().await.context("GitHub ref request failed")?;
-    let ref_json: Value = response
-        .error_for_status()
-        .context("GitHub returned non-success for ref")?
-        .json()
-        .await
-        .context("GitHub ref response was not valid JSON")?;
-
-    let obj = ref_json
-        .get("object")
-        .ok_or_else(|| anyhow!("GitHub ref missing 'object'"))?;
-    let kind = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    let sha = obj
-        .get("sha")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("GitHub ref missing sha"))?;
-
-    if kind == "commit" {
-        return Ok(sha.to_string());
-    }
-
-    // Annotated tag — follow the tag object to its target commit.
-    let tag_url = format!(
-        "https://api.github.com/repos/{}/{}/git/tags/{}",
-        RELEASE_OWNER, RELEASE_REPO, sha
-    );
-    let mut tag_req = github_client()?
-        .get(&tag_url)
-        .header("Accept", "application/vnd.github+json");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.is_empty() {
-            tag_req = tag_req.header("Authorization", format!("Bearer {token}"));
-        }
-    }
-    let tag_json: Value = tag_req
-        .send()
-        .await
-        .context("GitHub tag request failed")?
-        .error_for_status()
-        .context("GitHub returned non-success for tag")?
-        .json()
-        .await
-        .context("GitHub tag response was not valid JSON")?;
-
-    tag_json
-        .get("object")
-        .and_then(|o| o.get("sha"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow!("GitHub tag object missing commit sha"))
+/// Thin wrapper retained for the unstable channel's `main` tracking and the
+/// existing parse tests. Equivalent to `parse_branch_release(json, "main")`.
+fn parse_unstable_branch(json: &Value) -> Result<ReleaseInfo> {
+    parse_branch_release(json, "main")
 }
 
 // -----------------------------------------------------------------------------
@@ -999,7 +968,7 @@ fn render_preview_release_notes(state: &MenuState) -> String {
             };
             [
                 name,
-                format!("Tag: {}", s.latest_tag),
+                format!("Ref: {}", s.latest_tag),
                 published,
                 String::new(),
                 s.latest_body.clone(),
@@ -1026,7 +995,7 @@ fn render_preview_release_notes(state: &MenuState) -> String {
                 let url = e.latest_url.clone().unwrap_or_default();
                 return [
                     name,
-                    format!("Tag: {latest_tag}"),
+                    format!("Ref: {latest_tag}"),
                     published,
                     String::new(),
                     body,
@@ -1100,17 +1069,12 @@ fn render_entries_json(state: &MenuState) -> Result<String> {
                 "PreviewType": "command",
             })];
             if url_is_shell_safe(&s.latest_url) {
-                // Branch the subtext on channel so the Walker row matches
-                // what `latest_url` actually points to: the stable channel
-                // links to a tagged release page (release notes), while the
-                // unstable channel links to the tip commit on `main`
-                // (commit message). Naming the channel in both variants
-                // keeps a flipped host visibly distinct from the stable
-                // feed so it doesn't read like the release feed drifted.
-                let subtext = match s.channel.as_str() {
-                    "unstable" => "Latest commit on main (unstable channel)".to_string(),
-                    _ => format!("GitHub release notes and changelog ({} channel)", s.channel,),
-                };
+                // Both channels track a moving branch tip, so the row links
+                // to that tip commit and the subtext names the branch
+                // (`main`, `release/1.0`) and channel. `latest_tag` carries
+                // the branch label for both channels; naming the channel
+                // keeps a flipped host visibly distinct from the stable line.
+                let subtext = format!("Latest commit on {} ({} channel)", s.latest_tag, s.channel);
                 entries.push(serde_json::json!({
                     "Text": format!("Latest: {}", s.latest_tag),
                     "Subtext": subtext,
@@ -1395,6 +1359,10 @@ fn _keep(_: &PathBuf) {}
 mod tests {
     use super::*;
 
+    // Models a stable branch-tracking state: the consumer lock sits at an
+    // older commit on the `release/1.0` line, and the latest is that line's
+    // newer tip. `current_tag` is empty because a branch-tracking lock is
+    // pinned to a commit, not a tag.
     fn ok_fixture() -> OkState {
         OkState {
             ok: true,
@@ -1402,12 +1370,14 @@ mod tests {
             repo_root: "/etc/nixos-config".into(),
             input_name: "keystone".into(),
             current_rev: "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeee".into(),
-            current_tag: "v0.7.0".into(),
-            latest_tag: "v0.8.0".into(),
-            latest_name: "v0.8.0".into(),
-            latest_url: "https://github.com/ncrmro/keystone/releases/tag/v0.8.0".into(),
+            current_tag: String::new(),
+            latest_tag: "release/1.0".into(),
+            latest_name: "release/1.0@bbbbbbb".into(),
+            latest_url:
+                "https://github.com/ncrmro/keystone/commit/bbbbbbbbccccccccddddddddeeeeeeeeffffffff"
+                    .into(),
             latest_published: "2026-04-01T10:00:00Z".into(),
-            latest_body: "## Changes\n- Added Walker update menu".into(),
+            latest_body: "feat(menu): add Walker update menu".into(),
             latest_rev: "bbbbbbbbccccccccddddddddeeeeeeeeffffffff".into(),
             host_key: "mox".into(),
             status_kind: "behind".into(),
@@ -1456,6 +1426,115 @@ mod tests {
         assert_eq!(parse_release_tag(""), None);
         assert_eq!(parse_release_tag("v"), None);
         assert_eq!(parse_release_tag("vAbC.1.2"), None);
+    }
+
+    #[test]
+    fn parse_release_branch_accepts_release_lines() {
+        assert_eq!(
+            parse_release_branch("release/1.0"),
+            Some(ReleaseLine { major: 1, minor: 0 })
+        );
+        assert_eq!(
+            parse_release_branch("release/2.11"),
+            Some(ReleaseLine {
+                major: 2,
+                minor: 11
+            })
+        );
+        assert_eq!(
+            parse_release_branch("release/10.4"),
+            Some(ReleaseLine {
+                major: 10,
+                minor: 4
+            })
+        );
+    }
+
+    #[test]
+    fn parse_release_branch_rejects_non_release_lines() {
+        // Only `release/<M>.<m>` matches. Patch-level (`release/1.0.1`),
+        // suffixed, prefix-mismatched, or non-numeric names are dropped so
+        // an unrelated branch never masquerades as a release line.
+        assert_eq!(parse_release_branch("main"), None);
+        assert_eq!(parse_release_branch("release/1"), None);
+        assert_eq!(parse_release_branch("release/1.0.1"), None);
+        assert_eq!(parse_release_branch("release/1.0-rc.1"), None);
+        assert_eq!(parse_release_branch("release/1.x"), None);
+        assert_eq!(parse_release_branch("releases/1.0"), None);
+        assert_eq!(parse_release_branch("feat/release/1.0"), None);
+        assert_eq!(parse_release_branch(""), None);
+    }
+
+    #[test]
+    fn pick_highest_release_branch_orders_numerically() {
+        // String ordering would rank "release/1.9" above "release/1.10";
+        // the numeric key must not. Non-release branches are ignored.
+        let names: Vec<String> = [
+            "main",
+            "release/1.0",
+            "release/1.9",
+            "release/1.10",
+            "release/2.0",
+            "feat/x",
+            "dependabot/nix/foo",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            pick_highest_release_branch(&names),
+            Some("release/2.0".to_string())
+        );
+    }
+
+    #[test]
+    fn pick_highest_release_branch_none_when_no_release_line() {
+        let names: Vec<String> = ["main", "feat/x", "dependabot/nix/foo"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(pick_highest_release_branch(&names), None);
+    }
+
+    #[test]
+    fn parse_branch_release_labels_release_branch() {
+        // The stable channel passes a `release/<M>.<m>` branch; the parsed
+        // info must carry that branch as the ref label and `<branch>@<sha>`
+        // as the display name.
+        let sha = "ccddeeff00112233445566778899aabbccddeeff";
+        let payload = serde_json::json!({
+            "name": "release/1.0",
+            "commit": {
+                "sha": sha,
+                "html_url": format!("https://github.com/ncrmro/keystone/commit/{sha}"),
+                "commit": {
+                    "committer": { "date": "2026-06-10T09:00:00Z" },
+                    "message": "fix(desktop): backported stabilization fix",
+                }
+            }
+        });
+        let info = parse_branch_release(&payload, "release/1.0").unwrap();
+        assert_eq!(info.latest_tag, "release/1.0");
+        assert_eq!(info.latest_name, format!("release/1.0@{}", &sha[..7]));
+        assert_eq!(info.latest_rev, sha);
+    }
+
+    #[test]
+    fn parse_branch_release_tree_url_fallback_uses_branch() {
+        // A missing `commit.html_url` must fall back to the *branch* tree
+        // view, not a hardcoded `main`, so the stable line links correctly.
+        let payload = serde_json::json!({
+            "name": "release/1.0",
+            "commit": {
+                "sha": "0000000000000000000000000000000000000003",
+                "commit": { "committer": { "date": "2026-06-10T09:00:00Z" }, "message": "x" }
+            }
+        });
+        let info = parse_branch_release(&payload, "release/1.0").unwrap();
+        assert_eq!(
+            info.latest_url,
+            "https://github.com/ncrmro/keystone/tree/release/1.0"
+        );
     }
 
     #[test]
@@ -1645,16 +1724,16 @@ mod tests {
 
     #[test]
     fn entries_latest_subtext_unstable_describes_main_commit() {
-        // The unstable channel's `latest_url` points to a commit on `main`
-        // (and the preview body is a commit message), so the subtext must
-        // describe a commit — not "release notes and changelog" — to match
-        // what users actually see when they activate the row.
+        // The unstable channel's `latest_url` points to the tip commit on
+        // `main`, so the subtext describes a commit on that branch.
         let mut fixture = ok_fixture();
         fixture.channel = "unstable".into();
+        fixture.latest_tag = "main".into();
+        fixture.latest_name = format!("main@{}", short(&fixture.latest_rev));
         let rendered = render_entries_json(&MenuState::Ok(fixture)).unwrap();
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         let arr = parsed.as_array().unwrap();
-        assert_eq!(arr[1]["Text"], "Latest: v0.8.0");
+        assert_eq!(arr[1]["Text"], "Latest: main");
         assert_eq!(
             arr[1]["Subtext"],
             "Latest commit on main (unstable channel)"
@@ -1662,18 +1741,20 @@ mod tests {
     }
 
     #[test]
-    fn entries_latest_subtext_stable_describes_release_notes() {
-        // The stable channel links to a tagged release page so the subtext
-        // describes release notes. Naming the channel keeps the row
-        // visibly distinct from the unstable variant.
+    fn entries_latest_subtext_stable_describes_release_branch_commit() {
+        // The stable channel tracks the tip of the highest `release/<M>.<m>`
+        // line, so the row links to that tip commit and the subtext names
+        // the branch. Naming the channel keeps the row visibly distinct from
+        // the unstable variant.
         let fixture = ok_fixture();
         assert_eq!(fixture.channel, "stable");
         let rendered = render_entries_json(&MenuState::Ok(fixture)).unwrap();
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         let arr = parsed.as_array().unwrap();
+        assert_eq!(arr[1]["Text"], "Latest: release/1.0");
         assert_eq!(
             arr[1]["Subtext"],
-            "GitHub release notes and changelog (stable channel)"
+            "Latest commit on release/1.0 (stable channel)"
         );
     }
 
@@ -1684,8 +1765,10 @@ mod tests {
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         let arr = parsed.as_array().unwrap();
         assert_eq!(arr.len(), 3);
-        assert_eq!(arr[0]["Text"], "Current: v0.7.0");
-        assert_eq!(arr[1]["Text"], "Latest: v0.8.0");
+        // current_tag is empty under branch tracking, so the current row
+        // falls back to the short rev.
+        assert_eq!(arr[0]["Text"], "Current: aaaaaaa");
+        assert_eq!(arr[1]["Text"], "Latest: release/1.0");
         assert_eq!(arr[2]["Text"], "Update current host");
         assert_eq!(arr[2]["Value"], ACT_RUN_UPDATE);
         assert!(
@@ -1693,7 +1776,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .starts_with(&format!("{ACT_OPEN_RELEASE}\t")),
-            "latest entry must open the release page on activation"
+            "latest entry must open the release-line commit on activation"
         );
     }
 
@@ -1742,15 +1825,15 @@ mod tests {
         // render_entries_json should drop that entry rather than risk
         // breaking Lua's single-quoted Action.
         let mut fixture = ok_fixture();
-        fixture.latest_url = "https://github.com/owner/repo/releases/tag/v0'8".into();
+        fixture.latest_url = "https://github.com/owner/repo/commit/v0'8".into();
         let state = MenuState::Ok(fixture);
         let rendered = render_entries_json(&state).unwrap();
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         let arr = parsed.as_array().unwrap();
-        // Current + Update entries remain, but the Latest (release-page)
+        // Current + Update entries remain, but the Latest (commit-link)
         // entry is filtered because the URL failed the safety check.
         assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0]["Text"], "Current: v0.7.0");
+        assert_eq!(arr[0]["Text"], "Current: aaaaaaa");
         assert_eq!(arr[1]["Value"], ACT_RUN_UPDATE);
     }
 
@@ -1778,8 +1861,8 @@ mod tests {
         let rendered = render_preview_summary(&state);
         assert!(rendered.contains("Keystone OS update status"));
         assert!(rendered.contains("Consumer flake: /etc/nixos-config"));
-        assert!(rendered.contains("Current: v0.7.0 (aaaaaaa)"));
-        assert!(rendered.contains("Latest: v0.8.0 (bbbbbbb)"));
+        assert!(rendered.contains("Current: aaaaaaa (aaaaaaa)"));
+        assert!(rendered.contains("Latest: release/1.0 (bbbbbbb)"));
         assert!(rendered.contains("Update command: ks update"));
     }
 
@@ -1797,11 +1880,13 @@ mod tests {
     fn preview_release_notes_renders_body_and_url() {
         let state = MenuState::Ok(ok_fixture());
         let rendered = render_preview_release_notes(&state);
-        assert!(rendered.contains("v0.8.0"));
-        assert!(rendered.contains("Tag: v0.8.0"));
+        assert!(rendered.contains("release/1.0@bbbbbbb"));
+        assert!(rendered.contains("Ref: release/1.0"));
         assert!(rendered.contains("Published: 2026-04-01T10:00:00Z"));
-        assert!(rendered.contains("Added Walker update menu"));
-        assert!(rendered.contains("https://github.com/ncrmro/keystone/releases/tag/v0.8.0"));
+        assert!(rendered.contains("add Walker update menu"));
+        assert!(rendered.contains(
+            "https://github.com/ncrmro/keystone/commit/bbbbbbbbccccccccddddddddeeeeeeeeffffffff"
+        ));
     }
 
     #[test]
@@ -1815,9 +1900,9 @@ mod tests {
             ..Default::default()
         });
         let rendered = render_preview_release_notes(&state);
-        // Partial render should surface the tag even though the overall state
+        // Partial render should surface the ref even though the overall state
         // is errored out.
-        assert!(rendered.contains("Tag: v0.8.0"));
+        assert!(rendered.contains("Ref: v0.8.0"));
         assert!(rendered.contains("Release notes body"));
         assert!(rendered.contains("https://example/release"));
     }

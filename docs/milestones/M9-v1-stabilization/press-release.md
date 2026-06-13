@@ -15,7 +15,7 @@ flake. Stable surface covers OS, terminal, desktop, server services, and the
 
 ## Body
 
-_Draft the customer-facing narrative here before the v1.0.0 tag is cut._
+_Draft the customer-facing narrative here before the `release/1.0` line is cut._
 
 ## Quote — operator
 
@@ -27,6 +27,6 @@ _Draft the customer-facing narrative here before the v1.0.0 tag is cut._
 
 ## Availability
 
-- Release tag: `v1.0.0`
+- Stable line: the `release/1.0` branch (no version tag — distribution is branch-based)
 - Branch model: see [`docs/releasing.md`](../../releasing.md)
-- Update channel: `stable` (default on every host)
+- Update channel: `stable` (default on every host) tracks the highest `release/<M>.<m>` line

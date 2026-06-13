@@ -53,6 +53,6 @@ checklist and verification matrix.
 
 ## Related docs
 
-- [`docs/releasing.md`](../../releasing.md) — branch model, tags, release workflow
+- [`docs/releasing.md`](../../releasing.md) — branch model, update channels, release workflow
 - [`docs/experimental.md`](../../experimental.md) — `keystone.experimental` gate
 - [`docs/specs/`](../../specs/) — requirement specs
