@@ -38,15 +38,16 @@ jobs:
           # branch head. There is no version tag to cut — releasing a fix is
           # just landing it on the release branch.
           #
-          # Always build the starter ISO so main and every release line are
-          # validated against the installer. Only `release/*` pushes publish
-          # the rolling installer ISO; `main` is validation-only.
-          force_iso_build=true
+          # Only `release/*` pushes build and publish the rolling installer
+          # ISO. `main` is validation-only here (its installer is exercised in
+          # the merge queue), so the expensive ISO build is skipped on main.
+          force_iso_build=false
           publish_iso=false
           iso_artifact_name="starter-installer-iso"
           iso_file_name="keystone-starter-installer-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::12}.iso"
 
           if [[ "${GITHUB_REF_NAME}" == release/* ]]; then
+            force_iso_build=true
             publish_iso=true
             iso_file_name="keystone-starter-installer-${GITHUB_REF_NAME//\//-}.iso"
           fi
