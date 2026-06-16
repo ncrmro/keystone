@@ -45,7 +45,9 @@ pkgs.runCommand "terminal-zide-check" { } ''
   grep -F 'zide-pick' "${zidePackage}/layouts/default.kdl" >/dev/null
   grep -F 'command "$EDITOR"' "${zidePackage}/layouts/default.kdl" >/dev/null
   grep -F 'YAZI_CONFIG_HOME' "${zidePackage}/bin/.zide-pick-wrapped" >/dev/null
-  test -f "${zidePackage}/yazi/plugins/auto-layout.yazi/init.lua"
+  grep -F '[mgr]' "${zidePackage}/yazi/yazi.toml" >/dev/null
+  grep -F 'rt.mgr.ratio' "${zidePackage}/yazi/plugins/auto-layout.yazi/main.lua" >/dev/null
+  test -f "${zidePackage}/yazi/plugins/auto-layout.yazi/main.lua"
 
   touch "$out"
 ''

@@ -59,6 +59,8 @@ stdenvNoCC.mkDerivation {
     "$out/bin/zide-edit" --help >/dev/null
     test -f "$out/layouts/default.kdl"
     grep -F 'zide-pick' "$out/layouts/default.kdl" >/dev/null
+    grep -F '[mgr]' "$out/yazi/yazi.toml" >/dev/null
+    grep -F 'rt.mgr.ratio' "$out/yazi/plugins/auto-layout.yazi/main.lua" >/dev/null
     test -f "$out/yazi/plugins/auto-layout.yazi/main.lua"
 
     runHook postInstallCheck
