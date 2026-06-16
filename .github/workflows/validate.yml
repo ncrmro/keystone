@@ -170,8 +170,13 @@ jobs:
             echo "shellcheck=true"
           } >> "$GITHUB_OUTPUT"
 
+      # Reusable-workflow calls inherit the caller's event, so a `uses:` call
+      # from the push-triggered Release workflow surfaces here as `push`, not
+      # `workflow_call`. Match both so `inputs.force_iso_build` is actually
+      # honored (otherwise iso_build falls through to its `false` default and
+      # the installer ISO never builds on release/* pushes).
       - name: Use workflow-call policy
-        if: github.event_name == 'workflow_call'
+        if: github.event_name == 'push' || github.event_name == 'workflow_call'
         id: call-policy
         run: |
           {
