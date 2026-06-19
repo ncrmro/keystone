@@ -476,6 +476,64 @@ in
           };
         };
 
+        dispatcher = {
+          enable = mkOption {
+            type = types.bool;
+            default = false;
+            description = ''
+              Enable experimental systemd user units for a future task dispatcher.
+              Disabled by default and independent of `keystone.experimental`
+              because the dispatcher binary is not implemented here.
+            '';
+          };
+
+          command = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = ''
+              Absolute dispatcher executable path. Required when
+              `dispatcher.enable = true`.
+            '';
+            example = "/run/current-system/sw/bin/ks-dispatcher";
+          };
+
+          args = mkOption {
+            type = types.listOf types.str;
+            default = [ ];
+            description = ''
+              Extra arguments passed to the dispatcher command. The module
+              exports `KS_AGENT_NAME` and `KS_TASKS_FILE`, so arguments are
+              optional for binaries that read their environment.
+            '';
+            example = [
+              "--once"
+              "--tasks-file"
+              "/home/agent-drago/TASKS.yaml"
+            ];
+          };
+
+          tasksFile = mkOption {
+            type = types.str;
+            default = "/home/agent-${name}/TASKS.yaml";
+            description = "Task queue watched by the dispatcher path unit.";
+          };
+
+          onCalendar = mkOption {
+            type = types.str;
+            default = "*:0/5";
+            description = ''
+              Fallback systemd calendar spec for the dispatcher timer. The path
+              unit is the primary trigger; this catches missed file events.
+            '';
+          };
+
+          timeout = mkOption {
+            type = types.str;
+            default = "1h";
+            description = "Maximum runtime for one dispatcher service execution.";
+          };
+        };
+
         calendar = {
           teamEvents = mkOption {
             type = types.listOf (

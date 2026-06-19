@@ -85,6 +85,7 @@ in
     ./tailscale.nix
     ./ssh.nix
     ./notes.nix
+    ./dispatcher.nix
     ./home-manager.nix
     ./observability.nix
     ./perception.nix
