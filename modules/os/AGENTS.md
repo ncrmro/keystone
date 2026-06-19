@@ -24,6 +24,23 @@ keystone.os.storage = {
 
 **ext4 alternative**: LUKS-encrypted ext4 with optional hibernate. No snapshots/compression.
 
+## systemd-oomd (`oomd.nix`)
+
+Default-on cgroup-aware OOM killer that reacts to PSI memory pressure before
+the kernel oom-killer fires. Kills the offending cgroup after 20 seconds of
+sustained pressure.
+
+```nix
+# Default — no opt-in needed
+keystone.os.oomd.enable = true;
+
+# Disable on hosts where you only want the in-kernel oom-killer
+keystone.os.oomd.enable = false;
+```
+
+This module is a focused carve-out: zram, vm.* sysctls, and the ZFS ARC cap
+are tracked separately in #484 / #485.
+
 ## Users (`users.nix`)
 
 ```nix

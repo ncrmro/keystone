@@ -246,6 +246,7 @@ in
     ../shared/system-flake.nix
     ./notifications.nix
     ./storage.nix
+    ./oomd.nix
     ./secure-boot.nix
     ./tpm.nix
     ./zram.nix
