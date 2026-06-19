@@ -17,16 +17,17 @@ cat > "$manifest_path" <<EOF
   "repoCheckout": "$repo_root",
   "archetype": "keystone-system-host",
   "resolvedCapabilities": ["ks", "assistant", "project", "engineer", "product", "project-manager"],
-  "publishedCommands": ["ks.system", "ks.assistant", "ks.projects", "ks.engineer", "ks.product", "ks.project-manager"],
+  "publishedCommands": ["ks-system", "ks-assistant", "ks-projects", "ks-engineer", "ks-product", "ks-project-manager"],
   "repos": ["ncrmro/keystone"],
-  "agents": {}
+  "agents": {},
+  "consumerFlakeAgents": "$output_root/agents"
 }
 EOF
 
 rm -rf "$output_root"
 mkdir -p "$output_root"
 
-HOME="$output_root" KEYSTONE_AGENT_ASSETS_MANIFEST="$manifest_path" \
+HOME="$output_root" KEYSTONE_CONSUMER_FLAKE="$output_root" KEYSTONE_AGENT_ASSETS_MANIFEST="$manifest_path" \
   bash "$repo_root/modules/terminal/agents/keystone-sync-agent-assets.sh"
 
 # Restore the gitignore after the sync script wipes output_root.
