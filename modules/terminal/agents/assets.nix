@@ -271,10 +271,11 @@ in
             echo "keystone-agent-asset-symlinks: $target is not readable by $USER; CLI tools running as this agent will fail to read skills/agents through $link until traversal permissions are fixed on the admin's home chain" >&2
           fi
 
-          # Empty-target hint: after this PR, ks switch no longer auto-syncs
-          # content. If the admin's target dir is empty, point them at the
-          # manual refresh path so they don't see empty skills/agents
-          # subdirs without explanation.
+          # Empty-target hint. `ks switch` / `ks update` auto-populate an empty
+          # tree once (a fresh-host convenience that never rewrites a populated,
+          # committed tree). This hint covers the activation-only path — e.g. a
+          # raw `home-manager switch` or `switch-to-configuration` that did not
+          # run through the ks wrapper — where nothing has populated the target.
           if [ "$is_agent_user" = "0" ] && [ -z "$(ls -A "$target" 2>/dev/null)" ]; then
             echo "keystone-agent-asset-symlinks: $target is empty — run 'ks sync-agent-assets' to populate keystone-curated content" >&2
           fi

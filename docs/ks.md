@@ -201,6 +201,10 @@ ks switch [--boot] [HOSTS]
 Build and deploy the current local state without pull, lock, or push steps.
 
 - `--boot`: Register the new generation for next boot without switching now.
+- After a deploy that touched a local host, if the consumer flake's
+  `agents/skills/` tree is empty, it is auto-populated once via
+  `sync-agent-assets` so agent skill symlinks resolve to content. A populated
+  (committed) tree is never rewritten — use `ks sync-agent-assets` to refresh.
 
 Examples:
 
@@ -222,6 +226,9 @@ profile manifest.
 - Rewrites generated instruction files, curated command files, and managed
   Codex skills from the live keystone checkout in development mode.
 - This is the supported no-sudo refresh path for development-mode agent assets.
+- `ks switch` / `ks update` invoke this automatically the first time, but only
+  when `<consumer-flake>/agents/skills/` is empty. Run it by hand to refresh an
+  already-populated tree (the deploy wrappers never rewrite a populated tree).
 
 Example:
 
