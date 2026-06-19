@@ -14,14 +14,30 @@ let
     hash = "sha256-N5OjvYXAgDcaYklgbjZxZv0eS6toIZ/Gd0E+CynFLOU=";
   };
 
+  cargoMetadata = ./cargo-metadata;
+  cargoLock = ./Cargo.lock;
+  cargoToml = "${cargoMetadata}/Cargo.toml";
+  cargoVendorDir = craneLib.vendorCargoDeps { inherit cargoLock; };
+  dummySrc = craneLib.mkDummySrc {
+    src = cargoMetadata;
+    inherit cargoLock;
+  };
+
   commonArgs = {
-    inherit src pname version;
+    inherit
+      cargoLock
+      cargoToml
+      cargoVendorDir
+      pname
+      src
+      version
+      ;
 
     # Only build the TUI binary (default feature), skip GUI and mobile
     cargoExtraArgs = "--no-default-features --features tui";
   };
 
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  cargoArtifacts = craneLib.buildDepsOnly (commonArgs // { inherit dummySrc; });
 in
 craneLib.buildPackage (
   commonArgs

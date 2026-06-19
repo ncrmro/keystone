@@ -8,7 +8,6 @@
 {
   pkgs,
   lib,
-  self,
   home-manager,
 }:
 let
@@ -18,27 +17,28 @@ let
     (home-manager.lib.homeManagerConfiguration {
       inherit pkgs;
       modules = [
-        self.homeModules.terminal
-        self.homeModules.desktop
+        ../../modules/desktop/home/hyprland/autostart.nix
         {
-          home.username = "testuser";
-          home.homeDirectory = "/home/testuser";
-          home.stateVersion = "25.05";
-
-          programs.ssh.enableDefaultConfig = false;
-
-          keystone.terminal = {
-            enable = true;
-            git = {
-              userName = "Test User";
-              userEmail = "test@test";
+          options.keystone.desktop = {
+            enable = lib.mkEnableOption "test desktop";
+            startupLockCommand = lib.mkOption {
+              type = lib.types.str;
+              default = "keystone-startup-lock";
             };
           };
 
-          keystone.desktop.enable = true;
+          config = {
+            home.username = "testuser";
+            home.homeDirectory = "/home/testuser";
+            home.stateVersion = "25.05";
 
-          # Hyprland requires a compositor to be enabled for settings to take effect
-          wayland.windowManager.hyprland.enable = true;
+            programs.ssh.enableDefaultConfig = false;
+
+            keystone.desktop.enable = true;
+
+            # Hyprland requires a compositor to be enabled for settings to take effect
+            wayland.windowManager.hyprland.enable = true;
+          };
         }
       ]
       ++ extraModules;

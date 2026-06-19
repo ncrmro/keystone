@@ -14,11 +14,27 @@ let
     hash = "sha256-10zKOsNEcHb/bNcGC/TJLA738G0cKeMg1vt+PZpiEUI=";
   };
 
-  commonArgs = {
-    inherit src pname version;
+  cargoMetadata = ./cargo-metadata;
+  cargoLock = ./Cargo.lock;
+  cargoToml = "${cargoMetadata}/Cargo.toml";
+  cargoVendorDir = craneLib.vendorCargoDeps { inherit cargoLock; };
+  dummySrc = craneLib.mkDummySrc {
+    src = cargoMetadata;
+    inherit cargoLock;
   };
 
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+  commonArgs = {
+    inherit
+      cargoLock
+      cargoToml
+      cargoVendorDir
+      pname
+      src
+      version
+      ;
+  };
+
+  cargoArtifacts = craneLib.buildDepsOnly (commonArgs // { inherit dummySrc; });
 in
 craneLib.buildPackage (
   commonArgs
