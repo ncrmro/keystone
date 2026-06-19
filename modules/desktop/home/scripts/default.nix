@@ -405,7 +405,6 @@ let
       package = keystonePackageMenu;
       runtimeInputs = [
         pkgs.coreutils
-        pkgs.findutils
         pkgs.gnused
         pkgs.ghostty
         pkgs.jq
@@ -413,7 +412,6 @@ let
         pkgs.libnotify
         pkgs.nix
         pkgs.python3
-        pkgs.ripgrep
         pkgs.walker
       ];
     })
