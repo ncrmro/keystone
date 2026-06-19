@@ -171,6 +171,114 @@ Tracked in detail under issue #554. High-level steps:
    canonical reference adopter.
 6. Document the new dual mode in this file and `process.keystone-development`.
 
+## Case study: Time Machine to a remote Samba over Tailscale
+
+A representative system-level Darwin feature that nix-darwin adoption
+unlocks: declarative Time Machine backups to a remote Samba destination
+over the Tailscale/Headscale mesh. Worth walking through because it
+exercises every piece the migration enables — agenix-darwin (for the SMB
+credential), `system.defaults` (for the plist keys), and
+`system.activationScripts` (for the imperative `tmutil` call).
+
+### What works without nix-darwin
+
+Nothing declaratively. Today the macbook's TM destination is registered
+by hand via the GUI or a one-off `tmutil setdestination`, and the
+credential lives in the macOS Keychain (created interactively on first
+mount).
+
+### What nix-darwin makes possible
+
+nix-darwin doesn't ship a first-class `services.time-machine` module, but
+the available surface composes:
+
+- `system.defaults.CustomSystemPreferences."/Library/Preferences/com.apple.TimeMachine"`
+  sets plist keys declaratively — `AutoBackup`, `RequiresACPower`,
+  `MobileBackups`, `SkipPaths`, backup intervals.
+- `system.activationScripts.<name>` runs `tmutil setdestination` at
+  activation, idempotent via `tmutil destinationinfo` parsing.
+- `agenix.darwinModules.default` materializes
+  `/etc/agenix/samba-timemachine-password` at root-owned mode 0400; the
+  activation script reads it without leaking via `ps` argv.
+
+### Why Tailscale/Headscale changes nothing important
+
+SMB over Tailscale works because Tailscale is a transparent IP overlay
+— the macOS SMB client doesn't know or care it's over WireGuard.
+Authentication, packet framing, and `tmutil`'s destination registration
+are unchanged. The macbook addresses the Samba server by its MagicDNS
+short name (e.g. `ocean`), which resolves through the Tailscale
+resolver whether the macbook is on the home LAN or a coffee-shop
+network.
+
+What does change:
+
+- **No Bonjour autodiscovery across the mesh.** Tailscale does not
+  bridge `_smb._tcp` / `_adisk._tcp` mDNS records between nodes. The
+  "Select Backup Disk…" GUI on macOS won't show the remote target. This
+  is a non-issue once the destination is declared in Nix and registered
+  by activation script — the GUI list is for ad-hoc setup.
+- **First backup is the painful one.** A fresh 200GB macbook over a
+  ~100Mbps WAN takes hours. Do the initial backup on the same LAN as the
+  Samba server when possible; incremental TM snapshots after that are
+  <1GB/hour typically and trivial over Tailscale.
+- **DERP fallback.** If direct UDP fails, Tailscale relays TCP through
+  a DERP server. SMB still works, just slower. Direct connections are
+  the common case on residential networks once both nodes have done
+  STUN.
+
+The Samba server (`ocean` in this fleet) must advertise the
+`_adisk._tcp` TXT record with `sys=adVF=0x100,adVN=TimeMachine` so macOS
+treats the share as TM-capable. That's a server-side config — already
+in place where the existing Samba TM destination works on LAN.
+
+### Shape post-adoption
+
+In the macbook's `darwin.nix`:
+
+```nix
+{
+  age.secrets.samba-timemachine-password = {
+    file = "${inputs.agenix-secrets}/secrets/samba-timemachine-password.age";
+    owner = "root";
+    mode = "0400";
+  };
+
+  system.defaults.CustomSystemPreferences."/Library/Preferences/com.apple.TimeMachine" = {
+    AutoBackup = 1;
+    RequiresACPower = 0;
+    MobileBackups = 1;
+    SkipPaths = [
+      "/Users/ncrmro/repos/nixpkgs"
+      "/nix"
+    ];
+  };
+
+  system.activationScripts.timemachineDestination.text = ''
+    host="ocean"  # Tailscale MagicDNS short name
+    share="timemachine-ncrmro"
+    if ! /usr/bin/tmutil destinationinfo 2>/dev/null | grep -q "$host"; then
+      pw="$(/bin/cat /etc/agenix/samba-timemachine-password)"
+      /usr/bin/tmutil setdestination -p "smb://timemachine:$pw@$host/$share"
+    fi
+  '';
+}
+```
+
+Same script works on LAN and off-LAN because `ocean` resolves through
+the Tailscale resolver regardless of where the macbook is connected.
+The activation script is idempotent — re-running `darwin-rebuild
+switch` does nothing if the destination is already registered.
+
+### Acceptance criterion for #554
+
+This shape is a useful end-to-end smoke test for nix-darwin adoption:
+it exercises agenix-darwin (decrypts the SMB credential),
+`system.defaults` (the plist key surface), and
+`system.activationScripts` (the imperative bridge). A passing run
+proves the migration delivered a coherent system layer, not just a
+build artifact.
+
 ## Today's workaround for adopters
 
 Until nix-darwin lands, macbooks use the home-manager-only path. To get
