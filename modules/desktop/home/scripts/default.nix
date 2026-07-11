@@ -628,7 +628,6 @@ in
             keystoneNightlightToggle
             keystoneBatteryMonitor
             keystoneDetach
-            keystoneProjectMenu
             keystonePhotosMenu
             pkgs.jq
             pkgs.pulseaudio
