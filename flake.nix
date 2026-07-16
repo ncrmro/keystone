@@ -106,7 +106,7 @@
     };
 
     lfs-s3-src = {
-      url = "github:nicolas-graves/lfs-s3/0.2.1";
+      url = "github:nicolas-graves/lfs-s3/0.2.2";
       flake = false;
     };
 

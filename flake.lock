@@ -1165,16 +1165,16 @@
     "lfs-s3-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1761051611,
-        "narHash": "sha256-g8q+whJ3xyrCcH9mJxtFz2MNLJXOxBHEgqGx5fDlUrQ=",
+        "lastModified": 1776752169,
+        "narHash": "sha256-AfpNsZNshroxKeLgDOj6qKG+HN6uomBUJrw0KK23pB4=",
         "owner": "nicolas-graves",
         "repo": "lfs-s3",
-        "rev": "96d34384a09d3a81c6cc840608d33610e6b23505",
+        "rev": "735122571a9d4b2906f6c3ead54830426f31378c",
         "type": "github"
       },
       "original": {
         "owner": "nicolas-graves",
-        "ref": "0.2.1",
+        "ref": "0.2.2",
         "repo": "lfs-s3",
         "type": "github"
       }
