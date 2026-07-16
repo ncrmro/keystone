@@ -612,11 +612,11 @@
     "grafana-mcp-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1773939701,
-        "narHash": "sha256-+GHFbkQAswNE9Qi6fySPWnosLGny6QMX0qyQbZfizrM=",
+        "lastModified": 1784030433,
+        "narHash": "sha256-5JkUz3fr0RaeIO0V1P0130hpm1xXKBI6id6KDSeBU9Q=",
         "owner": "grafana",
         "repo": "mcp-grafana",
-        "rev": "91fbffb4d118f961ac20d421e4b2cf3ed883b030",
+        "rev": "a035c76513d6545ed3b002232bde63070becfb18",
         "type": "github"
       },
       "original": {
