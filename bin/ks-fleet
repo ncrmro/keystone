@@ -1,0 +1,277 @@
+# ks-fleet — deploy and test a mixed fleet of VMs and baremetal machines
+# from one script, driven entirely by the flake's `fleetMeta` output
+# (produced by lib/mk-fleet.nix). No host knowledge lives here.
+#
+# Realizations: a host runs as a local QEMU VM (`vm`) or as a physical
+# machine reached over ssh (`machine`). Each host's default realization
+# comes from fleetMeta; `--as` forces one for the named hosts, so the same
+# fleet definition tests as all-VMs, all-metal, or any mix.
+
+usage() {
+  cat <<'EOF'
+usage: ks-fleet <command> [host ...] [flags]
+
+commands:
+  status            show each host's realization, endpoint, and reachability
+  up                boot the vm-realized hosts (background, state in .fleet/)
+  down              stop vm-realized hosts
+  deploy            vm: rebuild + restart; machine: nixos-rebuild to target
+  test              deploy/boot every host, wait for ssh, run smoke checks
+
+flags:
+  --as vm|machine   force a realization for the named hosts
+  --durable         machine deploys use `switch` instead of `test`
+  --no-deploy       test: smoke only, skip deploy/boot
+  --flake REF       fleet flake (default: ., or $KS_FLEET_FLAKE)
+  --timeout SECS    ssh wait timeout per host (default: 180)
+
+environment:
+  KS_FLEET_DIR      vm state/log directory (default: $PWD/.fleet)
+  KS_FLEET_VM_USER  ssh user for vm smoke checks (default: root)
+
+With no hosts named, a command applies to the whole fleet — which is how a
+mixed fleet (e.g. ks-test-delltop on real hardware, the rest as VMs) is
+deployed and smoke-tested in one run: `ks-fleet test`.
+EOF
+}
+
+die() {
+  echo "ks-fleet: $*" >&2
+  exit 1
+}
+
+FLAKE="${KS_FLEET_FLAKE:-.}"
+STATE_DIR="${KS_FLEET_DIR:-$PWD/.fleet}"
+VM_USER="${KS_FLEET_VM_USER:-root}"
+FORCE_AS=""
+DEPLOY_MODE="test"
+NO_DEPLOY=0
+TIMEOUT=180
+
+CMD="${1:-}"
+[[ -n $CMD ]] || {
+  usage
+  exit 1
+}
+shift
+case "$CMD" in
+-h | --help | help)
+  usage
+  exit 0
+  ;;
+status | up | down | deploy | test) ;;
+*) die "unknown command: $CMD" ;;
+esac
+
+HOSTS=()
+while (($#)); do
+  case "$1" in
+  --as)
+    FORCE_AS="${2:-}"
+    [[ $FORCE_AS == vm || $FORCE_AS == machine ]] || die "--as takes vm|machine"
+    shift 2
+    ;;
+  --durable)
+    DEPLOY_MODE="switch"
+    shift
+    ;;
+  --no-deploy)
+    NO_DEPLOY=1
+    shift
+    ;;
+  --flake)
+    FLAKE="${2:?}"
+    shift 2
+    ;;
+  --timeout)
+    TIMEOUT="${2:?}"
+    shift 2
+    ;;
+  -*) die "unknown flag: $1" ;;
+  *)
+    HOSTS+=("$1")
+    shift
+    ;;
+  esac
+done
+
+META="$(nix eval --json "$FLAKE#fleetMeta")" || die "cannot eval $FLAKE#fleetMeta"
+mapfile -t ALL_HOSTS < <(jq -r '.hosts | keys[]' <<<"$META")
+((${#HOSTS[@]})) || HOSTS=("${ALL_HOSTS[@]}")
+
+host_json() {
+  local j
+  j="$(jq -c --arg h "$1" '.hosts[$h] // empty' <<<"$META")"
+  [[ -n $j ]] || die "unknown host: $1 (fleet: ${ALL_HOSTS[*]})"
+  echo "$j"
+}
+
+realization() {
+  local h="$1" j r
+  j="$(host_json "$h")"
+  r="${FORCE_AS:-$(jq -r .default <<<"$j")}"
+  [[ "$(jq -r ".$r" <<<"$j")" != null ]] || die "$h has no $r realization"
+  echo "$r"
+}
+
+vm_port() { jq -r .vm.sshPort <<<"$(host_json "$1")"; }
+vm_vnc() { jq -r .vm.vncPort <<<"$(host_json "$1")"; }
+machine_addr() { jq -r '"\(.machine.user)@\(.machine.sshTarget)"' <<<"$(host_json "$1")"; }
+
+vm_pid() {
+  local f="$STATE_DIR/$1.pid" pid
+  [[ -f $f ]] || return 1
+  pid="$(cat "$f")"
+  kill -0 "$pid" 2>/dev/null || return 1
+  echo "$pid"
+}
+
+vm_up() {
+  local h="$1" out
+  if vm_pid "$h" >/dev/null; then
+    echo "$h: vm already running (ssh -p $(vm_port "$h") localhost)"
+    return 0
+  fi
+  echo "$h: building vm..."
+  out="$(nix build --no-link --print-out-paths "$FLAKE#vm-$h")"
+  mkdir -p "$STATE_DIR"
+  (
+    cd "$STATE_DIR"
+    nohup "$out/bin/run-$h-vm" >"$h.log" 2>&1 &
+    echo $! >"$h.pid"
+  )
+  echo "$h: vm started (ssh -p $(vm_port "$h") localhost | vnc port $(vm_vnc "$h") | log $STATE_DIR/$h.log)"
+}
+
+vm_down() {
+  local h="$1" pid
+  if pid="$(vm_pid "$h")"; then
+    kill "$pid" 2>/dev/null || true
+    echo "$h: vm stopped"
+  fi
+  rm -f "$STATE_DIR/$h.pid"
+}
+
+machine_deploy() {
+  local h="$1" j addr args
+  j="$(host_json "$h")"
+  addr="$(machine_addr "$h")"
+  args=("$DEPLOY_MODE" --flake "$FLAKE#$h" --target-host "$addr")
+  [[ "$(jq -r .machine.user <<<"$j")" != root ]] && args+=(--use-remote-sudo)
+  [[ "$(jq -r .machine.buildOnRemote <<<"$j")" == true ]] && args+=(--build-host "$addr")
+  echo "$h: nixos-rebuild ${args[*]}"
+  nixos-rebuild "${args[@]}"
+}
+
+# Sets SSH_CMD for host+realization. VM host keys are ephemeral (fresh
+# install every boot), so verification is disabled for them only; machines
+# keep normal known_hosts pinning.
+ssh_for() {
+  local h="$1" r="$2"
+  if [[ $r == vm ]]; then
+    SSH_CMD=(ssh -p "$(vm_port "$h")" -o UserKnownHostsFile=/dev/null
+      -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes
+      -o ConnectTimeout=5 "$VM_USER@localhost")
+  else
+    SSH_CMD=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$(machine_addr "$h")")
+  fi
+}
+
+wait_ssh() {
+  local deadline=$((SECONDS + TIMEOUT))
+  while ((SECONDS < deadline)); do
+    "${SSH_CMD[@]}" true 2>/dev/null && return 0
+    sleep 3
+  done
+  return 1
+}
+
+smoke() {
+  local h="$1" state
+  state="$("${SSH_CMD[@]}" systemctl is-system-running --wait 2>/dev/null)" || true
+  if [[ $state == running ]]; then
+    return 0
+  fi
+  echo "$h: system state '$state'; failed units:" >&2
+  "${SSH_CMD[@]}" systemctl --failed --no-legend 2>/dev/null >&2 || true
+  return 1
+}
+
+RESULTS=()
+FAILED=0
+
+run_test() {
+  local h="$1" r
+  r="$(realization "$h")"
+  if [[ $r == vm ]]; then
+    vm_up "$h"
+  elif ((!NO_DEPLOY)); then
+    machine_deploy "$h" || {
+      RESULTS+=("$h $r deploy-failed")
+      FAILED=1
+      return
+    }
+  fi
+  ssh_for "$h" "$r"
+  if ! wait_ssh; then
+    RESULTS+=("$h $r unreachable")
+    FAILED=1
+    return
+  fi
+  if smoke "$h"; then
+    RESULTS+=("$h $r ok")
+  else
+    RESULTS+=("$h $r degraded")
+    FAILED=1
+  fi
+}
+
+case "$CMD" in
+status)
+  printf '%-24s %-8s %-28s %s\n' HOST REALIZED ENDPOINT STATE
+  for h in "${HOSTS[@]}"; do
+    r="$(realization "$h")"
+    if [[ $r == vm ]]; then
+      ep="localhost:$(vm_port "$h")"
+      if vm_pid "$h" >/dev/null; then st=running; else st=stopped; fi
+    else
+      ep="$(machine_addr "$h")"
+      ssh_for "$h" "$r"
+      if "${SSH_CMD[@]}" true 2>/dev/null; then st=reachable; else st=unreachable; fi
+    fi
+    printf '%-24s %-8s %-28s %s\n' "$h" "$r" "$ep" "$st"
+  done
+  ;;
+up)
+  for h in "${HOSTS[@]}"; do
+    [[ "$(realization "$h")" == vm ]] && vm_up "$h"
+  done
+  ;;
+down)
+  for h in "${HOSTS[@]}"; do
+    [[ "$(realization "$h")" == vm ]] && vm_down "$h"
+  done
+  ;;
+deploy)
+  for h in "${HOSTS[@]}"; do
+    if [[ "$(realization "$h")" == vm ]]; then
+      vm_down "$h"
+      vm_up "$h"
+    else
+      machine_deploy "$h"
+    fi
+  done
+  ;;
+test)
+  for h in "${HOSTS[@]}"; do
+    run_test "$h"
+  done
+  echo
+  printf '%-24s %-8s %s\n' HOST REALIZED RESULT
+  for line in "${RESULTS[@]}"; do
+    # shellcheck disable=SC2086 # intentional word split into three columns
+    printf '%-24s %-8s %s\n' $line
+  done
+  exit "$FAILED"
+  ;;
+esac
