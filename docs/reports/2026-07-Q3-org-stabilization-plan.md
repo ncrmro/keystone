@@ -67,16 +67,11 @@ Notes:
   `~/notes/wiki/research/headscale-k3s-bootstrap-relocation.md`. Its
   multi-node VM test rides the fleet harness imported in v1 — that is why
   the harness import is a v1 commit, not deferred.
-- The harness gains a third realization tier, `install`: instead of the
-  fast vmVariant (which swaps out storage/boot), it boots the host's real
-  disko-built disk image (`system.build.vmWithDisko`) under QEMU with
-  swtpm attached (TPM2 enrollment/auto-unlock) and canokey-qemu (emulated
-  FIDO2 token) — so users can test yubikey/TPM LUKS unlock flows in a VM
-  before touching hardware. disko.tests bootCommands (already present in
-  delltop's disk-config) are the assertion hook. Landed in 848008e
-  (install + swtpm verified on ks-demo-luks: guest sees tpm0, LUKS unlocks,
-  boots to login; canokey wiring present but needs a canokey-enabled qemu
-  build and an end-to-end unlock test — the remaining ○).
+- The `install` realization tier (mechanism documented in the os README)
+  landed in 848008e: install + swtpm verified on ks-demo-luks — guest sees
+  tpm0, LUKS unlocks with the disko test passphrase, boots to login.
+  Canokey wiring is present but needs a canokey-enabled qemu build and an
+  end-to-end unlock test — the remaining ○.
 - Terminal and desktop never enter the rebuilt os repo; the new repos
   import from `~/repos/keystone-systems/{terminal,desktop}` and the
   archive/* branches instead (see their sections).

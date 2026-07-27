@@ -8,7 +8,7 @@ from the same script.
 ## Model
 
 A fleet is a `hosts/` directory of plain NixOS modules fed to
-`lib.mkFleet`. Every host has up to two *realizations*:
+`lib.mkFleet`. Every host has up to three *realizations*:
 
 - **vm** — QEMU vmVariant with fresh-install semantics. ssh forwarded from
   `basePort + index`, graphical console on VNC display
@@ -16,10 +16,12 @@ A fleet is a `hosts/` directory of plain NixOS modules fed to
 - **machine** — a physical box (a test machine like `ks-test-delltop`)
   reached over ssh and deployed with `nixos-rebuild test|switch
   --target-host` (or `--build-host` for remote builds).
+- **install** — the host's real disko-built disk image with emulated
+  security hardware; see below.
 
 `targets.<host>` declares the machine endpoint and the default realization;
 `fleetMeta` exports the whole table as data. The `ks-fleet` runner consumes
-it, so **a single run can mix VMs and baremetal**: delltop live on the LAN
+it, so **a single run can mix VMs and baremetal**: ks-test-delltop live on the LAN
 while the rest of the fleet boots as QEMU VMs beside it, all smoke-tested
 together. VM hosts use QEMU user networking (outbound only); cross-host
 reachability in mixed fleets rides the tailnet overlay once os#2's
@@ -63,8 +65,8 @@ still get vm realizations: ks-fleet falls back to the host's plain
 
 Hosts with `targets.<host>.install = { }` gain `nix build .#install-<host>`
 — disko builds the host's **real partition layout** (GPT/LUKS/LVM) into a
-qcow2 and boots it (`system.build.vmWithDisko`) with an **emulated TPM2**
-(swtpm, on by default) and optionally a **canokey virtual FIDO2 token**
+qcow2 and boots it (`system.build.vmWithDisko`) with an emulated TPM2
+(swtpm, on by default) and optionally a canokey virtual FIDO2 token
 (`install.fido2 = true`; needs a canokey-enabled qemu build), so users can
 prove LUKS unlock flows — passphrase fallback, TPM auto-unlock enrollment,
 yubikey FIDO2 — before touching hardware. `disko.tests.bootCommands` carry
