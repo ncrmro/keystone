@@ -26,10 +26,17 @@ flags:
                     of hosts whose host-bound secrets cannot decrypt)
   --flake REF       fleet flake (default: ., or $KS_FLEET_FLAKE)
   --timeout SECS    ssh wait timeout per host (default: 180)
+  --vm-host U@H     delegate vm realizations to a remote machine (e.g.
+                    ncrmro@ocean): the runner closure is nix-copied there,
+                    QEMU runs remotely, and smoke ssh goes through it as a
+                    jump host. Requires KVM and the 9p-shared checkouts on
+                    the remote. Also via $KS_FLEET_VM_HOST.
 
 environment:
-  KS_FLEET_DIR      vm state/log directory (default: $PWD/.fleet)
+  KS_FLEET_DIR      vm state/log directory (default: $PWD/.fleet; remote
+                    vms use /tmp/ksf on the vm host)
   KS_FLEET_VM_USER  ssh user for vm smoke checks (default: root)
+  KS_FLEET_VM_HOST  default --vm-host
 
 With no hosts named, a command applies to the whole fleet — which is how a
 mixed fleet (e.g. ks-test-delltop on real hardware, the rest as VMs) is
@@ -45,6 +52,7 @@ die() {
 FLAKE="${KS_FLEET_FLAKE:-.}"
 STATE_DIR="${KS_FLEET_DIR:-$PWD/.fleet}"
 VM_USER="${KS_FLEET_VM_USER:-root}"
+VM_HOST="${KS_FLEET_VM_HOST:-}"
 FORCE_AS=""
 DEPLOY_MODE="test"
 NO_DEPLOY=0
@@ -86,6 +94,10 @@ while (($#)); do
     ALLOW_DEGRADED=1
     shift
     ;;
+  --vm-host)
+    VM_HOST="${2:?}"
+    shift 2
+    ;;
   --flake)
     FLAKE="${2:?}"
     shift 2
@@ -125,8 +137,16 @@ vm_port() { jq -r .vm.sshPort <<<"$(host_json "$1")"; }
 vm_vnc() { jq -r .vm.vncPort <<<"$(host_json "$1")"; }
 machine_addr() { jq -r '"\(.machine.user)@\(.machine.sshTarget)"' <<<"$(host_json "$1")"; }
 
+REMOTE_DIR=/tmp/ksf
+
 vm_pid() {
-  local f="$STATE_DIR/$1.pid" pid
+  local h="$1" f pid
+  if [[ -n $VM_HOST ]]; then
+    ssh -o BatchMode=yes -o ConnectTimeout=5 "$VM_HOST" \
+      "pid=\$(cat $REMOTE_DIR/$h.pid 2>/dev/null) && kill -0 \"\$pid\" 2>/dev/null && echo \"\$pid\"" 2>/dev/null
+    return
+  fi
+  f="$STATE_DIR/$h.pid"
   [[ -f $f ]] || return 1
   pid="$(cat "$f")"
   kill -0 "$pid" 2>/dev/null || return 1
@@ -150,6 +170,14 @@ vm_up() {
     out="$(nix build --no-link --print-out-paths       "$FLAKE#nixosConfigurations.$h.config.system.build.vm")"
     extra_env=1
   fi
+  if [[ -n $VM_HOST ]]; then
+    echo "$h: copying vm closure to $VM_HOST..."
+    nix copy --to "ssh://$VM_HOST" "$out"
+    ssh -o BatchMode=yes "$VM_HOST" \
+      "mkdir -p $REMOTE_DIR && cd $REMOTE_DIR && QEMU_NET_OPTS='hostfwd=tcp::$port-:22' QEMU_OPTS='-display none' nohup '$out/bin/run-$h-vm' >'$h.log' 2>&1 & echo \$! >$REMOTE_DIR/$h.pid"
+    echo "$h: vm started on $VM_HOST (ssh -J $VM_HOST -p $port localhost | log $VM_HOST:$REMOTE_DIR/$h.log)"
+    return 0
+  fi
   mkdir -p "$STATE_DIR"
   (
     cd "$STATE_DIR"
@@ -165,6 +193,12 @@ vm_up() {
 
 vm_down() {
   local h="$1" pid
+  if [[ -n $VM_HOST ]]; then
+    ssh -o BatchMode=yes "$VM_HOST" \
+      "pid=\$(cat $REMOTE_DIR/$h.pid 2>/dev/null) && kill \"\$pid\" 2>/dev/null; rm -f $REMOTE_DIR/$h.pid" 2>/dev/null || true
+    echo "$h: vm stopped on $VM_HOST"
+    return 0
+  fi
   if pid="$(vm_pid "$h")"; then
     kill "$pid" 2>/dev/null || true
     echo "$h: vm stopped"
@@ -192,6 +226,7 @@ ssh_for() {
     SSH_CMD=(ssh -p "$(vm_port "$h")" -o UserKnownHostsFile=/dev/null
       -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes
       -o ConnectTimeout=5 "$VM_USER@localhost")
+    [[ -n $VM_HOST ]] && SSH_CMD+=(-o "ProxyJump=$VM_HOST")
   else
     SSH_CMD=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$(machine_addr "$h")")
   fi
