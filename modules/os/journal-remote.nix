@@ -135,7 +135,6 @@ in
     (mkIf isServer {
       services.journald.remote = {
         enable = true;
-        listen = "http";
         port = cfg.server.port;
       };
     })
