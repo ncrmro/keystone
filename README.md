@@ -54,7 +54,29 @@ nix run .#ks-fleet -- down   # stop background VMs (state in .fleet/)
 `ks-fleet test` is the fast loop: machine hosts get `nixos-rebuild test`
 (activation without bootloader — reversible by reboot), VM hosts rebuild
 and reboot, then every host must reach `systemctl is-system-running ==
-running` or the run fails with its failed units listed.
+running` (or `degraded` with `--allow-degraded`) or the run fails with its
+failed units listed. Consumer flakes that have not adopted `lib.mkFleet`
+still get vm realizations: ks-fleet falls back to the host's plain
+`system.build.vm` and adds ssh forwarding via `QEMU_NET_OPTS`.
+
+## Install realization (day-one: LUKS/TPM/FIDO2 in a VM)
+
+Hosts with `targets.<host>.install = { }` gain `nix build .#install-<host>`
+— disko builds the host's **real partition layout** (GPT/LUKS/LVM) into a
+qcow2 and boots it (`system.build.vmWithDisko`) with an **emulated TPM2**
+(swtpm, on by default) and optionally a **canokey virtual FIDO2 token**
+(`install.fido2 = true`; needs a canokey-enabled qemu build), so users can
+prove LUKS unlock flows — passphrase fallback, TPM auto-unlock enrollment,
+yubikey FIDO2 — before touching hardware. `disko.tests.bootCommands` carry
+the boot assertions; disko's LUKS type also supports `enrollFido2` for
+enrolling the virtual token at format time.
+
+Conventions and gotchas: LUKS `passwordFile` hosts add a guarded
+`preCreateHook` writing disko's test passphrase (see
+`examples/hosts/ks-demo-luks`); run from a short cwd or set
+`NIX_SWTPM_DIR=/tmp/<short>` (unix-socket 108-char path limit, fails
+silently); never pipe `/dev/null` into a `-nographic` qemu — drive the
+serial console with expect.
 
 The in-repo `examples/hosts` fleet is self-demonstrating: `ks-demo-a`
 defaults to vm, `ks-demo-b` carries a (placeholder) machine target.

@@ -66,10 +66,36 @@ let
   indexed = lib.imap0 (i: name: { inherit i name; }) hostNames;
 
   target = name: targets.${name} or { };
+  installOpts = name: (target name).install or null;
   vmEnabled = name: (target name).vm or { } != false;
   vmOpts = name: if vmEnabled name then (target name).vm or { } else { };
   defaultRealization =
     name: (target name).default or (if (target name) ? machine then "machine" else "vm");
+
+  # Hosts with an install target get an emulated TPM2 (swtpm via
+  # virtualisation.tpm) and optionally a canokey virtual FIDO2 token in the
+  # disko test VM, so LUKS enrollment/unlock flows are testable pre-hardware.
+  installModule =
+    name:
+    let
+      io = installOpts name;
+      tpmAndFido = {
+        virtualisation.tpm.enable = io.tpm or true;
+        virtualisation.qemu = lib.optionalAttrs (io.fido2 or false) {
+          # canokey needs a qemu built with canokeySupport (local build).
+          package = pkgs.qemu.override { canokeySupport = true; };
+          options = [ "-device canokey,file=/tmp/canokey-state" ];
+        };
+      };
+    in
+    lib.optional (io != null) {
+      # vmVariantWithDisko is the config layer of the interactive install
+      # VM (system.build.vmWithDisko); the emulated TPM (and optional
+      # canokey token) attach there, and the same settings go to the
+      # disko test framework machine.
+      virtualisation.vmVariantWithDisko = tpmAndFido;
+      disko.tests.extraConfig = tpmAndFido;
+    };
 
   mkHost =
     name:
@@ -82,6 +108,7 @@ let
           { networking.hostName = lib.mkDefault name; }
         ]
         ++ lib.optional (fleetFile != null) { keystone.fleet = import fleetFile; }
+        ++ installModule name
         ++ extraModules;
     };
 
@@ -116,6 +143,16 @@ let
     }).config.system.build.vm;
 
   vmHosts = builtins.filter ({ name, ... }: vmEnabled name) indexed;
+
+  installPackages = lib.listToAttrs (
+    map (
+      { name, ... }:
+      {
+        name = "install-${name}";
+        value = nixosConfigurations.${name}.config.system.build.vmWithDisko;
+      }
+    ) (builtins.filter ({ name, ... }: installOpts name != null) indexed)
+  );
 
   vmPackages = lib.listToAttrs (
     map (
@@ -200,6 +237,17 @@ let
                 }
               else
                 null;
+            install =
+              let
+                io = installOpts name;
+              in
+              if io == null then
+                null
+              else
+                {
+                  tpm = io.tpm or true;
+                  fido2 = io.fido2 or false;
+                };
             machine =
               if (target name) ? machine then
                 {
@@ -217,7 +265,7 @@ let
 in
 {
   inherit nixosConfigurations fleetMeta;
-  packages.${system} = vmPackages;
+  packages.${system} = vmPackages // installPackages;
   apps.${system} =
     vmApps
     // devVmApps

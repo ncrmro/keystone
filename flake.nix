@@ -3,10 +3,12 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
-    { self, nixpkgs }:
+    { self, nixpkgs, disko }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -29,6 +31,7 @@
       # `ks-fleet test` on this repo therefore exercises the mixed path.
       example = mkFleet {
         hostsDir = ./examples/hosts;
+        baseModules = [ disko.nixosModules.disko ];
         targets = {
           ks-demo-b = {
             machine = {
@@ -36,6 +39,9 @@
               user = "ncrmro";
             };
           };
+          # LUKS host demonstrating the install realization: boots the real
+          # disko-built disk image with an emulated TPM2 attached.
+          ks-demo-luks.install = { };
         };
       };
     in

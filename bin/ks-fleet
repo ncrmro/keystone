@@ -22,6 +22,8 @@ flags:
   --as vm|machine   force a realization for the named hosts
   --durable         machine deploys use `switch` instead of `test`
   --no-deploy       test: smoke only, skip deploy/boot
+  --allow-degraded  smoke passes on systemd state 'degraded' (e.g. vm boots
+                    of hosts whose host-bound secrets cannot decrypt)
   --flake REF       fleet flake (default: ., or $KS_FLEET_FLAKE)
   --timeout SECS    ssh wait timeout per host (default: 180)
 
@@ -46,6 +48,7 @@ VM_USER="${KS_FLEET_VM_USER:-root}"
 FORCE_AS=""
 DEPLOY_MODE="test"
 NO_DEPLOY=0
+ALLOW_DEGRADED=0
 TIMEOUT=180
 
 CMD="${1:-}"
@@ -77,6 +80,10 @@ while (($#)); do
     ;;
   --no-deploy)
     NO_DEPLOY=1
+    shift
+    ;;
+  --allow-degraded)
+    ALLOW_DEGRADED=1
     shift
     ;;
   --flake)
@@ -127,20 +134,33 @@ vm_pid() {
 }
 
 vm_up() {
-  local h="$1" out
+  local h="$1" out port extra_env=0
+  port="$(vm_port "$h")"
   if vm_pid "$h" >/dev/null; then
-    echo "$h: vm already running (ssh -p $(vm_port "$h") localhost)"
+    echo "$h: vm already running (ssh -p $port localhost)"
     return 0
   fi
   echo "$h: building vm..."
-  out="$(nix build --no-link --print-out-paths "$FLAKE#vm-$h")"
+  # Prefer the harness's vm-<host> package (mkFleet: port/VNC baked in);
+  # fall back to the host's plain system.build.vm for consumer flakes that
+  # have not adopted mkFleet, adding ssh forwarding via QEMU_NET_OPTS.
+  if out="$(nix build --no-link --print-out-paths "$FLAKE#vm-$h" 2>/dev/null)"; then
+    :
+  else
+    out="$(nix build --no-link --print-out-paths       "$FLAKE#nixosConfigurations.$h.config.system.build.vm")"
+    extra_env=1
+  fi
   mkdir -p "$STATE_DIR"
   (
     cd "$STATE_DIR"
+    if ((extra_env)); then
+      export QEMU_NET_OPTS="hostfwd=tcp::$port-:22"
+      export QEMU_OPTS="${QEMU_OPTS:--display none}"
+    fi
     nohup "$out/bin/run-$h-vm" >"$h.log" 2>&1 &
     echo $! >"$h.pid"
   )
-  echo "$h: vm started (ssh -p $(vm_port "$h") localhost | vnc port $(vm_vnc "$h") | log $STATE_DIR/$h.log)"
+  echo "$h: vm started (ssh -p $port localhost | log $STATE_DIR/$h.log)"
 }
 
 vm_down() {
@@ -190,6 +210,11 @@ smoke() {
   local h="$1" state
   state="$("${SSH_CMD[@]}" systemctl is-system-running --wait 2>/dev/null)" || true
   if [[ $state == running ]]; then
+    return 0
+  fi
+  if [[ $state == degraded ]] && ((ALLOW_DEGRADED)); then
+    echo "$h: degraded accepted (--allow-degraded); failed units:" >&2
+    "${SSH_CMD[@]}" systemctl --failed --no-legend 2>/dev/null >&2 || true
     return 0
   fi
   echo "$h: system state '$state'; failed units:" >&2
