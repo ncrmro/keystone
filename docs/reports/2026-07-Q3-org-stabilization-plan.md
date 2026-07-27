@@ -52,6 +52,7 @@ see that workspace's NOTES.md).
 │ ○  feat(installer): import ISO + offline-install flow from keystone-systems
 │ ○  docs(milestones): define v1 scope — baremetal + templating; terminal/desktop live elsewhere
 ├─╯
+●  55a7abc  feat(fleet): delegate vm realizations to a remote machine (--vm-host)
 ●  848008e  feat(harness): install realization — disko image boot with TPM2/FIDO2 emulation
 ●  f2126a8  feat(fleet): unified vm/machine fleet harness — mkFleet, fleetMeta, ks-fleet runner
 ●  9cf9864  chore!: reset repository to an empty root for the KS OS v1 rebuild
