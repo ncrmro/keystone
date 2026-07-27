@@ -48,6 +48,9 @@ see that workspace's NOTES.md).
 │ ○  feat(templates): ks-config consumer flake template (nix flake init)
 │ ○  refactor(secrets)!: replace agenix with sops-nix
 │ ○  fix(installer): stabilize nixos-anywhere baremetal path (disko, LUKS/TPM)
+│ ○  feat(harness): canokey FIDO2 emulation — yubikey LUKS unlock in a VM
+│ ○  feat(harness): swtpm TPM2 emulation — enrollment and auto-unlock tests
+│ ○  feat(harness): install realization — boot the disko-built disk image (vmWithDisko)
 │ ○  feat(installer): import ISO + offline-install flow from keystone-systems
 │ ○  docs(milestones): define v1 scope — baremetal + templating; terminal/desktop live elsewhere
 ├─╯
@@ -64,6 +67,13 @@ Notes:
   `~/notes/wiki/research/headscale-k3s-bootstrap-relocation.md`. Its
   multi-node VM test rides the fleet harness imported in v1 — that is why
   the harness import is a v1 commit, not deferred.
+- The harness gains a third realization tier, `install`: instead of the
+  fast vmVariant (which swaps out storage/boot), it boots the host's real
+  disko-built disk image (`system.build.vmWithDisko`) under QEMU with
+  swtpm attached (TPM2 enrollment/auto-unlock) and canokey-qemu (emulated
+  FIDO2 token) — so users can test yubikey/TPM LUKS unlock flows in a VM
+  before touching hardware. disko.tests bootCommands (already present in
+  delltop's disk-config) are the assertion hook.
 - Terminal and desktop never enter the rebuilt os repo; the new repos
   import from `~/repos/keystone-systems/{terminal,desktop}` and the
   archive/* branches instead (see their sections).
