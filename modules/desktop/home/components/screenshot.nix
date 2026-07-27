@@ -10,23 +10,8 @@ let
   cfg = config.keystone.desktop;
   hyprlandPkg = keystoneInputs.hyprland.packages.${pkgs.stdenv.hostPlatform.system}.hyprland;
 
-  # Custom satty package using the latest source from GitHub
-  # The default version of satty is 0.18.1 and uses --action-on-enter (singular)
-  # Version 0.19.0+ uses --actions-on-enter (plural) which our script requires
-  satty-latest = pkgs.satty.overrideAttrs (oldAttrs: rec {
-    version = "0.20.0";
-    src = pkgs.fetchFromGitHub {
-      owner = "gabm";
-      repo = "Satty";
-      rev = "v0.20.0";
-      hash = "sha256-4RVah6yo4cJyE6qUbDJbcmFpi7xsKNpHJFrzSs1yJcg=";
-    };
-    cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
-      inherit src;
-      name = "${oldAttrs.pname}-${version}";
-      hash = "sha256-RPj6ZVtDWPMt4jrmU750b7zLVHwqk+SWr2OskDAQFYI=";
-    };
-  });
+  # nixpkgs satty is 0.21.1, past the 0.19.0 that introduced the plural
+  # --actions-on-enter this script uses, so no source override is needed.
 
   # Screenshot script - supports region, windows, fullscreen, and smart modes
   keystoneScreenshot = pkgs.writeShellScriptBin "keystone-screenshot" ''
@@ -99,7 +84,7 @@ let
 
     if [[ $PROCESSING == "slurp" ]]; then
       ${pkgs.grim}/bin/grim -g "$SELECTION" - |
-        ${satty-latest}/bin/satty --filename - \
+        ${pkgs.satty}/bin/satty --filename - \
           --output-filename "$OUTPUT_DIR/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png" \
           --early-exit \
           --actions-on-enter save-to-clipboard \
@@ -116,7 +101,7 @@ in
       keystoneScreenshot
       pkgs.grim
       pkgs.slurp
-      satty-latest
+      pkgs.satty
       pkgs.wayfreeze
       pkgs.hyprpicker
       pkgs.jq
