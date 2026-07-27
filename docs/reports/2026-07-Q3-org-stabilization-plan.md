@@ -48,12 +48,11 @@ see that workspace's NOTES.md).
 │ ○  feat(templates): ks-config consumer flake template (nix flake init)
 │ ○  refactor(secrets)!: replace agenix with sops-nix
 │ ○  fix(installer): stabilize nixos-anywhere baremetal path (disko, LUKS/TPM)
-│ ○  feat(harness): canokey FIDO2 emulation — yubikey LUKS unlock in a VM
-│ ○  feat(harness): swtpm TPM2 emulation — enrollment and auto-unlock tests
-│ ○  feat(harness): install realization — boot the disko-built disk image (vmWithDisko)
+│ ○  test(harness): canokey-backed FIDO2 LUKS unlock exercised end to end
 │ ○  feat(installer): import ISO + offline-install flow from keystone-systems
 │ ○  docs(milestones): define v1 scope — baremetal + templating; terminal/desktop live elsewhere
 ├─╯
+●  848008e  feat(harness): install realization — disko image boot with TPM2/FIDO2 emulation
 ●  f2126a8  feat(fleet): unified vm/machine fleet harness — mkFleet, fleetMeta, ks-fleet runner
 ●  9cf9864  chore!: reset repository to an empty root for the KS OS v1 rebuild
 ◇  (archive boundary — v1.0.0-rc.4 and all prior history on archive/*)
@@ -73,7 +72,10 @@ Notes:
   swtpm attached (TPM2 enrollment/auto-unlock) and canokey-qemu (emulated
   FIDO2 token) — so users can test yubikey/TPM LUKS unlock flows in a VM
   before touching hardware. disko.tests bootCommands (already present in
-  delltop's disk-config) are the assertion hook.
+  delltop's disk-config) are the assertion hook. Landed in 848008e
+  (install + swtpm verified on ks-demo-luks: guest sees tpm0, LUKS unlocks,
+  boots to login; canokey wiring present but needs a canokey-enabled qemu
+  build and an end-to-end unlock test — the remaining ○).
 - Terminal and desktop never enter the rebuilt os repo; the new repos
   import from `~/repos/keystone-systems/{terminal,desktop}` and the
   archive/* branches instead (see their sections).
