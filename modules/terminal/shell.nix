@@ -75,7 +75,7 @@ in
       # Modern alternative to tmux/screen with built-in session management
       # https://zellij.dev/
       programs.zellij = {
-        enable = true;
+        enable = false;
         enableZshIntegration = false;
         settings = {
           theme = "current";
@@ -151,11 +151,11 @@ in
       # Bat - A cat(1) clone with wings (syntax highlighting and Git integration)
       # https://github.com/sharkdp/bat
       programs.bat = {
-        enable = true;
+        enable = false;
       };
 
       programs.zsh = {
-        enable = true;
+        enable = false;
         enableCompletion = mkDefault true;
         autosuggestion.enable = mkDefault true;
         syntaxHighlighting.enable = mkDefault true;
@@ -244,6 +244,12 @@ in
           # Bottom - Graphical process/system monitor
           # https://github.com/ClementTsang/bottom
           bottom
+          bat
+          zellij
+          zsh
+          zsh-autosuggestions
+          zsh-syntax-highlighting
+          oh-my-zsh
 
           # Dust - A more intuitive version of du in rust
           # https://github.com/bootandy/dust
@@ -343,26 +349,6 @@ in
       home.file.".config/nix/nix.conf".text = ''
         experimental-features = nix-command flakes
       '';
-    })
-    (mkHomeRepoFiles {
-      inherit config;
-      files = [
-        {
-          targetPath = ".config/zellij/layouts/dev.kdl";
-          relativePath = "modules/terminal/layouts/dev.kdl";
-          sourcePath = ./layouts/dev.kdl;
-        }
-        {
-          targetPath = ".config/zellij/layouts/ops.kdl";
-          relativePath = "modules/terminal/layouts/ops.kdl";
-          sourcePath = ./layouts/ops.kdl;
-        }
-        {
-          targetPath = ".config/zellij/layouts/write.kdl";
-          relativePath = "modules/terminal/layouts/write.kdl";
-          sourcePath = ./layouts/write.kdl;
-        }
-      ];
     })
     ksCommand
   ]);
